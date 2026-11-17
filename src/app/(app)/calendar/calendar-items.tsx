@@ -35,8 +35,10 @@ function Label({ title, time, short, icon }: { title: string; time: string; shor
   return short ? (
     <div className="flex h-full items-center gap-2 pl-3 pr-8">
       {icon}
-      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{title}</p>
-      <span className="shrink-0 text-[11px] tabular-nums text-muted">{time}</span>
+      {/* Too short for a second line, so the time lives in the hover tooltip instead. */}
+      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={`${title} · ${time}`}>
+        {title}
+      </p>
     </div>
   ) : (
     <div className="flex h-full flex-col gap-1 py-2 pl-3 pr-8">
