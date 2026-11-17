@@ -219,21 +219,19 @@ function TaskDoneCard({
       </div>
 
       {/* The task, shown the way it looks when checked off in the Tasks list. */}
-      <div className="mt-3 flex items-start gap-2.5 text-[0.95rem] leading-relaxed">
-        {/* One line tall, so the check centres on the first line of the title. */}
-        <span aria-hidden="true" className="flex h-[1lh] shrink-0 items-center">
-          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-foreground text-background">
-            <HugeiconsIcon icon={Tick02Icon} size={12} strokeWidth={2.5} />
-          </span>
+      {/* The check sits inline with the title, so the description lines up under both. */}
+      <p className="mt-3 text-[0.95rem] font-medium leading-relaxed text-foreground [overflow-wrap:anywhere]">
+        <span
+          aria-hidden="true"
+          className="mr-2 inline-flex h-3.5 w-3.5 -translate-y-px items-center justify-center rounded-full bg-foreground align-middle text-background"
+        >
+          <HugeiconsIcon icon={Tick02Icon} size={9} strokeWidth={3} />
         </span>
-        <p className="min-w-0 font-medium text-foreground [overflow-wrap:anywhere]">
-          <span className="sr-only">Completed task: </span>
-          {task}
-        </p>
-      </div>
-      {/* Lined up under the title, past the check. */}
+        <span className="sr-only">Completed task: </span>
+        {task}
+      </p>
       {note.taskDescription && (
-        <p className="ml-[28px] mt-1 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">
+        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">
           {note.taskDescription}
         </p>
       )}
