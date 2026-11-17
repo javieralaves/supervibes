@@ -91,7 +91,8 @@ function takeTurns<T>(groups: T[][]): T[] {
  * 1. Left out: tasks already on the calendar from now on, and suggestions
  *    already turned into intentions.
  * 2. Each goal's protected blocks are filled first, soonest first, with that
- *    goal's tasks (in your order) and then its suggestions. An untitled block
+ *    goal's tasks (in your order) and then its suggestions, around any
+ *    intentions or set-aside time already inside them. An untitled block
  *    takes any of them; a titled one only those judged to fit it; kept-open
  *    blocks and intentions take nothing.
  * 3. Free awake time, back to back with blocks but never inside
@@ -126,16 +127,22 @@ export function planDays<T extends PlanItem>(items: T[], now: number, sleep: Sle
     .filter((b) => isProtected(b) && b.day >= 0 && b.day < MAX_DAYS && b.end > earliest(b.day))
     .sort((a, b) => a.day - b.day || a.start - b.start);
   for (const block of protectedBlocks) {
-    let cursor = Math.max(block.start, Math.ceil(earliest(block.day) / STEP) * STEP);
+    // What's left of the block once intentions and set-aside time on top of it are taken out.
+    const occupied = blocks.filter((b) => b.day === block.day && b.id !== block.id && !isProtected(b));
+    const from = Math.max(block.start, Math.ceil(earliest(block.day) / STEP) * STEP);
+    const gaps = subtract([{ start: from, end: block.end }], occupied)
+      .map((g) => ({ end: g.end, cursor: Math.ceil(g.start / STEP) * STEP }))
+      .filter((g) => g.end > g.cursor);
     const candidates = [
       ...open.filter((i) => i.kind === "task"),
       ...open.filter((i) => i.kind === "suggestion"),
     ].filter((i) => i.goalId === block.goalId && !taken.has(i) && (!block.title || fitsBlock(block, i)));
     for (const item of candidates) {
-      if (cursor + item.minutes > block.end) continue;
-      placed.push({ item, day: block.day, start: cursor, end: cursor + item.minutes, blockId: block.id });
+      const gap = gaps.find((g) => g.cursor + item.minutes <= g.end);
+      if (!gap) continue;
+      placed.push({ item, day: block.day, start: gap.cursor, end: gap.cursor + item.minutes, blockId: block.id });
       taken.add(item);
-      cursor += item.minutes;
+      gap.cursor += item.minutes;
     }
   }
 
