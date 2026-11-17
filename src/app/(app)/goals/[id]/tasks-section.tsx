@@ -1,6 +1,6 @@
 "use client";
 
-import { Add01Icon, Delete02Icon, Tick02Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, Clock01Icon, Delete02Icon, Tick02Icon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { startTransition, useEffect, useId, useOptimistic, useRef, useState } from "react";
@@ -43,6 +43,8 @@ let pendingSeq = 0;
 
 /** Same type as a task title, so things beside it can centre on its first line. */
 const LINE = "text-[0.95rem] leading-snug";
+/** A task's description, the same whether shown under a closed row or being edited. */
+const DESCRIPTION = "mt-0.5 text-sm text-muted [overflow-wrap:anywhere]";
 
 /**
  * A goal's open tasks. Click one to open it in place and add a description;
@@ -240,13 +242,18 @@ function TaskRow({
   );
 
   const estimate = pending ? (
-    <span className="text-xs tabular-nums text-muted">{minutesLabel(task.minutes)}</span>
+    <span className="inline-flex w-fit items-center gap-1 rounded-full border border-card-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted">
+      <HugeiconsIcon icon={Clock01Icon} size={12} />
+      {minutesLabel(task.minutes)}
+    </span>
   ) : (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
         aria-label={`Estimate: ${minutesLabel(task.minutes)}`}
-        className="h-6 rounded-md px-1.5 text-xs font-medium tabular-nums text-muted transition-colors hover:bg-wash hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/30 data-[state=open]:bg-wash data-[state=open]:text-foreground"
+        // The same time pill as on suggestions; click it to change the estimate.
+        className="inline-flex w-fit items-center gap-1 rounded-full border border-card-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted bg-card transition-colors hover:border-line-strong hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/30 data-[state=open]:border-line-strong data-[state=open]:text-foreground"
       >
+        <HugeiconsIcon icon={Clock01Icon} size={12} />
         {minutesLabel(task.minutes)}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -304,7 +311,7 @@ function TaskRow({
               }
             }}
             // Same weight as the closed row, so opening doesn't make the title jump.
-            className={`block w-full bg-transparent py-1.5 text-foreground outline-none ${LINE}`}
+            className={`block w-full bg-transparent pt-1.5 text-foreground outline-none ${LINE}`}
           />
           <textarea
             ref={description}
@@ -312,38 +319,40 @@ function TaskRow({
             aria-label="Description"
             value={draft.description}
             maxLength={MAX_TASK_DESCRIPTION}
-            rows={2}
+            rows={1}
             // Start with the cursor at the end, ready to keep writing.
             onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
             onChange={(e) => onDraft({ ...draft, description: e.target.value })}
             placeholder="Add a description…"
-            className="block min-h-[2.75rem] w-full resize-none bg-transparent text-sm leading-relaxed text-foreground/85 outline-none [field-sizing:content] [overflow-wrap:anywhere] placeholder:text-muted/70"
-          />        </div>
-        <span className={`flex shrink-0 py-1.5 ${LINE}`}>
-          <span className="flex h-[1lh] items-center">{estimate}</span>
-        </span>
+            // Same type as the description on the closed row; only the clamping differs.
+            className={`block w-full resize-none bg-transparent outline-none [field-sizing:content] placeholder:text-muted/70 ${DESCRIPTION}`}
+          />
+          <div className="mt-1.5">{estimate}</div>
+        </div>
       </li>
     );
   }
 
   return (
-    <li className={`group flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 transition-colors hover:bg-wash/50 ${pending ? "opacity-60" : ""}`}>
+    <li className={`group relative flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 transition-colors hover:bg-wash/50 ${pending ? "opacity-60" : ""}`}>
       {checkbox}
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={pending}
-        aria-label={`Open “${task.title}”`}
-        className="min-w-0 flex-1 cursor-pointer py-1.5 text-left outline-none focus-visible:underline"
-      >
-        <span className={`block text-foreground [overflow-wrap:anywhere] ${LINE}`}>{task.title}</span>
-        {firstLine && <span className="mt-0.5 block truncate text-sm text-muted">{firstLine}</span>}
-      </button>
-      <span className={`flex shrink-0 py-1.5 ${LINE}`}>
-        <span className="flex h-[1lh] items-center">{estimate}</span>
-      </span>
+      <div className="min-w-0 flex-1 pb-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={pending}
+          aria-label={`Open “${task.title}”`}
+          className="block w-full cursor-pointer pt-1.5 text-left outline-none focus-visible:underline"
+        >
+          <span className={`block text-foreground [overflow-wrap:anywhere] ${LINE}`}>{task.title}</span>
+          {/* Clamped rather than truncated, so the ellipsis follows the last whole word. */}
+          {firstLine && <span className={`line-clamp-1 ${DESCRIPTION}`}>{firstLine}</span>}
+        </button>
+        <div className="mt-1.5">{estimate}</div>
+      </div>
+      {/* Floats over the content's top-right corner on hover, so the text keeps the full width. */}
       {!pending && (
-        <span className={`flex shrink-0 py-1.5 ${LINE}`}>
+        <span className={`absolute right-2 top-1.5 flex py-1.5 ${LINE}`}>
           <span className="flex h-[1lh] items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(hover:none)]:opacity-100">
             <MoreMenu label={`Options for ${task.title}`} small>
               <MoreMenuItem icon={ViewIcon} onSelect={onOpen}>
