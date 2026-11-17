@@ -183,7 +183,12 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     ...(notes.length > 0
       ? [
           "Notes from the person, in their own words, newest first:",
-          ...notes.map((n) => `- ${n.createdAt.toISOString().slice(0, 10)}: ${n.body.replace(/\s+/g, " ")}`),
+          ...notes.map(
+            (n) =>
+              `- ${n.createdAt.toISOString().slice(0, 10)}: ${
+                n.completedSuggestion ? `[Completed suggestion: ${n.completedSuggestion}] ` : ""
+              }${n.body.replace(/\s+/g, " ")}`,
+          ),
         ]
       : ["The person hasn't written any notes for this goal."]),
     "",

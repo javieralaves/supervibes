@@ -10,11 +10,19 @@ import { goalPosts, goals } from "@/db/schema";
  * filters on the owner, and writes check the goal belongs to them.
  */
 
-export type PostDTO = { id: string; body: string; createdAt: Date; updatedAt: Date };
+export type PostDTO = {
+  id: string;
+  body: string;
+  /** Title of the suggestion this note marks as done, if any. */
+  completedSuggestion: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 const columns = {
   id: goalPosts.id,
   body: goalPosts.body,
+  completedSuggestion: goalPosts.completedSuggestion,
   createdAt: goalPosts.createdAt,
   updatedAt: goalPosts.updatedAt,
 };
@@ -29,13 +37,21 @@ export async function listPosts(userId: string, goalId: string, limit = 100): Pr
     .limit(limit);
 }
 
-export async function createPost(userId: string, goalId: string, body: string): Promise<PostDTO | null> {
+export async function createPost(
+  userId: string,
+  goalId: string,
+  body: string,
+  completedSuggestion: string | null = null,
+): Promise<PostDTO | null> {
   const [goal] = await db
     .select({ id: goals.id })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) return null;
-  const [post] = await db.insert(goalPosts).values({ userId, goalId, body }).returning(columns);
+  const [post] = await db
+    .insert(goalPosts)
+    .values({ userId, goalId, body, completedSuggestion })
+    .returning(columns);
   return post;
 }
 

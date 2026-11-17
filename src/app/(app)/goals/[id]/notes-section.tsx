@@ -1,6 +1,7 @@
 "use client";
 
-import { Delete02Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { CheckmarkCircle02Icon, Delete02Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { startTransition, useId, useOptimistic, useState, useTransition } from "react";
 
 import { Avatar } from "@/components/avatar";
@@ -11,7 +12,14 @@ import { shortAgo } from "@/lib/time";
 
 import { addPostAction, deletePostAction, editPostAction } from "./actions";
 
-export type NoteView = { id: string; body: string; createdAt: string; updatedAt: string };
+export type NoteView = {
+  id: string;
+  body: string;
+  /** Title of the suggestion this note marks as done, if it came from "Done" on a suggestion. */
+  completedSuggestion?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 export type NoteAuthor = { name: string; image: string | null | undefined };
 
 type Op = { type: "add"; note: NoteView } | { type: "edit"; id: string; body: string } | { type: "delete"; id: string };
@@ -214,8 +222,16 @@ function NoteCard({
         )}
       </div>
 
+      {/* Notes posted from "Done" on a suggestion say which one they complete. */}
+      {note.completedSuggestion && (
+        <p className="mt-3 flex items-start gap-1.5 text-sm font-medium text-muted">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span className="min-w-0 [text-wrap:pretty]">{note.completedSuggestion}</span>
+        </p>
+      )}
+
       {editing ? (
-        <div className="mt-3">
+        <div className={note.completedSuggestion ? "mt-2" : "mt-3"}>
           <label className="sr-only" htmlFor={`edit-${note.id}`}>
             Edit note
           </label>
@@ -258,7 +274,7 @@ function NoteCard({
           </div>
         </div>
       ) : (
-        <p className="mt-3 whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]">
+        <p className={`${note.completedSuggestion ? "mt-2" : "mt-3"} whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]`}>
           {note.body}
         </p>
       )}

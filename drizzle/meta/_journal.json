@@ -64,6 +64,13 @@
       "when": 1794933758917,
       "tag": "0008_read_suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794934672340,
+      "tag": "0009_post_completed_suggestion",
+      "breakpoints": true
     }
   ]
 }

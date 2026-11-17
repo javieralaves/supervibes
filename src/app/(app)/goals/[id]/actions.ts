@@ -101,14 +101,20 @@ export async function deletePostAction(postId: unknown): Promise<ActionResult> {
 
 const suggestionTitleSchema = z.string().trim().min(1).max(140);
 
-/** "Done" on a next move: record it as a note (the page then refreshes the read). */
-export async function completeSuggestionAction(goalId: unknown, title: unknown): Promise<ActionResult> {
+/** "Done" on a suggestion: post the note the person wrote (prefilled "Done: …") and remove it. */
+export async function completeSuggestionAction(
+  goalId: unknown,
+  title: unknown,
+  note: unknown,
+): Promise<ActionResult> {
   const user = await requireUser();
   const goal = idSchema.safeParse(goalId);
   const parsed = suggestionTitleSchema.safeParse(title);
   if (!goal.success || !parsed.success) return { ok: false, error: "That suggestion doesn't exist anymore." };
+  const body = postBodySchema.safeParse(note ?? `Done: ${parsed.data}`);
+  if (!body.success) return { ok: false, error: body.error.issues[0]?.message ?? "Check the note." };
 
-  const post = await createPost(user.id, goal.data, `Done: ${parsed.data}`);
+  const post = await createPost(user.id, goal.data, body.data, parsed.data);
   if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
   await completeSuggestion(user.id, goal.data, parsed.data);
   refresh();

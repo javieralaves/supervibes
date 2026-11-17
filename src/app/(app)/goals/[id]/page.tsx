@@ -44,6 +44,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
       notes={posts.map((p) => ({
         id: p.id,
         body: p.body,
+        completedSuggestion: p.completedSuggestion,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       }))}

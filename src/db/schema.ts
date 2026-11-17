@@ -153,6 +153,8 @@ export const goalPosts = pgTable(
       .notNull()
       .references(() => goals.id, { onDelete: "cascade" }),
     body: text().notNull(),
+    /** Title of the suggestion this note marks as done, if it came from "Done" on a suggestion. */
+    completedSuggestion: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

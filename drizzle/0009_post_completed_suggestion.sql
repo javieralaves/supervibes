@@ -1,0 +1,1 @@
+ALTER TABLE "goal_posts" ADD COLUMN "completed_suggestion" text;
