@@ -214,8 +214,10 @@ export const calendarBlocks = pgTable(
     startsAt: timestamp({ withTimezone: true }).notNull(),
     endsAt: timestamp({ withTimezone: true }).notNull(),
     keepOpen: boolean().notNull().default(false),
-    /** Title of the suggestion this block commits to, making it an intention. */
+    /** Title of the suggestion this block commits to, making it an intention. Kept for history. */
     fromSuggestion: text(),
+    /** The task this block schedules, making it an intention. */
+    taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
     /** Suggestion titles judged to fit this block's title; refreshed by a model call. */
     fits: jsonb().$type<string[]>().notNull().default([]),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

@@ -1,11 +1,15 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { after } from "next/server";
 import * as z from "zod";
 
 import { createBlock, deleteBlock, getBlock, tryMatchBlockFits, updateBlock } from "@/lib/blocks";
 import { blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
+import { completeSuggestion, getLatestRead } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
+import { TASK_MINUTES } from "@/lib/task-schema";
+import { createTask, getTask, markTaskDone } from "@/lib/tasks";
 
 export type BlockResult = { ok: true } | { ok: false; error: string };
 
@@ -15,8 +19,8 @@ const GONE = "That block doesn't exist anymore.";
 const firstIssue = (error: z.ZodError) => error.issues[0]?.message ?? "Check the details.";
 
 /** A titled protected block needs its fits judged; nothing else does. */
-const needsMatching = (b: { title: string | null; keepOpen: boolean; fromSuggestion: string | null }) =>
-  Boolean(b.title) && !b.keepOpen && !b.fromSuggestion;
+const needsMatching = (b: { title: string | null; keepOpen: boolean; fromSuggestion: string | null; taskId: string | null }) =>
+  Boolean(b.title) && !b.keepOpen && !b.fromSuggestion && !b.taskId;
 
 /** Protected time, made by dragging on the calendar. */
 export async function createBlockAction(input: unknown): Promise<BlockResult> {
@@ -31,7 +35,10 @@ export async function createBlockAction(input: unknown): Promise<BlockResult> {
   return { ok: true };
 }
 
-/** An intention: commits a suggestion to the time it was shown at. */
+/**
+ * + on a suggestion: it becomes a task (as "Add" does on the goal page) and that
+ * task is scheduled at the time it was shown at.
+ */
 export async function createIntentionAction(goalId: unknown, suggestion: unknown, times: unknown): Promise<BlockResult> {
   const user = await requireUser();
   const goal = idSchema.safeParse(goalId);
@@ -39,10 +46,46 @@ export async function createIntentionAction(goalId: unknown, suggestion: unknown
   const when = blockTimesSchema.safeParse(times);
   if (!goal.success || !title.success) return { ok: false, error: "That suggestion doesn't exist anymore." };
   if (!when.success) return { ok: false, error: firstIssue(when.error) };
+
+  const startsAt = new Date(when.data.startsAt);
+  const endsAt = new Date(when.data.endsAt);
+  const read = await getLatestRead(user.id, goal.data);
+  const found = read?.suggestions.find((s) => s.title === title.data);
+  const task = await createTask(user.id, goal.data, title.data, {
+    minutes: found?.minutes ?? closestEstimate((endsAt.getTime() - startsAt.getTime()) / 60_000),
+    description: found?.why || null,
+  });
+  if (!task) return { ok: false, error: "That goal doesn't exist anymore." };
+  if (found) await completeSuggestion(user.id, goal.data, found.title);
+
   const block = await createBlock(user.id, {
     goalId: goal.data,
-    title: title.data,
+    title: task.title,
+    taskId: task.id,
     fromSuggestion: title.data,
+    keepOpen: false,
+    startsAt,
+    endsAt,
+  });
+  if (!block) return { ok: false, error: "That goal doesn't exist anymore." };
+  after(() => tryMatchBlockFits(user.id, goal.data));
+  refresh();
+  return { ok: true };
+}
+
+/** + on a task: schedule it at the time it was shown at. */
+export async function scheduleTaskAction(taskId: unknown, times: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(taskId);
+  const when = blockTimesSchema.safeParse(times);
+  if (!id.success) return { ok: false, error: "That task doesn't exist anymore." };
+  if (!when.success) return { ok: false, error: firstIssue(when.error) };
+  const task = await getTask(user.id, id.data);
+  if (!task) return { ok: false, error: "That task doesn't exist anymore." };
+  const block = await createBlock(user.id, {
+    goalId: task.goalId,
+    title: task.title,
+    taskId: task.id,
     keepOpen: false,
     startsAt: new Date(when.data.startsAt),
     endsAt: new Date(when.data.endsAt),
@@ -50,6 +93,24 @@ export async function createIntentionAction(goalId: unknown, suggestion: unknown
   if (!block) return { ok: false, error: "That goal doesn't exist anymore." };
   refresh();
   return { ok: true };
+}
+
+/** "Mark done" on an intention: checks its task off, posting it to the goal's activity. */
+export async function setBlockTaskDoneAction(blockId: unknown, done: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  if (!id.success || typeof done !== "boolean") return { ok: false, error: GONE };
+  const block = await getBlock(user.id, id.data);
+  if (!block?.taskId) return { ok: false, error: "That task doesn't exist anymore." };
+  if (!(await markTaskDone(user.id, block.taskId, done))) return { ok: false, error: "That task doesn't exist anymore." };
+  after(() => tryMatchBlockFits(user.id, block.goalId));
+  refresh();
+  return { ok: true };
+}
+
+/** The allowed estimate closest to a length in minutes. */
+function closestEstimate(minutes: number) {
+  return TASK_MINUTES.reduce((best, m) => (Math.abs(m - minutes) < Math.abs(best - minutes) ? m : best));
 }
 
 export async function updateBlockAction(blockId: unknown, input: unknown): Promise<BlockResult> {
@@ -61,10 +122,11 @@ export async function updateBlockAction(blockId: unknown, input: unknown): Promi
   const before = await getBlock(user.id, id.data);
   if (!before) return { ok: false, error: GONE };
   // An intention keeps its task; only its goal and title can change.
+  const intention = Boolean(before.fromSuggestion || before.taskId);
   const block = await updateBlock(user.id, id.data, {
     ...parsed.data,
-    keepOpen: before.fromSuggestion ? false : parsed.data.keepOpen,
-    title: before.fromSuggestion ? (parsed.data.title ?? before.title) : parsed.data.title,
+    keepOpen: intention ? false : parsed.data.keepOpen,
+    title: intention ? (parsed.data.title ?? before.title) : parsed.data.title,
   });
   if (!block) return { ok: false, error: GONE };
   if (needsMatching(block)) await tryMatchBlockFits(user.id, block.goalId);

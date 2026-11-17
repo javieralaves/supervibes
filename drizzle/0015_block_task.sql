@@ -1,0 +1,2 @@
+ALTER TABLE "calendar_blocks" ADD COLUMN "task_id" uuid;--> statement-breakpoint
+ALTER TABLE "calendar_blocks" ADD CONSTRAINT "calendar_blocks_task_id_goal_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."goal_tasks"("id") ON DELETE set null ON UPDATE no action;

@@ -12,7 +12,8 @@ import { requireUser } from "@/lib/session";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
-import { listTasks } from "@/lib/tasks";
+import { getSettings } from "@/lib/settings";
+import { listTasks, listTaskSchedules } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
 import { SourcesSection } from "./sources-section";
@@ -30,12 +31,14 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, connections, posts, tasks] = await Promise.all([
+  const [sources, read, connections, posts, tasks, schedules, settings] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
     listConnections(user.id),
     listPosts(user.id, id),
     listTasks(user.id, id),
+    listTaskSchedules(user.id, id),
+    getSettings(user.id),
   ]);
 
   return (
@@ -60,7 +63,9 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         description: t.description,
         minutes: t.minutes,
         doneAt: t.doneAt?.toISOString() ?? null,
+        scheduledAt: schedules.get(t.id)?.toISOString() ?? null,
       }))}
+      clock={settings.clock}
       sources={
         <SourcesSection
           goalId={goal.id}

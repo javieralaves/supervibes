@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import type { Clock } from "@/lib/settings-schema";
+
 import { refreshProgressAction } from "./actions";
 import { GoalHeader } from "./goal-header";
 import { NotesSection, type NoteAuthor, type NoteView } from "./notes-section";
@@ -15,12 +17,14 @@ type Props = {
   author: NoteAuthor;
   hasSources: boolean;
   tasks: TaskView[];
+  /** The user's clock choice, for times like when a task is scheduled. */
+  clock: Clock | null;
   /** The Sources section, rendered between the tasks and the notes. */
   sources: React.ReactNode;
 };
 
 /** Goal header, progress read, tasks and suggestions, sources and activity, sharing one "reading progress" state. */
-export function GoalOverview({ goal, read, notes, author, hasSources, tasks, sources }: Props) {
+export function GoalOverview({ goal, read, notes, author, hasSources, tasks, clock, sources }: Props) {
   const [reading, startReading] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const canRead = hasSources || tasks.length > 0 || notes.length > 0;
@@ -45,6 +49,7 @@ export function GoalOverview({ goal, read, notes, author, hasSources, tasks, sou
         hasRead={read !== null}
         reading={reading}
         onRefresh={update}
+        clock={clock}
       />
       {sources}
       {/* A new note should change the read, so it triggers one straight away. */}

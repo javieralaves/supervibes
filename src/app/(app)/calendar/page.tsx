@@ -6,6 +6,7 @@ import { listOpenSuggestions } from "@/lib/progress";
 import { listBlocksAroundNow } from "@/lib/blocks";
 import { listGoals } from "@/lib/goals";
 import { requireUser } from "@/lib/session";
+import { listOpenTasks } from "@/lib/tasks";
 import { getSettings } from "@/lib/settings";
 
 import { DayCalendar } from "./day-calendar";
@@ -14,8 +15,9 @@ export const metadata: Metadata = { title: "Calendar · Supervibes" };
 
 async function Today() {
   const user = await requireUser();
-  const [groups, settings, goals, blocks] = await Promise.all([
+  const [groups, tasks, settings, goals, blocks] = await Promise.all([
     listOpenSuggestions(user.id),
+    listOpenTasks(user.id),
     getSettings(user.id),
     listGoals(user.id),
     listBlocksAroundNow(user.id),
@@ -23,9 +25,15 @@ async function Today() {
   return (
     <DayCalendar
       groups={groups}
+      tasks={tasks.map(({ id, goalId, title, minutes }) => ({ id, goalId, title, minutes }))}
       settings={settings}
       goals={goals.map(({ id, title, icon, color }) => ({ id, title, icon, color }))}
-      blocks={blocks.map((b) => ({ ...b, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() }))}
+      blocks={blocks.map((b) => ({
+        ...b,
+        taskDone: b.taskDone ?? false,
+        startsAt: b.startsAt.toISOString(),
+        endsAt: b.endsAt.toISOString(),
+      }))}
     />
   );
 }

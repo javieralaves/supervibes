@@ -80,6 +80,12 @@ body {
   background-color: var(--card);
 }
 
+/* Calendar: one of your tasks, proposed for a time but not yet scheduled. */
+.goal-tint.goal-glimpse-task {
+  background-color: color-mix(in oklab, var(--goal) 3%, var(--card));
+  border: 1px solid color-mix(in oklab, var(--goal) 40%, transparent);
+}
+
 /* Calendar: a suggestion, not yet committed. */
 .goal-tint.goal-suggest {
   background-color: color-mix(in oklab, var(--goal) 4%, var(--card));
@@ -105,6 +111,9 @@ body {
   }
   .goal-tint.goal-suggest {
     background-color: color-mix(in oklab, var(--goal) 6%, var(--card));
+  }
+  .goal-tint.goal-glimpse-task {
+    background-color: color-mix(in oklab, var(--goal) 5%, var(--card));
   }
 }
 

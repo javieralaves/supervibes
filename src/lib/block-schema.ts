@@ -40,8 +40,12 @@ export type BlockView = {
   startsAt: string;
   endsAt: string;
   keepOpen: boolean;
-  /** Set when the block commits to a suggestion: an intention. */
+  /** The suggestion it was made from, if any. Kept for history. */
   fromSuggestion: string | null;
-  /** Suggestion titles that fit this titled block. */
+  /** The task it schedules: an intention. */
+  taskId: string | null;
+  /** Whether that task is done. */
+  taskDone: boolean;
+  /** What fits this titled block: "t:<task id>" or "s:<suggestion title>". */
   fits: string[];
 };

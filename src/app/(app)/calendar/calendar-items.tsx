@@ -3,6 +3,9 @@
 import {
   Add01Icon,
   ArrowRight02Icon,
+  ArrowTurnBackwardIcon,
+  CircleIcon,
+  Tick02Icon,
   DashedLineCircleIcon,
   Delete02Icon,
   PencilEdit02Icon,
@@ -31,18 +34,32 @@ function place(start: number, end: number, inset = 0): React.CSSProperties {
   };
 }
 
-function Label({ title, time, short, icon }: { title: string; time: string; short: boolean; icon?: React.ReactNode }) {
+function Label({
+  title,
+  time,
+  short,
+  icon,
+  done = false,
+}: {
+  title: string;
+  time: string;
+  short: boolean;
+  icon?: React.ReactNode;
+  /** A finished task: the title is crossed out. */
+  done?: boolean;
+}) {
+  const titleTone = done ? "text-muted line-through decoration-foreground/25" : "text-foreground";
   return short ? (
     <div className="flex h-full items-center gap-2 pl-3 pr-8">
       {icon}
       {/* Too short for a second line, so the time lives in the hover tooltip instead. */}
-      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={`${title} · ${time}`}>
+      <p className={`min-w-0 flex-1 truncate text-[13px] font-medium ${titleTone}`} title={`${title} · ${time}`}>
         {title}
       </p>
     </div>
   ) : (
     <div className="flex h-full flex-col gap-1 py-2 pl-3 pr-8">
-      <p className="flex min-w-0 items-start gap-1.5 text-sm font-medium leading-snug text-foreground">
+      <p className={`flex min-w-0 items-start gap-1.5 text-sm font-medium leading-snug ${titleTone}`}>
         {icon}
         <span className="line-clamp-2">{title}</span>
       </p>
@@ -63,6 +80,7 @@ export function BlockCard({
   onPointerDown,
   onEdit,
   onTomorrow,
+  onToggleDone,
   onRemove,
 }: {
   block: BlockView;
@@ -75,13 +93,15 @@ export function BlockCard({
   onPointerDown: (e: React.PointerEvent<HTMLLIElement>) => void;
   onEdit: () => void;
   onTomorrow: () => void;
+  /** Only for intentions that schedule a task. */
+  onToggleDone?: () => void;
   onRemove: () => void;
 }) {
-  const intention = Boolean(block.fromSuggestion);
+  const intention = Boolean(block.fromSuggestion || block.taskId);
   const kind = intention ? "goal-tint-opaque" : block.keepOpen ? "goal-open border border-card-border" : "goal-hatch";
   const title = block.title ?? goal?.title ?? "Protected time";
   const time = formatRange(start, end, clock);
-  const what = intention ? "Intention" : block.keepOpen ? "Time set aside" : "Protected time";
+  const what = intention ? (block.taskDone ? "Done" : "Intention") : block.keepOpen ? "Time set aside" : "Protected time";
 
   return (
     <li
@@ -106,8 +126,13 @@ export function BlockCard({
         title={title}
         time={time}
         short={isShort(start, end)}
+        done={block.taskDone}
         icon={
-          block.keepOpen ? (
+          block.taskDone ? (
+            <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+              <HugeiconsIcon icon={Tick02Icon} size={9} strokeWidth={3} />
+            </span>
+          ) : block.keepOpen ? (
             <HugeiconsIcon icon={DashedLineCircleIcon} size={13} className="mt-[3px] shrink-0 text-[var(--goal)]" />
           ) : undefined
         }
@@ -118,6 +143,11 @@ export function BlockCard({
             <MoreMenuItem icon={PencilEdit02Icon} onSelect={onEdit}>
               Edit
             </MoreMenuItem>
+            {onToggleDone && (
+              <MoreMenuItem icon={block.taskDone ? ArrowTurnBackwardIcon : Tick02Icon} onSelect={onToggleDone}>
+                {block.taskDone ? "Reopen task" : "Mark done"}
+              </MoreMenuItem>
+            )}
             <MoreMenuItem icon={ArrowRight02Icon} onSelect={onTomorrow}>
               Move to tomorrow
             </MoreMenuItem>
@@ -131,8 +161,12 @@ export function BlockCard({
   );
 }
 
-/** A suggestion shown by Glimpse: dashed, with + to commit it to this time. */
-export function SuggestionCard({
+/**
+ * Something Glimpse proposes, with + to commit it to this time. Your own tasks
+ * have a thin solid outline and a circle like their checkbox; suggestions are dashed.
+ */
+export function GlimpseCard({
+  kind,
   title,
   goal,
   start,
@@ -141,6 +175,7 @@ export function SuggestionCard({
   inBlock,
   onAdd,
 }: {
+  kind: "task" | "suggestion";
   title: string;
   goal: CalendarGoal;
   start: number;
@@ -151,17 +186,23 @@ export function SuggestionCard({
   onAdd: () => void;
 }) {
   const time = formatRange(start, end, clock);
+  const task = kind === "task";
   return (
     <li
       style={{ ...goalColorStyle(goal.color), ...place(start, end, inBlock ? 8 : 0) }}
-      aria-label={`Suggestion: ${title}, ${time}`}
-      className="goal-tint goal-suggest group absolute z-20 overflow-hidden rounded-lg"
+      aria-label={`${task ? "Task" : "Suggestion"}: ${title}, ${time}`}
+      className={`goal-tint ${task ? "goal-glimpse-task" : "goal-suggest"} group absolute z-20 overflow-hidden rounded-lg`}
     >
-      <Label title={title} time={time} short={isShort(start, end)} />
+      <Label
+        title={title}
+        time={time}
+        short={isShort(start, end)}
+        icon={task ? <HugeiconsIcon icon={CircleIcon} size={13} className="mt-[3px] shrink-0 text-[var(--goal)]" /> : undefined}
+      />
       <button
         type="button"
         onClick={onAdd}
-        aria-label={`Add “${title}” to your calendar`}
+        aria-label={`Schedule “${title}” at ${time}`}
         title="Add to your calendar"
         className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-card-border bg-card text-foreground/70 opacity-0 shadow-[0_1px_2px_rgb(15_17_20/0.08)] transition-[opacity,color,border-color] hover:border-line-strong hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/30 group-hover:opacity-100"
       >

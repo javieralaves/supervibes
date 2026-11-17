@@ -2,6 +2,7 @@
 
 import {
   Add01Icon,
+  Calendar03Icon,
   Cancel01Icon,
   Clock01Icon,
   DashedLineCircleIcon,
@@ -15,6 +16,8 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { startTransition, useEffect, useId, useOptimistic, useRef, useState } from "react";
 
 import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
+import { formatTime, useClock } from "@/lib/clock";
+import type { Clock } from "@/lib/settings-schema";
 import {
   DEFAULT_TASK_MINUTES,
   MAX_TASK_DESCRIPTION,
@@ -35,7 +38,15 @@ import {
   type ActionResult,
 } from "./actions";
 
-export type TaskView = { id: string; title: string; description: string | null; minutes: number; doneAt: string | null };
+export type TaskView = {
+  id: string;
+  title: string;
+  description: string | null;
+  minutes: number;
+  doneAt: string | null;
+  /** When it's next on the calendar, if it is. */
+  scheduledAt?: string | null;
+};
 export type SuggestionView = { title: string; why: string; minutes: number };
 
 type Op =
@@ -83,6 +94,7 @@ export function TasksSection({
   hasRead,
   reading,
   onRefresh,
+  clock: clockPreference,
 }: {
   goalId: string;
   tasks: TaskView[];
@@ -93,7 +105,9 @@ export function TasksSection({
   reading: boolean;
   /** Runs a new read, which brings new suggestions. */
   onRefresh: () => void;
+  clock: Clock | null;
 }) {
+  const clock = useClock(clockPreference);
   const [list, apply] = useOptimistic(tasks, applyOp);
   const [shown, hide] = useOptimistic(suggestions, (all: SuggestionView[], title: string) =>
     all.filter((s) => s.title !== title),
@@ -206,6 +220,7 @@ export function TasksSection({
               <TaskRow
                 key={task.id}
                 task={task}
+                clock={clock}
                 draft={draft?.id === task.id ? draft : null}
                 onDraft={setDraft}
                 onOpen={() => openTask(task)}
@@ -359,8 +374,18 @@ function SuggestedRow({
   );
 }
 
+/** "Today 14:00", "Tomorrow 9:30 AM" or "Thu 14:00", in the viewer's time zone. */
+function scheduleLabel(iso: string, clock: Clock) {
+  const at = new Date(iso);
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((midnight(at) - midnight(new Date())) / 86_400_000);
+  const day = days === 0 ? "Today" : days === 1 ? "Tomorrow" : at.toLocaleDateString(undefined, { weekday: "short" });
+  return `${day} ${formatTime(at.getHours() * 60 + at.getMinutes(), clock)}`;
+}
+
 function TaskRow({
   task,
+  clock,
   draft,
   onDraft,
   onOpen,
@@ -370,6 +395,7 @@ function TaskRow({
   onDelete,
 }: {
   task: TaskView;
+  clock: Clock;
   /** Set while this task is open. */
   draft: Draft | null;
   onDraft: (draft: Draft) => void;
@@ -509,7 +535,15 @@ function TaskRow({
           {/* Clamped rather than truncated, so the ellipsis follows the last whole word. */}
           {firstLine && <span className={`line-clamp-1 ${DESCRIPTION}`}>{firstLine}</span>}
         </button>
-        <div className="mt-1.5">{estimate}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          {estimate}
+          {task.scheduledAt && (
+            <span className="flex items-center gap-1 text-xs text-muted" suppressHydrationWarning>
+              <HugeiconsIcon icon={Calendar03Icon} size={12} />
+              {scheduleLabel(task.scheduledAt, clock)}
+            </span>
+          )}
+        </div>
       </div>
       {/* Floats over the content's top-right corner on hover, so the text keeps the full width. */}
       {!pending && (

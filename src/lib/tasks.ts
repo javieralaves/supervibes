@@ -1,9 +1,10 @@
 import "server-only";
 
-import { and, asc, desc, eq, gte, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNotNull, isNull, max, min, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { goals, goalTasks } from "@/db/schema";
+import { calendarBlocks, goals, goalTasks } from "@/db/schema";
+import { createTaskDonePost, deleteTaskDonePosts } from "@/lib/posts";
 import { DEFAULT_TASK_MINUTES } from "@/lib/task-schema";
 
 /*
@@ -64,6 +65,49 @@ export async function listTasksForRead(userId: string, goalId: string, days: num
       .limit(30),
   ]);
   return { open, done };
+}
+
+export async function getTask(userId: string, taskId: string): Promise<TaskDTO | null> {
+  const [task] = await db.select(columns).from(goalTasks).where(mine(userId, taskId));
+  return task ?? null;
+}
+
+/** Every open task across the user's goals, in each goal's order. */
+export async function listOpenTasks(userId: string): Promise<TaskDTO[]> {
+  return db
+    .select(columns)
+    .from(goalTasks)
+    .where(and(eq(goalTasks.userId, userId), isNull(goalTasks.doneAt)))
+    .orderBy(asc(goalTasks.position), asc(goalTasks.createdAt));
+}
+
+/** When each of a goal's tasks is next on the calendar, for tasks that are. */
+export async function listTaskSchedules(userId: string, goalId: string): Promise<Map<string, Date>> {
+  const rows = await db
+    .select({ taskId: calendarBlocks.taskId, next: min(calendarBlocks.startsAt) })
+    .from(calendarBlocks)
+    .where(
+      and(
+        eq(calendarBlocks.userId, userId),
+        eq(calendarBlocks.goalId, goalId),
+        isNotNull(calendarBlocks.taskId),
+        gt(calendarBlocks.endsAt, new Date()),
+      ),
+    )
+    .groupBy(calendarBlocks.taskId);
+  return new Map(rows.filter((r) => r.taskId && r.next).map((r) => [r.taskId!, r.next!]));
+}
+
+/**
+ * Checks a task off (or reopens it). Checking off posts a "Completed a task"
+ * entry to the goal's activity; reopening takes it back. One entry per completion.
+ */
+export async function markTaskDone(userId: string, taskId: string, done: boolean): Promise<TaskDTO | null> {
+  const task = await setTaskDone(userId, taskId, done);
+  if (!task) return null;
+  await deleteTaskDonePosts(userId, task.id);
+  if (done) await createTaskDonePost(userId, task.goalId, task.id, task.title);
+  return task;
 }
 
 /** Adds a task at the end of the goal's open tasks. */

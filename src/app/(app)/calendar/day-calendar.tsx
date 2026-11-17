@@ -7,12 +7,20 @@ import { startTransition, useCallback, useEffect, useOptimistic, useRef, useStat
 import type { BlockDetails, BlockView } from "@/lib/block-schema";
 import { BLOCK_STEP } from "@/lib/block-schema";
 import { formatHour, formatRange, formatTime, useClock } from "@/lib/clock";
-import { DAY_MINUTES, planDays, sleepSpans, type PlanBlock } from "@/lib/plan-day";
+import { DAY_MINUTES, planDays, sleepSpans, type PlanBlock, type PlanItem } from "@/lib/plan-day";
 import type { Settings } from "@/lib/settings-schema";
 
-import { createBlockAction, createIntentionAction, deleteBlockAction, moveBlockAction, updateBlockAction } from "./actions";
+import {
+  createBlockAction,
+  createIntentionAction,
+  deleteBlockAction,
+  moveBlockAction,
+  scheduleTaskAction,
+  setBlockTaskDoneAction,
+  updateBlockAction,
+} from "./actions";
 import { BlockPopover } from "./block-popover";
-import { BlockCard, SuggestionCard, type CalendarGoal } from "./calendar-items";
+import { BlockCard, GlimpseCard, type CalendarGoal } from "./calendar-items";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
 
 export type { CalendarGoal };
@@ -21,7 +29,11 @@ export type CalendarGroup = {
   suggestions: { title: string; why: string; minutes: number }[];
 };
 
-type Item = { key: string; goalId: string; title: string; minutes: number; goal: CalendarGoal };
+/** An open task the calendar can place. */
+export type CalendarTask = { id: string; goalId: string; title: string; minutes: number };
+
+/** Something Glimpse places: a task of yours or a suggestion, with its goal. */
+type Item = PlanItem & { key: string; id: string; goal: CalendarGoal };
 type Result = { ok: true } | { ok: false; error: string };
 
 const TIMELINE_HEIGHT = y(DAY_MINUTES) + PAD;
@@ -107,6 +119,7 @@ function segments(block: BlockView, base: Date): PlanBlock[] {
     title: block.title,
     keepOpen: block.keepOpen,
     fromSuggestion: block.fromSuggestion,
+    taskId: block.taskId,
     fits: block.fits,
   };
   if (d0 === d1) return [{ ...common, day: d0, start: startMin, end: endMin }];
@@ -150,11 +163,14 @@ function dragged(edge: Edge, start: number, end: number, delta: number) {
  */
 export function DayCalendar({
   groups,
+  tasks,
   goals,
   blocks: savedBlocks,
   settings,
 }: {
   groups: CalendarGroup[];
+  /** Open tasks across goals, in each goal's order. */
+  tasks: CalendarTask[];
   goals: CalendarGoal[];
   blocks: BlockView[];
   settings: Settings;
@@ -178,20 +194,18 @@ export function DayCalendar({
   const allSegments = base ? blocks.flatMap((b) => segments(b, base)) : [];
   const daySegments = allSegments.filter((s) => s.day === offset);
 
+  // Goal by goal, in the goals' order: its tasks (in your order), then its suggestions.
+  const items: Item[] = goals.flatMap((goal) => [
+    ...tasks
+      .filter((t) => t.goalId === goal.id)
+      .map((t): Item => ({ kind: "task", key: `t:${t.id}`, id: t.id, goalId: goal.id, title: t.title, minutes: t.minutes, fitKey: `t:${t.id}`, goal })),
+    ...(groups.find((g) => g.goal.id === goal.id)?.suggestions ?? []).map(
+      (s): Item => ({ kind: "suggestion", key: `s:${goal.id}:${s.title}`, id: s.title, goalId: goal.id, title: s.title, minutes: s.minutes, fitKey: `s:${s.title}`, goal }),
+    ),
+  ]);
   const placed =
-    now === null || !glimpse
-      ? []
-      : planDays(
-          groups.map((g) =>
-            g.suggestions.map(
-              (s): Item => ({ key: `${g.goal.id}:${s.title}`, goalId: g.goal.id, title: s.title, minutes: s.minutes, goal: g.goal }),
-            ),
-          ),
-          now,
-          settings,
-          allSegments,
-        ).filter((p) => p.day === offset);
-  const count = groups.reduce((n, g) => n + g.suggestions.length, 0);
+    now === null || !glimpse ? [] : planDays(items, now, settings, allSegments).filter((p) => p.day === offset);
+  const count = items.length;
   // Earlier days are all behind you; later days haven't started.
   const pastUntil = offset < 0 ? DAY_MINUTES : isToday ? now : null;
 
@@ -311,7 +325,7 @@ export function DayCalendar({
         day: drag.day,
         start: drag.start,
         end: drag.end,
-        intention: Boolean(block.fromSuggestion),
+        intention: Boolean(block.fromSuggestion || block.taskId),
         initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
       });
       return;
@@ -333,7 +347,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, fits: [] } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, fits: [] } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -354,9 +368,11 @@ export function DayCalendar({
     run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
   }
 
+  /** + on a glimpse: schedule the task, or turn the suggestion into a task and schedule that. */
   function addIntention(item: Item, start: number, end: number) {
     if (!base) return;
     const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, end) };
+    const isTask = item.kind === "task";
     run(
       {
         type: "add",
@@ -365,12 +381,14 @@ export function DayCalendar({
           goalId: item.goalId,
           title: item.title,
           keepOpen: false,
-          fromSuggestion: item.title,
+          fromSuggestion: isTask ? null : item.title,
+          taskId: isTask ? item.id : null,
+          taskDone: false,
           fits: [],
           ...times,
         },
       },
-      () => createIntentionAction(item.goalId, item.title, times),
+      () => (isTask ? scheduleTaskAction(item.id, times) : createIntentionAction(item.goalId, item.title, times)),
     );
   }
 
@@ -394,7 +412,7 @@ export function DayCalendar({
     <div className="flex min-h-0 flex-1 flex-col">
       {count === 0 && (
         <p className="mb-3 shrink-0 rounded-2xl border border-dashed border-foreground/15 p-4 text-sm text-muted">
-          No suggestions yet. Each goal&apos;s status update brings two or three, and they show up here.
+          Nothing to place yet. Add tasks to a goal, or get suggestions from its status update, and they show up here.
         </p>
       )}
 
@@ -535,11 +553,19 @@ export function DayCalendar({
                           day: seg.day,
                           start: seg.start,
                           end: seg.end,
-                          intention: Boolean(block.fromSuggestion),
+                          intention: Boolean(block.fromSuggestion || block.taskId),
                           initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
                         })
                       }
                       onTomorrow={() => moveToTomorrow(block)}
+                      onToggleDone={
+                        block.taskId
+                          ? () =>
+                              run({ type: "update", id: block.id, patch: { taskDone: !block.taskDone } }, () =>
+                                setBlockTaskDoneAction(block.id, !block.taskDone),
+                              )
+                          : undefined
+                      }
                       onRemove={() => run({ type: "remove", id: block.id }, () => deleteBlockAction(block.id))}
                     />
                   );
@@ -547,12 +573,13 @@ export function DayCalendar({
               </ul>
             )}
 
-            {/* Glimpse: suggestions, not yet committed */}
+            {/* Glimpse: your open tasks and suggestions, not yet committed to a time */}
             {placed.length > 0 && (
-              <ol aria-label="Suggestions on this day">
+              <ol aria-label="Glimpse: tasks and suggestions on this day">
                 {placed.map(({ item, start, end, blockId }) => (
-                  <SuggestionCard
+                  <GlimpseCard
                     key={item.key}
+                    kind={item.kind}
                     title={item.title}
                     goal={item.goal}
                     start={start}
