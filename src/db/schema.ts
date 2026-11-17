@@ -134,6 +134,31 @@ export const goalReads = pgTable(
   (t) => [uniqueIndex("goal_reads_goal_idx").on(t.goalId)],
 );
 
+/**
+ * A note the user posts on a goal: context no connected app can show
+ * (offline work, decisions, corrections). Progress reads take these into account.
+ */
+export const goalPosts = pgTable(
+  "goal_posts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    body: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("goal_posts_goal_created_idx").on(t.goalId, t.createdAt)],
+);
+
 export type Connection = typeof connections.$inferSelect;
 export type GoalSource = typeof goalSources.$inferSelect;
 export type GoalRead = typeof goalReads.$inferSelect;
+export type GoalPost = typeof goalPosts.$inferSelect;

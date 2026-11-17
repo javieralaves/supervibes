@@ -3,6 +3,8 @@
 import { refresh } from "next/cache";
 import * as z from "zod";
 
+import { postBodySchema } from "@/lib/post-schema";
+import { createPost, deletePost, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
 import { assessGoal, ProgressError } from "@/lib/progress";
@@ -59,4 +61,40 @@ export async function refreshProgressAction(goalId: unknown): Promise<ActionResu
     refresh();
     return { ok: false, error: error instanceof ProgressError ? error.message : "Couldn't read progress. Try again." };
   }
+}
+
+export async function addPostAction(goalId: unknown, body: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const parsed = postBodySchema.safeParse(body);
+  if (!goal.success) return { ok: false, error: "That goal doesn't exist." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the note." };
+
+  const post = await createPost(user.id, goal.data, parsed.data);
+  if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
+  refresh();
+  return { ok: true };
+}
+
+export async function editPostAction(postId: unknown, body: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(postId);
+  const parsed = postBodySchema.safeParse(body);
+  if (!id.success) return { ok: false, error: "That note doesn't exist." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the note." };
+
+  const post = await updatePost(user.id, id.data, parsed.data);
+  if (!post) return { ok: false, error: "That note doesn't exist anymore." };
+  refresh();
+  return { ok: true };
+}
+
+export async function deletePostAction(postId: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(postId);
+  if (!id.success || !(await deletePost(user.id, id.data))) {
+    return { ok: false, error: "That note doesn't exist anymore." };
+  }
+  refresh();
+  return { ok: true };
 }

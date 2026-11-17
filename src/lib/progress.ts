@@ -7,15 +7,21 @@ import * as z from "zod";
 import { db } from "@/db";
 import { goalReads, goals, goalSources } from "@/db/schema";
 import { getUsableConnection, markConnectionError } from "@/lib/connections";
+import { listPosts } from "@/lib/posts";
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
 
 const MODEL = "claude-sonnet-5-5";
 /** How far back each read looks. A rolling window keeps the read about recent momentum. */
 const WINDOW_DAYS = 30;
+/** How many of the person's own notes each read considers, newest first. */
+const MAX_NOTES = 30;
+/** Marker stored in a read's basedOn when the person's notes were used. */
+export const NOTES_MARKER = "notes";
 
-const SYSTEM = `You give a person one honest, high-level read on whether they're making progress toward a goal, using the apps they've connected.
+const SYSTEM = `You give a person one honest, high-level read on whether they're making progress toward a goal, using the apps they've connected and the notes they've written.
 
 How to work:
+- The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
 - Weigh everything together. You're judging momentum toward the goal, not listing activity.
 - Only use the tools you have. They are read-only; never try to create, change or send anything.
@@ -83,7 +89,10 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     .select({ id: goalSources.id, connectionId: goalSources.connectionId, relation: goalSources.relation })
     .from(goalSources)
     .where(and(eq(goalSources.goalId, goalId), eq(goalSources.userId, userId), eq(goalSources.enabled, true)));
-  if (sources.length === 0) throw new ProgressError("Add a source first, so there's something to read.");
+  const notes = await listPosts(userId, goalId, MAX_NOTES);
+  if (sources.length === 0 && notes.length === 0) {
+    throw new ProgressError("Add a source or a note first, so there's something to read.");
+  }
 
   // One MCP server per connected app, shared by all sources that use it.
   const servers = new Map<string, { provider: ProviderKey; serverUrl: string; token: string; readTools: string[] }>();
@@ -110,7 +119,9 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     });
     usable.push(source);
   }
-  if (usable.length === 0) throw new ProgressError("None of this goal's apps could be reached. Reconnect them first.");
+  if (usable.length === 0 && notes.length === 0) {
+    throw new ProgressError("None of this goal's apps could be reached. Reconnect them first.");
+  }
 
   const now = new Date();
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -121,11 +132,22 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     `Goal: ${goal.title}`,
     `Time window: ${since.toISOString()} to ${now.toISOString()}`,
     "",
-    "Sources, each described in the person's own words:",
-    ...usable.map((s, i) => {
-      const server = servers.get(s.connectionId)!;
-      return `${i + 1}. ${PROVIDERS[server.provider].label} (tools from "${serverName(s.connectionId)}"): ${s.relation}`;
-    }),
+    ...(usable.length > 0
+      ? [
+          "Sources, each described in the person's own words:",
+          ...usable.map((s, i) => {
+            const server = servers.get(s.connectionId)!;
+            return `${i + 1}. ${PROVIDERS[server.provider].label} (tools from "${serverName(s.connectionId)}"): ${s.relation}`;
+          }),
+        ]
+      : ["No connected sources for this read; rely on the person's notes."]),
+    "",
+    ...(notes.length > 0
+      ? [
+          "Notes from the person, in their own words, newest first:",
+          ...notes.map((n) => `- ${n.createdAt.toISOString().slice(0, 10)}: ${n.body.replace(/\s+/g, " ")}`),
+        ]
+      : ["The person hasn't written any notes for this goal."]),
     "",
     previous
       ? `Previous read (${previous.createdAt.toISOString()}): ${previous.headline} ${previous.summary}`
@@ -146,6 +168,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     configs: Object.fromEntries(s.readTools.map((name) => [name, { enabled: true }])),
   }));
 
+  const hasServers = mcpServers.length > 0;
   const client = new Anthropic();
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
   let response: Anthropic.Beta.BetaMessage | undefined;
@@ -155,12 +178,11 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
       .stream({
         model: MODEL,
         max_tokens: 32000,
-        betas: ["mcp-client-2025-11-20", "server-side-fallback-2026-07-01"],
+        betas: [...(hasServers ? (["mcp-client-2025-11-20"] as const) : []), "server-side-fallback-2026-07-01"],
         fallbacks: "default",
         system: SYSTEM,
         output_config: { effort: "medium", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-        mcp_servers: mcpServers,
-        tools: toolsets,
+        ...(hasServers ? { mcp_servers: mcpServers, tools: toolsets } : {}),
         messages,
       })
       .finalMessage();
@@ -184,7 +206,8 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     throw new ProgressError("The read came back in an unexpected shape. Try again.");
   }
 
-  const basedOn = [...new Set([...servers.values()].map((s) => s.provider))];
+  const basedOn: string[] = [...new Set([...servers.values()].map((s) => s.provider))];
+  if (notes.length > 0) basedOn.push(NOTES_MARKER);
   const values = { ...parsed, basedOn, createdAt: new Date() };
   const [saved] = await db
     .insert(goalReads)

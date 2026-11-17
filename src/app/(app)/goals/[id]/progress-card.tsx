@@ -1,10 +1,11 @@
 "use client";
 
-import { Refresh01Icon } from "@hugeicons/core-free-icons";
+import { Note01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ProviderMark } from "@/components/provider-mark";
 import { PROVIDERS, toProvider, type ProviderKey } from "@/lib/providers";
+import { shortAgo } from "@/lib/time";
 
 export type ReadView = {
   headline: string;
@@ -13,20 +14,10 @@ export type ReadView = {
   createdAt: string;
 };
 
-/** Compact relative time: "just now", "3 min ago", "2 hr ago", "4 days ago". */
-function ago(iso: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
-  const days = Math.round(hours / 24);
-  return `${days} ${days === 1 ? "day" : "days"} ago`;
-}
-
 type Props = {
   read: ReadView | null;
-  hasSources: boolean;
+  /** There's something to read: at least one source or note. */
+  canRead: boolean;
   /** A read is in progress (started here or from the goal's menu). */
   reading: boolean;
   error: string | null;
@@ -34,7 +25,7 @@ type Props = {
 };
 
 /** The single high-level read of progress on a goal, above its sources. */
-export function ProgressCard({ read, hasSources, reading, error, onUpdate }: Props) {
+export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props) {
   const note = reading ? "Reading your sources. This can take a minute." : error;
   const noteEl = note && (
     <p role="status" className={`text-xs ${error && !reading ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
@@ -46,14 +37,14 @@ export function ProgressCard({ read, hasSources, reading, error, onUpdate }: Pro
     return (
       <section aria-labelledby="progress-heading" aria-busy={reading} className="mt-10 rounded-2xl border border-card-border bg-card p-5 sm:p-6">
         <h2 id="progress-heading" className="text-lg font-semibold tracking-[-0.02em] text-foreground">
-          {hasSources ? "Ready for a first read" : "No read yet"}
+          {canRead ? "Ready for a first read" : "No read yet"}
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-muted">
-          {hasSources
-            ? "Supervibes will look at everything your sources show and tell you, in a few lines, whether you're moving forward."
-            : "Add a source below. Supervibes will read it and tell you, in a few lines, whether you're moving forward."}
+          {canRead
+            ? "Supervibes will look at your notes and sources and tell you, in a few lines, whether you're moving forward."
+            : "Add a note or a source below. Supervibes will read them and tell you, in a few lines, whether you're moving forward."}
         </p>
-        {hasSources && (
+        {canRead && (
           <button
             type="button"
             onClick={onUpdate}
@@ -70,6 +61,8 @@ export function ProgressCard({ read, hasSources, reading, error, onUpdate }: Pro
   }
 
   const apps = [...new Set(read.basedOn.map(toProvider).filter((p): p is ProviderKey => p !== null))];
+  const usedNotes = read.basedOn.includes("notes");
+  const basedOnLabel = [...apps.map((a) => PROVIDERS[a].label), ...(usedNotes ? ["your notes"] : [])].join(", ");
 
   return (
     <section
@@ -89,18 +82,19 @@ export function ProgressCard({ read, hasSources, reading, error, onUpdate }: Pro
 
       <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <p className="flex items-center gap-2">
-          {apps.length > 0 && (
-            <span
-              role="img"
-              className="flex items-center gap-1"
-              aria-label={`Based on ${apps.map((a) => PROVIDERS[a].label).join(", ")}`}
-            >
+          {basedOnLabel && (
+            <span role="img" className="flex items-center gap-1" aria-label={`Based on ${basedOnLabel}`}>
               {apps.map((app) => (
                 <ProviderMark key={app} provider={app} size="xs" />
               ))}
+              {usedNotes && (
+                <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-card-border bg-wash text-foreground">
+                  <HugeiconsIcon icon={Note01Icon} size={11} />
+                </span>
+              )}
             </span>
           )}
-          <span suppressHydrationWarning>{ago(read.createdAt)}</span>
+          <span suppressHydrationWarning>{shortAgo(read.createdAt)}</span>
         </p>
         {reading && <HugeiconsIcon icon={Refresh01Icon} size={13} className="animate-spin" />}
         {noteEl}

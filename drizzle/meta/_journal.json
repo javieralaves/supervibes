@@ -50,6 +50,13 @@
       "when": 1794929295385,
       "tag": "0006_latest_read_only",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794932898985,
+      "tag": "0007_goal_posts",
+      "breakpoints": true
     }
   ]
 }

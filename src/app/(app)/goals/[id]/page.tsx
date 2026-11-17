@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/skeleton";
 import { listConnections } from "@/lib/connections";
 import { requireUser } from "@/lib/session";
 import { getLatestRead } from "@/lib/progress";
+import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
 
 import { GoalOverview } from "./goal-overview";
@@ -28,26 +29,34 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, connections] = await Promise.all([
+  const [sources, read, connections, posts] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
     listConnections(user.id),
+    listPosts(user.id, id),
   ]);
 
   return (
-    <>
-      <GoalOverview
-        goal={goal}
-        hasSources={sources.length > 0}
-        read={read && { ...read, createdAt: read.createdAt.toISOString() }}
-      />
-      <SourcesSection
-        goalId={goal.id}
-        goal={{ title: goal.title, icon: goal.icon, color: goal.color }}
-        sources={sources}
-        connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
-      />
-    </>
+    <GoalOverview
+      goal={goal}
+      hasSources={sources.length > 0}
+      read={read && { ...read, createdAt: read.createdAt.toISOString() }}
+      notes={posts.map((p) => ({
+        id: p.id,
+        body: p.body,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+      }))}
+      author={{ name: user.name, image: user.image }}
+      sources={
+        <SourcesSection
+          goalId={goal.id}
+          goal={{ title: goal.title, icon: goal.icon, color: goal.color }}
+          sources={sources}
+          connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
+        />
+      }
+    />
   );
 }
 

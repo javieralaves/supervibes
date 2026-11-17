@@ -1,0 +1,271 @@
+"use client";
+
+import { Delete02Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { startTransition, useId, useOptimistic, useState, useTransition } from "react";
+
+import { Avatar } from "@/components/avatar";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
+import { MAX_POST, postBodySchema } from "@/lib/post-schema";
+import { shortAgo } from "@/lib/time";
+
+import { addPostAction, deletePostAction, editPostAction } from "./actions";
+
+export type NoteView = { id: string; body: string; createdAt: string; updatedAt: string };
+export type NoteAuthor = { name: string; image: string | null | undefined };
+
+type Op = { type: "add"; note: NoteView } | { type: "edit"; id: string; body: string } | { type: "delete"; id: string };
+
+function applyOp(notes: NoteView[], op: Op): NoteView[] {
+  switch (op.type) {
+    case "add":
+      return [op.note, ...notes];
+    case "edit":
+      return notes.map((n) => (n.id === op.id ? { ...n, body: op.body, updatedAt: new Date().toISOString() } : n));
+    case "delete":
+      return notes.filter((n) => n.id !== op.id);
+  }
+}
+
+const textareaClass =
+  "block w-full resize-none bg-transparent text-[0.95rem] leading-relaxed text-foreground outline-none [field-sizing:content] placeholder:text-muted/80";
+
+/** Per-goal notes: context the person adds that no connected app can show. */
+export function NotesSection({
+  goalId,
+  notes,
+  author,
+  onPosted,
+}: {
+  goalId: string;
+  notes: NoteView[];
+  author: NoteAuthor;
+  /** Called after a new note is saved, to refresh the progress read. */
+  onPosted: () => void;
+}) {
+  const [optimisticNotes, apply] = useOptimistic(notes, applyOp);
+  const [draft, setDraft] = useState("");
+  const [posting, startPosting] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const fieldId = useId();
+
+  function post() {
+    const parsed = postBodySchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Check the note.");
+      return;
+    }
+    setError(null);
+    const body = parsed.data;
+    const now = new Date().toISOString();
+    setDraft("");
+    startPosting(async () => {
+      apply({ type: "add", note: { id: `pending-${now}`, body, createdAt: now, updatedAt: now } });
+      const result = await addPostAction(goalId, body);
+      if (result.ok) {
+        onPosted();
+      } else {
+        setDraft(body);
+        setError(result.error);
+      }
+    });
+  }
+
+  function run(op: Op, action: () => Promise<{ ok: boolean; error?: string }>) {
+    setError(null);
+    startTransition(async () => {
+      apply(op);
+      const result = await action();
+      if (!result.ok) setError(result.error ?? "That didn't save.");
+    });
+  }
+
+  return (
+    <section aria-labelledby="notes-heading" className="mt-12">
+      <div className="mb-4">
+        <h2 id="notes-heading" className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+          Notes
+        </h2>
+        <p className="text-sm text-muted">Context your apps can&apos;t show. Each note feeds the progress read.</p>
+      </div>
+
+      {/* Composer */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          post();
+        }}
+        className="rounded-2xl border border-card-border bg-card px-4 py-3.5 sm:px-5"
+      >
+        <label htmlFor={fieldId} className="sr-only">
+          New note
+        </label>
+        <textarea
+          id={fieldId}
+          rows={2}
+          value={draft}
+          maxLength={MAX_POST}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              post();
+            }
+          }}
+          placeholder="Add context, like a decision, offline work, or something to ignore…"
+          className={`${textareaClass} min-h-[3.25rem]`}
+        />
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className={`text-xs ${error ? "text-red-600 dark:text-red-400" : "text-muted"}`} role={error ? "alert" : undefined}>
+            {error ?? (draft.trim() ? "⌘↵ to post" : "")}
+          </p>
+          <button
+            type="submit"
+            disabled={posting || !draft.trim()}
+            className="h-8 shrink-0 rounded-lg bg-foreground px-3 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
+          >
+            Post
+          </button>
+        </div>
+      </form>
+
+      {optimisticNotes.length > 0 && (
+        <ul className="mt-3 grid gap-3">
+          {optimisticNotes.map((note) => (
+            <NoteCard
+              key={note.id}
+              note={note}
+              author={author}
+              onEdit={(body) => run({ type: "edit", id: note.id, body }, () => editPostAction(note.id, body))}
+              onDelete={() => run({ type: "delete", id: note.id }, () => deletePostAction(note.id))}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function NoteCard({
+  note,
+  author,
+  onEdit,
+  onDelete,
+}: {
+  note: NoteView;
+  author: NoteAuthor;
+  onEdit: (body: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.body);
+  const [confirming, setConfirming] = useState(false);
+  const pending = note.id.startsWith("pending-");
+  const edited = new Date(note.updatedAt).getTime() - new Date(note.createdAt).getTime() > 1000;
+
+  function save() {
+    const parsed = postBodySchema.safeParse(draft);
+    if (!parsed.success) return;
+    setEditing(false);
+    if (parsed.data !== note.body) onEdit(parsed.data);
+  }
+
+  function cancel() {
+    setDraft(note.body);
+    setEditing(false);
+  }
+
+  return (
+    <li className={`rounded-2xl border border-card-border bg-card px-4 py-4 sm:px-5 ${pending ? "opacity-60" : ""}`}>
+      {/* Who and when, with the note's menu on the same row. */}
+      <div className="flex items-center gap-3">
+        <Avatar name={author.name} image={author.image} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">{author.name}</p>
+          <p className="text-xs text-muted" suppressHydrationWarning>
+            {pending ? "Posting…" : shortAgo(note.createdAt)}
+            {edited && !pending ? " · edited" : ""}
+          </p>
+        </div>
+        {!editing && !pending && (
+          <MoreMenu label="Note options">
+            <MoreMenuItem
+              icon={PencilEdit02Icon}
+              onSelect={() => {
+                setDraft(note.body);
+                setEditing(true);
+              }}
+            >
+              Edit
+            </MoreMenuItem>
+            <MoreMenuItem icon={Delete02Icon} destructive onSelect={() => setConfirming(true)}>
+              Delete
+            </MoreMenuItem>
+          </MoreMenu>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-3">
+          <label className="sr-only" htmlFor={`edit-${note.id}`}>
+            Edit note
+          </label>
+          <textarea
+            id={`edit-${note.id}`}
+            autoFocus
+            value={draft}
+            maxLength={MAX_POST}
+            // Start editing with the cursor at the end, not before the existing text.
+            onFocus={(e) => {
+              const end = e.currentTarget.value.length;
+              e.currentTarget.setSelectionRange(end, end);
+            }}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                save();
+              }
+              if (e.key === "Escape") cancel();
+            }}
+            className={`${textareaClass} rounded-lg border border-card-border bg-background px-3 py-2`}
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <button type="button" onClick={cancel} className="h-8 rounded-lg px-3 text-sm font-medium text-foreground hover:bg-wash">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!draft.trim()}
+              className="h-8 rounded-lg bg-foreground px-3 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-30"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]">
+          {note.body}
+        </p>
+      )}
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete this note?"
+        description="Future progress reads won't take it into account."
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        pending={false}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete();
+        }}
+      />
+    </li>
+  );
+}
