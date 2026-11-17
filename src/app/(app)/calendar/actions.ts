@@ -4,8 +4,9 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import * as z from "zod";
 
+import { AgendaError, prepareAgenda } from "@/lib/agenda";
 import { createBlock, deleteBlock, getBlock, tryMatchBlockFits, updateBlock } from "@/lib/blocks";
-import { blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
+import { blockDetailsSchema, blockTimesSchema, newBlockSchema, type BlockAgenda } from "@/lib/block-schema";
 import { completeSuggestion, getLatestRead } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 import { TASK_MINUTES } from "@/lib/task-schema";
@@ -127,6 +128,8 @@ export async function updateBlockAction(blockId: unknown, input: unknown): Promi
     ...parsed.data,
     keepOpen: intention ? false : parsed.data.keepOpen,
     title: intention ? (parsed.data.title ?? before.title) : parsed.data.title,
+    // An agenda is about one goal; moving the block to another goal clears it.
+    ...(parsed.data.goalId !== before.goalId ? { agenda: null } : {}),
   });
   if (!block) return { ok: false, error: GONE };
   if (needsMatching(block)) await tryMatchBlockFits(user.id, block.goalId);
@@ -155,4 +158,25 @@ export async function deleteBlockAction(blockId: unknown): Promise<BlockResult> 
   if (!id.success || !(await deleteBlock(user.id, id.data))) return { ok: false, error: GONE };
   refresh();
   return { ok: true };
+}
+
+/** "Prepare agenda" in the block panel: a short plan for this session, stored on the block. */
+export async function prepareAgendaAction(
+  blockId: unknown,
+  when: unknown,
+): Promise<{ ok: true; agenda: BlockAgenda } | { ok: false; error: string }> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  const label = z.string().trim().min(1).max(120).safeParse(when);
+  if (!id.success) return { ok: false, error: GONE };
+  if (!label.success) return { ok: false, error: "Couldn't tell when this block is." };
+  try {
+    const agenda = await prepareAgenda(user.id, id.data, label.data);
+    refresh();
+    return { ok: true, agenda };
+  } catch (error) {
+    if (error instanceof AgendaError) return { ok: false, error: error.message };
+    console.error("[agenda] failed", error);
+    return { ok: false, error: "Couldn't prepare an agenda right now. Try again." };
+  }
 }

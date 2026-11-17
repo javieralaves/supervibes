@@ -29,6 +29,7 @@ import {
   setBlockTaskDoneAction,
   updateBlockAction,
 } from "./actions";
+import { BlockPanel } from "./block-panel";
 import { BlockPopover } from "./block-popover";
 import { BlockCard, DropPreview, GlimpseCard, type CalendarGoal } from "./calendar-items";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
@@ -229,6 +230,8 @@ export function DayCalendar({
   const [popover, setPopover] = useState<Popover | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
+  /** The block whose panel is open on the right. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const ready = stamp !== null;
@@ -320,6 +323,49 @@ export function DayCalendar({
 
   const closePopover = useCallback(() => setPopover(null), []);
 
+  /** Open a block's panel. Below the width the panel needs, edit it in place instead. */
+  function openBlockPanel(blockId: string) {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block || block.id.startsWith("pending-")) return;
+    if (window.matchMedia("(min-width: 64rem)").matches) {
+      setPopover(null);
+      setSelectedId(block.id);
+    } else {
+      editBlock(block);
+    }
+  }
+
+  /** Open the edit popover on a block, stepping to its day first if it's on another one. */
+  function editBlock(block: BlockView) {
+    const seg = allSegments.find((s) => s.id === block.id && s.day === offset) ?? allSegments.find((s) => s.id === block.id);
+    if (!seg) return;
+    if (seg.day !== offset) setOffset(seg.day);
+    setPopover({
+      mode: "edit",
+      blockId: block.id,
+      day: seg.day,
+      start: seg.start,
+      end: seg.end,
+      intention: Boolean(block.fromSuggestion || block.taskId),
+      initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+    });
+  }
+
+  // Esc closes the block panel, unless something else (the popover, a drag) took it.
+  const closePanelOnEscape = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== "Escape" || e.defaultPrevented || popover || placing) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("input, textarea, select, [contenteditable='true'], [role='menu']")) return;
+    setSelectedId(null);
+  });
+  const panelOpen = selectedId !== null;
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) => closePanelOnEscape(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
+
   // --- Dragging: on empty space to protect time, on a block to move it. ---
 
   const timeline = useRef<HTMLDivElement>(null);
@@ -390,7 +436,12 @@ export function DayCalendar({
     if (!block) return;
     if (!drag.moved) {
       if (drag.edge !== "move") return;
-      // A click: edit it.
+      // A click: open its panel. Below the width the panel needs, edit it in place as before.
+      if (window.matchMedia("(min-width: 64rem)").matches) {
+        setPopover(null);
+        setSelectedId(block.id);
+        return;
+      }
       setPopover({
         mode: "edit",
         blockId: block.id,
@@ -515,7 +566,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, fits: [] } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, fits: [], agenda: null } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -550,6 +601,7 @@ export function DayCalendar({
           taskId: task.id,
           taskDone: false,
           fits: [],
+          agenda: null,
           ...times,
         },
       },
@@ -574,6 +626,7 @@ export function DayCalendar({
           taskId: null,
           taskDone: false,
           fits: [],
+          agenda: null,
           ...times,
         },
       },
@@ -603,6 +656,24 @@ export function DayCalendar({
   }
 
   const popoverBlock = popover?.mode === "edit" ? blocks.find((b) => b.id === popover.blockId) : undefined;
+
+  // The block panel: hidden while the block is still being saved, or once it's gone.
+  const selected = selectedId && !selectedId.startsWith("pending-") ? blocks.find((b) => b.id === selectedId) : undefined;
+  const openTaskIds = new Set(tasks.map((t) => t.id));
+  let selectedTimes: { label: string; when: string } | null = null;
+  if (selected && base) {
+    const s = new Date(selected.startsAt);
+    const e = new Date(selected.endsAt);
+    const startMin = s.getHours() * 60 + s.getMinutes();
+    const endMin = dayOffset(e, base) > dayOffset(s, base) ? DAY_MINUTES : e.getHours() * 60 + e.getMinutes();
+    const range = formatRange(startMin, endMin, clock);
+    const relativeDay = dayLabel(dayOffset(s, base));
+    const date = s.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    selectedTimes = {
+      label: `${relativeDay ?? s.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })} · ${range}`,
+      when: `${date}${relativeDay ? ` (${relativeDay.toLowerCase()})` : ""}, ${range}`,
+    };
+  }
 
   return (
     <div
@@ -660,7 +731,13 @@ export function DayCalendar({
 
       <div
         className={`mx-auto flex min-h-0 w-full flex-1 flex-col px-4 py-4 sm:px-8 sm:py-6 ${
-          taskPanel ? "max-w-3xl lg:max-w-[67rem]" : "max-w-3xl"
+          taskPanel && selected
+            ? "max-w-3xl lg:max-w-[88rem]"
+            : taskPanel
+              ? "max-w-3xl lg:max-w-[67rem]"
+              : selected
+                ? "max-w-3xl lg:max-w-[69rem]"
+                : "max-w-3xl"
         }`}
       >
         {count === 0 && (
@@ -766,6 +843,7 @@ export function DayCalendar({
                           clock={clock}
                           pending={block.id.startsWith("pending-")}
                           dragging={moving}
+                          selected={block.id === selected?.id}
                           onPointerDown={(e) => onBlockDown(e, seg)}
                           onEdit={() =>
                             setPopover({
@@ -808,6 +886,7 @@ export function DayCalendar({
                         clock={clock}
                         inBlock={blockId !== null}
                         onAdd={() => addIntention(item, start, end)}
+                        onOpenBlock={blockId ? () => openBlockPanel(blockId) : undefined}
                       />
                     ))}
                   </ol>
@@ -869,6 +948,27 @@ export function DayCalendar({
               </div>
             </div>
           </div>
+
+          {selected && (
+            <BlockPanel
+              key={selected.id}
+              block={selected}
+              goal={goalById.get(selected.goalId)}
+              timeLabel={selectedTimes?.label ?? ""}
+              when={selectedTimes?.when ?? ""}
+              openTaskIds={openTaskIds}
+              onEdit={() => editBlock(selected)}
+              onClose={() => setSelectedId(null)}
+              onToggleDone={
+                selected.taskId
+                  ? () =>
+                      run({ type: "update", id: selected.id, patch: { taskDone: !selected.taskDone } }, () =>
+                        setBlockTaskDoneAction(selected.id, !selected.taskDone),
+                      )
+                  : undefined
+              }
+            />
+          )}
         </div>
       </div>
 

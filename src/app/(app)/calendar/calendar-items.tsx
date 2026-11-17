@@ -77,6 +77,7 @@ export function BlockCard({
   clock,
   pending,
   dragging,
+  selected = false,
   onPointerDown,
   onEdit,
   onTomorrow,
@@ -90,6 +91,8 @@ export function BlockCard({
   clock: Clock;
   pending: boolean;
   dragging: boolean;
+  /** Its panel is open. */
+  selected?: boolean;
   onPointerDown: (e: React.PointerEvent<HTMLLIElement>) => void;
   onEdit: () => void;
   onTomorrow: () => void;
@@ -110,7 +113,7 @@ export function BlockCard({
       aria-label={`${what}: ${title}, ${time}`}
       className={`goal-tint ${kind} group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
         pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-grab"
-      }`}
+      } ${selected ? "ring-2 ring-[var(--goal)]/60" : ""}`}
     >
       <span aria-hidden="true" className="goal-solid absolute inset-y-0 left-0 w-[3px]" />
       {!pending && (
@@ -212,6 +215,7 @@ export function GlimpseCard({
   clock,
   inBlock,
   onAdd,
+  onOpenBlock,
 }: {
   kind: "task" | "suggestion";
   title: string;
@@ -222,6 +226,8 @@ export function GlimpseCard({
   /** Sits inside a protected block, so it's inset to keep the block visible around it. */
   inBlock: boolean;
   onAdd: () => void;
+  /** Inside a protected block: a click opens that block's panel, since the card covers it. */
+  onOpenBlock?: () => void;
 }) {
   const time = formatRange(start, end, clock);
   const task = kind === "task";
@@ -229,7 +235,10 @@ export function GlimpseCard({
     <li
       style={{ ...goalColorStyle(goal.color), ...place(start, end, inBlock ? 8 : 0) }}
       aria-label={`${task ? "Task" : "Suggestion"}: ${title}, ${time}`}
-      className={`goal-tint ${task ? "goal-glimpse-task" : "goal-suggest"} group absolute z-20 overflow-hidden rounded-lg`}
+      onClick={onOpenBlock && ((e) => !(e.target as HTMLElement).closest("button") && onOpenBlock())}
+      className={`goal-tint ${task ? "goal-glimpse-task" : "goal-suggest"} group absolute z-20 overflow-hidden rounded-lg ${
+        onOpenBlock ? "cursor-pointer" : ""
+      }`}
     >
       <Label
         title={title}

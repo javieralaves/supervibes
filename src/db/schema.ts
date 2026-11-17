@@ -10,6 +10,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import type { BlockAgenda } from "../lib/block-schema";
+
 import { user } from "./auth-schema";
 
 // Better Auth tables (user, session, account, verification).
@@ -220,6 +222,8 @@ export const calendarBlocks = pgTable(
     taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
     /** Suggestion titles judged to fit this block's title; refreshed by a model call. */
     fits: jsonb().$type<string[]>().notNull().default([]),
+    /** A plan for the session, prepared on request from the goal's tasks and latest read. */
+    agenda: jsonb().$type<BlockAgenda>(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

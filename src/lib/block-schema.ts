@@ -48,4 +48,14 @@ export type BlockView = {
   taskDone: boolean;
   /** What fits this titled block: "t:<task id>" or "s:<suggestion title>". */
   fits: string[];
+  /** A plan for the session, if one has been prepared. */
+  agenda: BlockAgenda | null;
+};
+
+/** A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made. */
+export type BlockAgenda = {
+  text: string;
+  tasks: { id: string; title: string; minutes: number }[];
+  /** ISO time. */
+  preparedAt: string;
 };

@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { db } from "@/db";
 import { calendarBlocks, goalReads, goals, goalTasks } from "@/db/schema";
+import type { BlockAgenda } from "@/lib/block-schema";
 
 /*
  * Calendar blocks: intentions and protected time. Same rule as everything else:
@@ -26,6 +27,8 @@ export type BlockDTO = {
   taskDone?: boolean;
   /** What fits this titled block: "t:<task id>" or "s:<suggestion title>" (plain titles are older suggestion matches). */
   fits: string[];
+  /** A plan for the session, if one has been prepared. */
+  agenda: BlockAgenda | null;
 };
 
 const columns = {
@@ -38,6 +41,7 @@ const columns = {
   fromSuggestion: calendarBlocks.fromSuggestion,
   taskId: calendarBlocks.taskId,
   fits: calendarBlocks.fits,
+  agenda: calendarBlocks.agenda,
 };
 
 const mine = (userId: string, blockId: string) =>
@@ -109,7 +113,7 @@ export async function getBlock(userId: string, blockId: string): Promise<BlockDT
 export async function updateBlock(
   userId: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "keepOpen" | "startsAt" | "endsAt">>,
+  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "keepOpen" | "startsAt" | "endsAt" | "agenda">>,
 ): Promise<BlockDTO | null> {
   if (patch.goalId && !(await ownsGoal(userId, patch.goalId))) return null;
   const [block] = await db.update(calendarBlocks).set(patch).where(mine(userId, blockId)).returning(columns);
