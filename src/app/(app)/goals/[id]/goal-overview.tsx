@@ -14,12 +14,14 @@ type Props = {
   notes: NoteView[];
   author: NoteAuthor;
   hasSources: boolean;
-  /** The Sources section, rendered between the progress read and the notes. */
+  /** The Tasks section, rendered between the suggestions and the sources. */
+  tasks: React.ReactNode;
+  /** The Sources section, rendered between the tasks and the notes. */
   sources: React.ReactNode;
 };
 
-/** Goal header, progress read, next moves, sources and notes, sharing one "reading progress" state. */
-export function GoalOverview({ goal, read, notes, author, hasSources, sources }: Props) {
+/** Goal header, progress read, suggestions, tasks, sources and notes, sharing one "reading progress" state. */
+export function GoalOverview({ goal, read, notes, author, hasSources, tasks, sources }: Props) {
   const [reading, startReading] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const canRead = hasSources || notes.length > 0;
@@ -37,6 +39,7 @@ export function GoalOverview({ goal, read, notes, author, hasSources, sources }:
       <GoalHeader goal={goal} canUpdate={canRead} reading={reading} onUpdate={update} />
       <ProgressCard read={read} canRead={canRead} reading={reading} error={error} onUpdate={update} />
       {read && <NextMoves goalId={goal.id} suggestions={read.suggestions} reading={reading} onDone={update} />}
+      {tasks}
       {sources}
       {/* A new note should change the read, so it triggers one straight away. */}
       <NotesSection goalId={goal.id} notes={notes} author={author} onPosted={update} />

@@ -10,6 +10,8 @@ import { createSource, deleteSource, updateSource } from "@/lib/sources";
 import { tryMatchBlockFits } from "@/lib/blocks";
 import { assessGoal, completeSuggestion, passOnSuggestion, ProgressError } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
+import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
+import { createTask, deleteTask, setTaskDone, updateTask } from "@/lib/tasks";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -134,6 +136,47 @@ export async function passOnSuggestionAction(goalId: unknown, title: unknown): P
   if (!(await passOnSuggestion(user.id, goal.data, parsed.data))) {
     return { ok: false, error: "That suggestion doesn't exist anymore." };
   }
+  refresh();
+  return { ok: true };
+}
+
+const TASK_GONE = "That task doesn't exist anymore.";
+
+export async function addTaskAction(goalId: unknown, title: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const parsed = taskTitleSchema.safeParse(title);
+  if (!goal.success) return { ok: false, error: "That goal doesn't exist anymore." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the task." };
+  if (!(await createTask(user.id, goal.data, parsed.data))) return { ok: false, error: "That goal doesn't exist anymore." };
+  refresh();
+  return { ok: true };
+}
+
+export async function editTaskAction(taskId: unknown, patch: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(taskId);
+  const parsed = taskPatchSchema.safeParse(patch);
+  if (!id.success) return { ok: false, error: TASK_GONE };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the task." };
+  if (!(await updateTask(user.id, id.data, parsed.data))) return { ok: false, error: TASK_GONE };
+  refresh();
+  return { ok: true };
+}
+
+export async function setTaskDoneAction(taskId: unknown, done: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(taskId);
+  if (!id.success || typeof done !== "boolean") return { ok: false, error: TASK_GONE };
+  if (!(await setTaskDone(user.id, id.data, done))) return { ok: false, error: TASK_GONE };
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteTaskAction(taskId: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(taskId);
+  if (!id.success || !(await deleteTask(user.id, id.data))) return { ok: false, error: TASK_GONE };
   refresh();
   return { ok: true };
 }

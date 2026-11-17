@@ -12,9 +12,11 @@ import { requireUser } from "@/lib/session";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
+import { listTasks } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
 import { SourcesSection } from "./sources-section";
+import { TasksSection } from "./tasks-section";
 
 export const metadata: Metadata = { title: "Goal · Supervibes" };
 
@@ -29,11 +31,12 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, connections, posts] = await Promise.all([
+  const [sources, read, connections, posts, tasks] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
     listConnections(user.id),
     listPosts(user.id, id),
+    listTasks(user.id, id),
   ]);
 
   return (
@@ -49,6 +52,12 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         updatedAt: p.updatedAt.toISOString(),
       }))}
       author={{ name: user.name, image: user.image }}
+      tasks={
+        <TasksSection
+          goalId={goal.id}
+          tasks={tasks.map((t) => ({ id: t.id, title: t.title, minutes: t.minutes, doneAt: t.doneAt?.toISOString() ?? null }))}
+        />
+      }
       sources={
         <SourcesSection
           goalId={goal.id}

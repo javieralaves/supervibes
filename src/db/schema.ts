@@ -222,3 +222,30 @@ export const calendarBlocks = pgTable(
   },
   (t) => [index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt)],
 );
+
+/** Things the person has decided to do for a goal. Open until `doneAt` is set. */
+export const goalTasks = pgTable(
+  "goal_tasks",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    title: text().notNull(),
+    /** Estimate in minutes: 15, 30, 60 or 120. */
+    minutes: integer().notNull().default(30),
+    /** When it was checked off; null while open. */
+    doneAt: timestamp({ withTimezone: true }),
+    /** Manual order among the goal's tasks, ascending. */
+    position: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("goal_tasks_goal_idx").on(t.goalId, t.position)],
+);
