@@ -1,12 +1,22 @@
 "use client";
 
-import { ArrowLeft01Icon, ArrowRight01Icon, Moon02Icon, ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, CheckListIcon, CircleIcon, Moon02Icon, ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { startTransition, useCallback, useEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useOptimistic,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import type { BlockDetails, BlockView } from "@/lib/block-schema";
 import { BLOCK_STEP } from "@/lib/block-schema";
 import { formatHour, formatRange, formatTime, useClock } from "@/lib/clock";
+import { goalColorStyle } from "@/lib/goal-colors";
 import { DAY_MINUTES, planDays, sleepSpans, type PlanBlock, type PlanItem } from "@/lib/plan-day";
 import type { Settings } from "@/lib/settings-schema";
 
@@ -20,8 +30,9 @@ import {
   updateBlockAction,
 } from "./actions";
 import { BlockPopover } from "./block-popover";
-import { BlockCard, GlimpseCard, type CalendarGoal } from "./calendar-items";
+import { BlockCard, DropPreview, GlimpseCard, type CalendarGoal } from "./calendar-items";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
+import { TaskPanel, type PanelGroup, type PanelTask } from "./task-panel";
 
 export type { CalendarGoal };
 export type CalendarGroup = {
@@ -72,18 +83,34 @@ function writePref(key: string, value: string) {
 }
 
 const GLIMPSE_KEY = "sv-calendar-glimpse";
+const TASK_PANEL_KEY = "sv-calendar-task-panel";
 const LAST_GOAL_KEY = "sv-calendar-last-goal";
-const glimpseListeners = new Set<() => void>();
-function subscribeGlimpse(onChange: () => void) {
-  glimpseListeners.add(onChange);
-  return () => glimpseListeners.delete(onChange);
+const prefListeners = new Set<() => void>();
+function subscribePrefs(onChange: () => void) {
+  prefListeners.add(onChange);
+  return () => prefListeners.delete(onChange);
 }
 const readGlimpse = () => readPref(GLIMPSE_KEY) !== "off";
 const serverGlimpse = () => true;
 function setGlimpse(on: boolean) {
   writePref(GLIMPSE_KEY, on ? "on" : "off");
-  glimpseListeners.forEach((l) => l());
+  prefListeners.forEach((l) => l());
 }
+const readTaskPanel = () => readPref(TASK_PANEL_KEY) === "on";
+const serverTaskPanel = () => false;
+function setTaskPanel(on: boolean) {
+  writePref(TASK_PANEL_KEY, on ? "on" : "off");
+  prefListeners.forEach((l) => l());
+}
+
+/** Header toggles (Tasks, Glimpse): pressed or not. */
+const toggleClass = (on: boolean) =>
+  on
+    ? "border-line-strong bg-foreground/[.06] text-foreground"
+    : "border-card-border bg-card text-muted shadow-[0_1px_2px_rgb(15_17_20/0.05)] hover:border-line-strong hover:text-foreground";
+
+/** How close to the timeline's top or bottom edge a dragged task starts it scrolling, in px. */
+const SCROLL_EDGE = 56;
 
 function dayLabel(offset: number) {
   return offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : offset === -1 ? "Yesterday" : null;
@@ -150,6 +177,22 @@ type Drag =
 
 type Edge = "move" | "start" | "end";
 
+/** A task being dragged from the panel onto the day. */
+type Placing = {
+  task: PanelTask;
+  /** How long it lands: its block's length when it has one, else its estimate. */
+  minutes: number;
+  originX: number;
+  originY: number;
+  /** Past the few pixels that tell a drag from a click. */
+  moved: boolean;
+  /** Where the pointer was when it started moving, so the chip appears there. */
+  x: number;
+  y: number;
+  /** Where it would land on the shown day, or null while the pointer is off the timeline. */
+  start: number | null;
+};
+
 /** Where a block's edges sit while one of them, or the whole block, is being dragged. */
 function dragged(edge: Edge, start: number, end: number, delta: number) {
   return { start: start + (edge === "end" ? 0 : delta), end: end + (edge === "start" ? 0 : delta) };
@@ -159,7 +202,8 @@ function dragged(edge: Edge, start: number, end: number, delta: number) {
  * One day, hour by hour. Intentions and protected time are yours: drag on empty
  * space to protect time, drag a block to move it, click it to edit. With Glimpse
  * on, the goals' open suggestions are placed around and inside them, from now
- * on, spilling into the following days; + commits one to its time.
+ * on, spilling into the following days; + commits one to its time. The task
+ * panel lists open tasks across goals; drag one onto the day to schedule it.
  */
 export function DayCalendar({
   groups,
@@ -176,12 +220,14 @@ export function DayCalendar({
   settings: Settings;
 }) {
   const stamp = useSyncExternalStore(subscribeClock, minuteNow, noClock);
-  const glimpse = useSyncExternalStore(subscribeGlimpse, readGlimpse, serverGlimpse);
+  const glimpse = useSyncExternalStore(subscribePrefs, readGlimpse, serverGlimpse);
+  const taskPanel = useSyncExternalStore(subscribePrefs, readTaskPanel, serverTaskPanel);
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
   const [blocks, apply] = useOptimistic(savedBlocks, applyOp);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [placing, setPlacing] = useState<Placing | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const ready = stamp !== null;
@@ -203,11 +249,36 @@ export function DayCalendar({
       (s): Item => ({ kind: "suggestion", key: `s:${goal.id}:${s.title}`, id: s.title, goalId: goal.id, title: s.title, minutes: s.minutes, fitKey: `s:${s.title}`, goal }),
     ),
   ]);
-  const placed =
-    now === null || !glimpse ? [] : planDays(items, now, settings, allSegments).filter((p) => p.day === offset);
+  const plan = now === null || (!glimpse && !taskPanel) ? [] : planDays(items, now, settings, allSegments);
+  const placed = glimpse ? plan.filter((p) => p.day === offset) : [];
   const count = items.length;
   // Earlier days are all behind you; later days haven't started.
   const pastUntil = offset < 0 ? DAY_MINUTES : isToday ? now : null;
+
+  // The panel: each goal's open tasks in your order, those already on the calendar last.
+  let panelGroups: PanelGroup[] = [];
+  if (taskPanel) {
+    const nowMs = today?.getTime() ?? 0;
+    const nextBlock = new Map<string, BlockView>();
+    for (const b of blocks) {
+      if (!b.taskId || Date.parse(b.endsAt) <= nowMs) continue;
+      const seen = nextBlock.get(b.taskId);
+      if (!seen || Date.parse(b.startsAt) < Date.parse(seen.startsAt)) nextBlock.set(b.taskId, b);
+    }
+    const spots = new Map(plan.filter((p) => p.item.kind === "task").map((p) => [p.item.id, p]));
+    panelGroups = goals
+      .map((goal) => {
+        const mine = tasks
+          .filter((t) => t.goalId === goal.id)
+          .map((t): PanelTask => {
+            const block = nextBlock.get(t.id) ?? null;
+            const spot = block ? undefined : spots.get(t.id);
+            return { ...t, block, spot: spot ? { day: spot.day, start: spot.start, end: spot.end } : null };
+          });
+        return { goal, tasks: [...mine.filter((t) => !t.block), ...mine.filter((t) => t.block)] };
+      })
+      .filter((g) => g.tasks.length > 0);
+  }
 
   // Open on (and come back to) the current time, with about an hour of the past above it.
   const scroller = useRef<HTMLDivElement>(null);
@@ -339,6 +410,102 @@ export function DayCalendar({
     run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
   }
 
+  // --- Placing: dragging a task from the panel onto the day. ---
+
+  const pointer = useRef({ x: 0, y: 0 });
+  const chip = useRef<HTMLDivElement>(null);
+  const placingActive = placing !== null;
+
+  function onTaskPointerDown(e: React.PointerEvent<HTMLElement>, task: PanelTask) {
+    if (!ready || e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    pointer.current = { x: e.clientX, y: e.clientY };
+    setPopover(null);
+    const minutes = task.block
+      ? Math.min(DAY_MINUTES, Math.round((Date.parse(task.block.endsAt) - Date.parse(task.block.startsAt)) / 60_000))
+      : task.minutes;
+    setPlacing({ task, minutes, originX: e.clientX, originY: e.clientY, moved: false, x: e.clientX, y: e.clientY, start: null });
+  }
+
+  /** The start a dragged task would get on the shown day, or null while the pointer is off the timeline. */
+  const landing = useEffectEvent((): number | null => {
+    const view = scroller.current?.getBoundingClientRect();
+    const rect = timeline.current?.getBoundingClientRect();
+    if (!placing || !view || !rect) return null;
+    const { x, y: py } = pointer.current;
+    if (x < rect.left + parseFloat(GUTTER) * 16 || x > view.right || py < view.top || py > view.bottom) return null;
+    return Math.max(0, Math.min(DAY_MINUTES - placing.minutes, snapDown(minutesAt(py - rect.top))));
+  });
+
+  /** Every frame while dragging: scroll near the timeline's edges, move the chip, update where it lands. */
+  const followPointer = useEffectEvent(() => {
+    if (!placing) return;
+    const { x, y: py } = pointer.current;
+    const sc = scroller.current;
+    if (placing.moved && sc) {
+      const view = sc.getBoundingClientRect();
+      if (x >= view.left && x <= view.right) {
+        const above = view.top + SCROLL_EDGE - py;
+        const below = py - (view.bottom - SCROLL_EDGE);
+        if (above > 0 && above < SCROLL_EDGE * 2) sc.scrollTop -= Math.min(18, Math.ceil(above / 4));
+        else if (below > 0 && below < SCROLL_EDGE * 2) sc.scrollTop += Math.min(18, Math.ceil(below / 4));
+      }
+    }
+    if (chip.current) chip.current.style.transform = `translate(${x + 14}px, ${py + 10}px)`;
+    const start = placing.moved ? landing() : null;
+    if (start !== placing.start) setPlacing({ ...placing, start });
+  });
+
+  const onPlacingMove = useEffectEvent((e: PointerEvent) => {
+    pointer.current = { x: e.clientX, y: e.clientY };
+    if (placing && !placing.moved && Math.hypot(e.clientX - placing.originX, e.clientY - placing.originY) > 4) {
+      setPlacing({ ...placing, moved: true, x: e.clientX, y: e.clientY });
+    }
+  });
+
+  /** Let go: schedule the task at that time, or move its block there. Anywhere else, nothing happens. */
+  const dropPlacing = useEffectEvent(() => {
+    const p = placing;
+    const start = landing();
+    setPlacing(null);
+    if (!p?.moved || start === null || !base) return;
+    const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, start + p.minutes) };
+    const block = p.task.block;
+    if (!block) return scheduleTask(p.task, times);
+    if (Date.parse(block.startsAt) === Date.parse(times.startsAt)) return;
+    run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
+  });
+
+  useEffect(() => {
+    if (!placingActive) return;
+    let frame = requestAnimationFrame(function tick() {
+      followPointer();
+      frame = requestAnimationFrame(tick);
+    });
+    const onMove = (e: PointerEvent) => onPlacingMove(e);
+    const onUp = () => dropPlacing();
+    const onCancel = () => setPlacing(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setPlacing(null);
+    };
+    const cursor = document.body.style.cursor;
+    document.body.style.cursor = "grabbing";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.cursor = cursor;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [placingActive]);
+
   // --- Saving ---
 
   function saveCreate(p: Extract<Popover, { mode: "create" }>, details: BlockDetails) {
@@ -368,11 +535,32 @@ export function DayCalendar({
     run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
   }
 
+  /** Put one of your tasks on the calendar at these times. */
+  function scheduleTask(task: { id: string; goalId: string; title: string }, times: { startsAt: string; endsAt: string }) {
+    run(
+      {
+        type: "add",
+        block: {
+          id: pendingId(),
+          goalId: task.goalId,
+          title: task.title,
+          keepOpen: false,
+          fromSuggestion: null,
+          taskId: task.id,
+          taskDone: false,
+          fits: [],
+          ...times,
+        },
+      },
+      () => scheduleTaskAction(task.id, times),
+    );
+  }
+
   /** + on a glimpse: schedule the task, or turn the suggestion into a task and schedule that. */
   function addIntention(item: Item, start: number, end: number) {
     if (!base) return;
     const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, end) };
-    const isTask = item.kind === "task";
+    if (item.kind === "task") return scheduleTask(item, times);
     run(
       {
         type: "add",
@@ -381,15 +569,22 @@ export function DayCalendar({
           goalId: item.goalId,
           title: item.title,
           keepOpen: false,
-          fromSuggestion: isTask ? null : item.title,
-          taskId: isTask ? item.id : null,
+          fromSuggestion: item.title,
+          taskId: null,
           taskDone: false,
           fits: [],
           ...times,
         },
       },
-      () => (isTask ? scheduleTaskAction(item.id, times) : createIntentionAction(item.goalId, item.title, times)),
+      () => createIntentionAction(item.goalId, item.title, times),
     );
+  }
+
+  /** + in the task panel: schedule it where Glimpse would put it. */
+  function scheduleAtSpot(task: PanelTask) {
+    if (!base || !task.spot) return;
+    const { day, start, end } = task.spot;
+    scheduleTask(task, { startsAt: isoAt(base, day, start), endsAt: isoAt(base, day, end) });
   }
 
   const shownDay = base ? new Date(base.getTime() + 12 * 3600_000 + offset * DAY_MS) : null;
@@ -409,234 +604,288 @@ export function DayCalendar({
   const popoverBlock = popover?.mode === "edit" ? blocks.find((b) => b.id === popover.blockId) : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {count === 0 && (
-        <p className="mb-3 shrink-0 rounded-2xl border border-dashed border-foreground/15 p-4 text-sm text-muted">
-          Nothing to place yet. Add tasks to a goal, or get suggestions from its status update, and they show up here.
-        </p>
-      )}
-
-      <div
-        ref={card}
-        onPointerEnter={() => (hovered.current = true)}
-        onPointerLeave={() => (hovered.current = false)}
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-card-border bg-card"
-      >
-        {/* Day header: step between days on the left, the date beside them, Glimpse on the right. */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-card-border px-3 py-3 sm:px-4">
-          <div className="flex shrink-0 items-center gap-1">
-            <NavButton label="Previous day" icon={ArrowLeft01Icon} disabled={!ready} onClick={() => setOffset((o) => o - 1)} />
-            <NavButton label="Next day" icon={ArrowRight01Icon} disabled={!ready} onClick={() => setOffset((o) => o + 1)} />
-          </div>
-          <h2 aria-live="polite" className="flex min-w-0 items-baseline gap-2" suppressHydrationWarning>
-            <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
-              {shownDay === null
-                ? "Today"
-                : shownDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-            </span>
-            {shownDay !== null && relative && <span className="hidden shrink-0 text-sm text-muted sm:inline">{relative}</span>}
-          </h2>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            {!isToday && (
-              <button
-                type="button"
-                onClick={() => setOffset(0)}
-                className="h-8 rounded-lg border border-card-border bg-card px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong"
-              >
-                Today
-              </button>
-            )}
+    <div
+      ref={card}
+      onPointerEnter={() => (hovered.current = true)}
+      onPointerLeave={() => (hovered.current = false)}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      {/* Top bar, across the page: the task panel's toggle, then stepping between days and the date; Glimpse on the right. */}
+      <header className="flex h-14 shrink-0 items-center gap-3 bg-background px-4 shadow-[inset_0_-1px_0_var(--card-border)] sm:px-6">
+        <button
+          type="button"
+          aria-label="Tasks"
+          aria-pressed={taskPanel}
+          onClick={() => setTaskPanel(!taskPanel)}
+          title={taskPanel ? "Hide tasks" : "Show tasks to drag onto the day"}
+          className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex ${toggleClass(taskPanel)}`}
+        >
+          <HugeiconsIcon icon={CheckListIcon} size={16} />
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <NavButton label="Previous day" icon={ArrowLeft01Icon} disabled={!ready} onClick={() => setOffset((o) => o - 1)} />
+          <NavButton label="Next day" icon={ArrowRight01Icon} disabled={!ready} onClick={() => setOffset((o) => o + 1)} />
+        </div>
+        <h2 aria-live="polite" className="flex min-w-0 items-baseline gap-2" suppressHydrationWarning>
+          <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+            {shownDay === null
+              ? "Today"
+              : shownDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </span>
+          {shownDay !== null && relative && <span className="hidden shrink-0 text-sm text-muted sm:inline">{relative}</span>}
+        </h2>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!isToday && (
             <button
               type="button"
-              aria-pressed={glimpse}
-              onClick={() => setGlimpse(!glimpse)}
-              title={glimpse ? "Hide suggestions" : "Show suggestions"}
-              className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors ${
-                glimpse
-                  ? "border-line-strong bg-foreground/[.06] text-foreground"
-                  : "border-card-border bg-card text-muted shadow-[0_1px_2px_rgb(15_17_20/0.05)] hover:border-line-strong hover:text-foreground"
-              }`}
+              onClick={() => setOffset(0)}
+              className="h-8 rounded-lg border border-card-border bg-card px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong"
             >
-              <HugeiconsIcon icon={glimpse ? ViewIcon : ViewOffIcon} size={15} />
-              Glimpse
+              Today
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            aria-pressed={glimpse}
+            onClick={() => setGlimpse(!glimpse)}
+            title={glimpse ? "Hide suggestions" : "Show suggestions"}
+            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors ${toggleClass(glimpse)}`}
+          >
+            <HugeiconsIcon icon={glimpse ? ViewIcon : ViewOffIcon} size={15} />
+            Glimpse
+          </button>
         </div>
+      </header>
 
-        {error && (
-          <p role="alert" className="shrink-0 border-b border-card-border px-4 py-2 text-sm text-red-600 dark:text-red-400">
-            {error}
+      <div
+        className={`mx-auto flex min-h-0 w-full flex-1 flex-col px-4 py-4 sm:px-8 sm:py-6 ${
+          taskPanel ? "max-w-3xl lg:max-w-[67rem]" : "max-w-3xl"
+        }`}
+      >
+        {count === 0 && (
+          <p className="mb-3 shrink-0 rounded-2xl border border-dashed border-foreground/15 p-4 text-sm text-muted">
+            Nothing to place yet. Add tasks to a goal, or get suggestions from its status update, and they show up here.
           </p>
         )}
 
-        <div
-          ref={scroller}
-          tabIndex={0}
-          aria-label="Day timeline. Drag on empty space to protect time. Use the left and right arrow keys to change day."
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foreground/20"
-        >
+        <div className="flex min-h-0 flex-1 gap-4">
+          {taskPanel && (
+            <TaskPanel
+              groups={panelGroups}
+              clock={clock}
+              today={base}
+              draggingId={placing?.moved ? placing.task.id : null}
+              onTaskPointerDown={onTaskPointerDown}
+              onSchedule={scheduleAtSpot}
+            />
+          )}
+
           <div
-            ref={timeline}
-            onPointerDown={onTimelineDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={() => setDrag(null)}
-            className={`relative select-none ${drag?.kind === "create" || (drag?.kind === "move" && drag.edge !== "move") ? "cursor-ns-resize" : ""}`}
-            style={{ height: TIMELINE_HEIGHT }}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-card-border bg-card"
           >
-            {/* Hour lines and labels */}
-            {Array.from({ length: 25 }, (_, h) => {
-              const nearNow = isToday && now !== null && Math.abs(h * 60 - now) < 14;
-              return (
-                <div key={h} className="pointer-events-none absolute inset-x-0" style={{ top: y(h * 60) }}>
-                  <span
-                    className={`absolute -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted transition-opacity ${
-                      nearNow ? "opacity-0" : ""
-                    }`}
-                    style={{ width: GUTTER }}
-                  >
-                    {h < 24 ? formatHour(h, clock) : ""}
-                  </span>
-                  <div className="absolute right-0 border-t border-card-border" style={{ left: GUTTER }} />
-                </div>
-              );
-            })}
-
-            {/* Sleep */}
-            {sleepSpans(settings).map((span) => (
-              <div
-                key={span.start}
-                aria-hidden="true"
-                className="pointer-events-none absolute right-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--foreground)_6%,transparent)_0_1px,transparent_1px_7px)]"
-                style={{ left: GUTTER, top: y(span.start), height: y(span.end) - y(span.start) }}
-              >
-                {span.end - span.start >= 45 && (
-                  <span className="absolute left-3 top-2 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <HugeiconsIcon icon={Moon02Icon} size={12} />
-                    Sleep
-                  </span>
-                )}
-              </div>
-            ))}
-
-            {/* Time that's already gone */}
-            {pastUntil !== null && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute right-0 bg-foreground/[.03]"
-                style={{ left: GUTTER, top: PAD, height: y(pastUntil) - PAD }}
-              />
+            {error && (
+              <p role="alert" className="shrink-0 border-b border-card-border px-4 py-2 text-sm text-red-600 dark:text-red-400">
+                {error}
+              </p>
             )}
 
-            {/* Your intentions and protected time */}
-            {daySegments.length > 0 && (
-              <ul aria-label="Your time on this day">
-                {daySegments.map((seg) => {
-                  const block = blocks.find((b) => b.id === seg.id)!;
-                  const moving = drag?.kind === "move" && drag.blockId === seg.id && drag.moved;
-                  const at = moving ? dragged(drag.edge, seg.start, seg.end, drag.delta) : seg;
+            <div
+              ref={scroller}
+              tabIndex={0}
+              aria-label="Day timeline. Drag on empty space to protect time. Use the left and right arrow keys to change day."
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foreground/20"
+            >
+              <div
+                ref={timeline}
+                onPointerDown={onTimelineDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={() => setDrag(null)}
+                className={`relative select-none ${drag?.kind === "create" || (drag?.kind === "move" && drag.edge !== "move") ? "cursor-ns-resize" : ""}`}
+                style={{ height: TIMELINE_HEIGHT }}
+              >
+                {/* Hour lines and labels */}
+                {Array.from({ length: 25 }, (_, h) => {
+                  const nearNow = isToday && now !== null && Math.abs(h * 60 - now) < 14;
                   return (
-                    <BlockCard
-                      key={`${seg.id}:${seg.day}`}
-                      block={block}
-                      goal={goalById.get(block.goalId)}
-                      start={at.start}
-                      end={at.end}
-                      clock={clock}
-                      pending={block.id.startsWith("pending-")}
-                      dragging={moving}
-                      onPointerDown={(e) => onBlockDown(e, seg)}
-                      onEdit={() =>
-                        setPopover({
-                          mode: "edit",
-                          blockId: block.id,
-                          day: seg.day,
-                          start: seg.start,
-                          end: seg.end,
-                          intention: Boolean(block.fromSuggestion || block.taskId),
-                          initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
-                        })
-                      }
-                      onTomorrow={() => moveToTomorrow(block)}
-                      onToggleDone={
-                        block.taskId
-                          ? () =>
-                              run({ type: "update", id: block.id, patch: { taskDone: !block.taskDone } }, () =>
-                                setBlockTaskDoneAction(block.id, !block.taskDone),
-                              )
-                          : undefined
-                      }
-                      onRemove={() => run({ type: "remove", id: block.id }, () => deleteBlockAction(block.id))}
-                    />
+                    <div key={h} className="pointer-events-none absolute inset-x-0" style={{ top: y(h * 60) }}>
+                      <span
+                        className={`absolute -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted transition-opacity ${
+                          nearNow ? "opacity-0" : ""
+                        }`}
+                        style={{ width: GUTTER }}
+                      >
+                        {h < 24 ? formatHour(h, clock) : ""}
+                      </span>
+                      <div className="absolute right-0 border-t border-card-border" style={{ left: GUTTER }} />
+                    </div>
                   );
                 })}
-              </ul>
-            )}
 
-            {/* Glimpse: your open tasks and suggestions, not yet committed to a time */}
-            {placed.length > 0 && (
-              <ol aria-label="Glimpse: tasks and suggestions on this day">
-                {placed.map(({ item, start, end, blockId }) => (
-                  <GlimpseCard
-                    key={item.key}
-                    kind={item.kind}
-                    title={item.title}
-                    goal={item.goal}
-                    start={start}
-                    end={end}
-                    clock={clock}
-                    inBlock={blockId !== null}
-                    onAdd={() => addIntention(item, start, end)}
-                  />
+                {/* Sleep */}
+                {sleepSpans(settings).map((span) => (
+                  <div
+                    key={span.start}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--foreground)_6%,transparent)_0_1px,transparent_1px_7px)]"
+                    style={{ left: GUTTER, top: y(span.start), height: y(span.end) - y(span.start) }}
+                  >
+                    {span.end - span.start >= 45 && (
+                      <span className="absolute left-3 top-2 flex items-center gap-1 text-[11px] font-medium text-muted">
+                        <HugeiconsIcon icon={Moon02Icon} size={12} />
+                        Sleep
+                      </span>
+                    )}
+                  </div>
                 ))}
-              </ol>
-            )}
 
-            {/* The block being drawn */}
-            {draft && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute z-30 rounded-lg border-2 border-dashed border-foreground/40 bg-foreground/[.04]"
-                style={{ top: y(draft.start) + 1, height: y(draft.end) - y(draft.start) - 2, left: `calc(${GUTTER} + 4px)`, right: 8 }}
-              >
-                <span className="absolute left-3 top-1.5 text-[11px] font-medium tabular-nums text-muted">
-                  {formatRange(draft.start, draft.end, clock)}
-                </span>
+                {/* Time that's already gone */}
+                {pastUntil !== null && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-0 bg-foreground/[.03]"
+                    style={{ left: GUTTER, top: PAD, height: y(pastUntil) - PAD }}
+                  />
+                )}
+
+                {/* Your intentions and protected time */}
+                {daySegments.length > 0 && (
+                  <ul aria-label="Your time on this day">
+                    {daySegments.map((seg) => {
+                      const block = blocks.find((b) => b.id === seg.id)!;
+                      const moving = drag?.kind === "move" && drag.blockId === seg.id && drag.moved;
+                      const at = moving ? dragged(drag.edge, seg.start, seg.end, drag.delta) : seg;
+                      return (
+                        <BlockCard
+                          key={`${seg.id}:${seg.day}`}
+                          block={block}
+                          goal={goalById.get(block.goalId)}
+                          start={at.start}
+                          end={at.end}
+                          clock={clock}
+                          pending={block.id.startsWith("pending-")}
+                          dragging={moving}
+                          onPointerDown={(e) => onBlockDown(e, seg)}
+                          onEdit={() =>
+                            setPopover({
+                              mode: "edit",
+                              blockId: block.id,
+                              day: seg.day,
+                              start: seg.start,
+                              end: seg.end,
+                              intention: Boolean(block.fromSuggestion || block.taskId),
+                              initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+                            })
+                          }
+                          onTomorrow={() => moveToTomorrow(block)}
+                          onToggleDone={
+                            block.taskId
+                              ? () =>
+                                  run({ type: "update", id: block.id, patch: { taskDone: !block.taskDone } }, () =>
+                                    setBlockTaskDoneAction(block.id, !block.taskDone),
+                                  )
+                              : undefined
+                          }
+                          onRemove={() => run({ type: "remove", id: block.id }, () => deleteBlockAction(block.id))}
+                        />
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {/* Glimpse: your open tasks and suggestions, not yet committed to a time */}
+                {placed.length > 0 && (
+                  <ol aria-label="Glimpse: tasks and suggestions on this day">
+                    {placed.map(({ item, start, end, blockId }) => (
+                      <GlimpseCard
+                        key={item.key}
+                        kind={item.kind}
+                        title={item.title}
+                        goal={item.goal}
+                        start={start}
+                        end={end}
+                        clock={clock}
+                        inBlock={blockId !== null}
+                        onAdd={() => addIntention(item, start, end)}
+                      />
+                    ))}
+                  </ol>
+                )}
+
+                {/* The block being drawn */}
+                {draft && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute z-30 rounded-lg border-2 border-dashed border-foreground/40 bg-foreground/[.04]"
+                    style={{ top: y(draft.start) + 1, height: y(draft.end) - y(draft.start) - 2, left: `calc(${GUTTER} + 4px)`, right: 8 }}
+                  >
+                    <span className="absolute left-3 top-1.5 text-[11px] font-medium tabular-nums text-muted">
+                      {formatRange(draft.start, draft.end, clock)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Where a task dragged from the panel would land */}
+                {placing?.moved && placing.start !== null && (
+                  <DropPreview
+                    title={placing.task.title}
+                    goal={goalById.get(placing.task.goalId)}
+                    start={placing.start}
+                    end={placing.start + placing.minutes}
+                    clock={clock}
+                  />
+                )}
+
+                {/* Now */}
+                {isToday && now !== null && (
+                  <div className="pointer-events-none absolute inset-x-0 z-30" style={{ top: y(now) }}>
+                    <span
+                      className="absolute -translate-y-1/2 pr-2 text-right text-[11px] font-semibold tabular-nums text-red-500"
+                      style={{ width: GUTTER }}
+                    >
+                      {formatTime(now, clock)}
+                    </span>
+                    <div className="absolute right-0 border-t-2 border-red-500" style={{ left: GUTTER }}>
+                      <span className="absolute -left-[5px] -top-[6px] h-2.5 w-2.5 rounded-full bg-red-500" />
+                    </div>
+                  </div>
+                )}
+
+                {popover && popover.day === offset && (popover.mode === "create" || popoverBlock) && (
+                  <BlockPopover
+                    key={popover.mode === "edit" ? popover.blockId : `new-${popover.start}`}
+                    anchorTop={y(popover.start)}
+                    anchorBottom={y(popover.end)}
+                    timelineHeight={TIMELINE_HEIGHT}
+                    goals={goals}
+                    initial={popover.initial}
+                    intention={popover.mode === "edit" && popover.intention}
+                    timeLabel={`${dayName(popover.day)} · ${formatRange(popover.start, popover.end, clock)}`}
+                    onCancel={closePopover}
+                    onSave={(details) => (popover.mode === "create" ? saveCreate(popover, details) : saveEdit(popover, details))}
+                  />
+                )}
               </div>
-            )}
-
-            {/* Now */}
-            {isToday && now !== null && (
-              <div className="pointer-events-none absolute inset-x-0 z-30" style={{ top: y(now) }}>
-                <span
-                  className="absolute -translate-y-1/2 pr-2 text-right text-[11px] font-semibold tabular-nums text-red-500"
-                  style={{ width: GUTTER }}
-                >
-                  {formatTime(now, clock)}
-                </span>
-                <div className="absolute right-0 border-t-2 border-red-500" style={{ left: GUTTER }}>
-                  <span className="absolute -left-[5px] -top-[6px] h-2.5 w-2.5 rounded-full bg-red-500" />
-                </div>
-              </div>
-            )}
-
-            {popover && popover.day === offset && (popover.mode === "create" || popoverBlock) && (
-              <BlockPopover
-                key={popover.mode === "edit" ? popover.blockId : `new-${popover.start}`}
-                anchorTop={y(popover.start)}
-                anchorBottom={y(popover.end)}
-                timelineHeight={TIMELINE_HEIGHT}
-                goals={goals}
-                initial={popover.initial}
-                intention={popover.mode === "edit" && popover.intention}
-                timeLabel={`${dayName(popover.day)} · ${formatRange(popover.start, popover.end, clock)}`}
-                onCancel={closePopover}
-                onSave={(details) => (popover.mode === "create" ? saveCreate(popover, details) : saveEdit(popover, details))}
-              />
-            )}
+            </div>
           </div>
         </div>
       </div>
+
+
+      {/* The task under the pointer while it's dragged outside the timeline */}
+      {placing?.moved && (
+        <div
+          ref={chip}
+          aria-hidden="true"
+          style={{ ...goalColorStyle(goalById.get(placing.task.goalId)?.color ?? "slate"), transform: `translate(${placing.x + 14}px, ${placing.y + 10}px)` }}
+          className={`pointer-events-none fixed left-0 top-0 z-50 flex max-w-60 items-center gap-1.5 rounded-lg border border-card-border bg-card px-2.5 py-1.5 shadow-[0_6px_16px_rgb(15_17_20/0.14)] transition-opacity ${
+            placing.start !== null ? "opacity-0" : ""
+          }`}
+        >
+          <HugeiconsIcon icon={CircleIcon} size={13} className="shrink-0 text-[var(--goal-light)] dark:text-[var(--goal-dark)]" />
+          <span className="truncate text-[13px] font-medium text-foreground">{placing.task.title}</span>
+        </div>
+      )}
     </div>
   );
 }

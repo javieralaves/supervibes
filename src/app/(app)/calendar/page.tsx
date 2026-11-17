@@ -41,11 +41,20 @@ async function Today() {
 export default function CalendarPage() {
   return (
     <div className="flex flex-1 flex-col">
-      {/* The calendar fills the viewport's height, keeping a gap above and below. */}
-      <main className="animate-rise mx-auto flex h-dvh min-h-[540px] w-full max-w-3xl flex-col px-4 py-4 sm:px-8 sm:py-8">
+      {/* The top bar spans the page; the calendar below fills the rest of the viewport's height. */}
+      <main className="animate-rise flex h-dvh min-h-[540px] w-full flex-col">
         <h1 className="sr-only">Calendar</h1>
 
-        <Suspense fallback={<Skeleton className="flex-1 rounded-2xl" />}>
+        <Suspense
+          fallback={
+            <>
+              <div className="h-14 shrink-0 bg-background shadow-[inset_0_-1px_0_var(--card-border)]" />
+              <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-4 sm:px-8 sm:py-6">
+                <Skeleton className="flex-1 rounded-2xl" />
+              </div>
+            </>
+          }
+        >
           <Today />
         </Suspense>
       </main>

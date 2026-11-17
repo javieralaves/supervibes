@@ -161,6 +161,44 @@ export function BlockCard({
   );
 }
 
+/** Where a task dragged from the panel would land: an outline in its goal's colour, with the time. */
+export function DropPreview({
+  title,
+  goal,
+  start,
+  end,
+  clock,
+}: {
+  title: string;
+  goal: CalendarGoal | undefined;
+  start: number;
+  end: number;
+  clock: Clock;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{ ...goalColorStyle(goal?.color ?? "slate"), ...place(start, end) }}
+      className="goal-tint goal-glimpse-task pointer-events-none absolute z-30 overflow-hidden rounded-lg border-dashed! shadow-[0_6px_16px_rgb(15_17_20/0.12)]"
+    >
+      {isShort(start, end) ? (
+        // Unlike a card, the time stays visible even on one line: it's what you're choosing.
+        <div className="flex h-full items-center gap-2 px-3">
+          <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">{formatRange(start, end, clock)}</span>
+          <span className="min-w-0 truncate text-[13px] text-muted">{title}</span>
+        </div>
+      ) : (
+        <Label
+          title={title}
+          time={formatRange(start, end, clock)}
+          short={false}
+          icon={<HugeiconsIcon icon={CircleIcon} size={13} className="mt-[3px] shrink-0 text-[var(--goal)]" />}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * Something Glimpse proposes, with + to commit it to this time. Your own tasks
  * have a thin solid outline and a circle like their checkbox; suggestions are dashed.
