@@ -197,9 +197,8 @@ export const userSettings = pgTable("user_settings", {
 
 /**
  * Time on the calendar held for a goal. One table for both kinds:
- * - an intention: a suggestion committed to a time (`fromSuggestion` set);
- * - protected time: made by dragging on the calendar, with an optional title.
- *   `keepOpen` is no longer used (it marked "time set aside"); kept so the column can be dropped separately.
+ * - an intention: a task (or, earlier, a suggestion) committed to a time (`taskId` or `fromSuggestion` set);
+ * - protected time: made by dragging on the calendar, with an optional title and agenda.
  */
 export const calendarBlocks = pgTable(
   "calendar_blocks",
@@ -214,13 +213,10 @@ export const calendarBlocks = pgTable(
     title: text(),
     startsAt: timestamp({ withTimezone: true }).notNull(),
     endsAt: timestamp({ withTimezone: true }).notNull(),
-    keepOpen: boolean().notNull().default(false),
     /** Title of the suggestion this block commits to, making it an intention. Kept for history. */
     fromSuggestion: text(),
     /** The task this block schedules, making it an intention. */
     taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
-    /** No longer used: what Glimpse judged to fit a titled block. Kept so the column can be dropped separately. */
-    fits: jsonb().$type<string[]>().notNull().default([]),
     /** A plan for the session, prepared on request from the goal's tasks and latest read. */
     agenda: jsonb().$type<BlockAgenda>(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

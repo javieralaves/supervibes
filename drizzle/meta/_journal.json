@@ -127,6 +127,13 @@
       "when": 1794952214516,
       "tag": "0017_block_agenda",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794953812606,
+      "tag": "0018_drop_fits_keep_open",
+      "breakpoints": true
     }
   ]
 }
