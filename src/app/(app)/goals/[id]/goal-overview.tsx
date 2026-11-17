@@ -4,9 +4,9 @@ import { useState, useTransition } from "react";
 
 import { refreshProgressAction } from "./actions";
 import { GoalHeader } from "./goal-header";
-import { NextMoves, type SuggestionView } from "./next-moves";
 import { NotesSection, type NoteAuthor, type NoteView } from "./notes-section";
 import { ProgressCard, type ReadView } from "./progress-card";
+import { TasksSection, type SuggestionView, type TaskView } from "./tasks-section";
 
 type Props = {
   goal: { id: string; title: string; icon: string; color: string };
@@ -14,19 +14,16 @@ type Props = {
   notes: NoteView[];
   author: NoteAuthor;
   hasSources: boolean;
-  /** Whether the goal has any tasks, which a read can also go on. */
-  hasTasks: boolean;
-  /** The Tasks section, rendered between the suggestions and the sources. */
-  tasks: React.ReactNode;
+  tasks: TaskView[];
   /** The Sources section, rendered between the tasks and the notes. */
   sources: React.ReactNode;
 };
 
-/** Goal header, progress read, suggestions, tasks, sources and notes, sharing one "reading progress" state. */
-export function GoalOverview({ goal, read, notes, author, hasSources, hasTasks, tasks, sources }: Props) {
+/** Goal header, progress read, tasks and suggestions, sources and activity, sharing one "reading progress" state. */
+export function GoalOverview({ goal, read, notes, author, hasSources, tasks, sources }: Props) {
   const [reading, startReading] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const canRead = hasSources || hasTasks || notes.length > 0;
+  const canRead = hasSources || tasks.length > 0 || notes.length > 0;
 
   function update() {
     setError(null);
@@ -40,8 +37,15 @@ export function GoalOverview({ goal, read, notes, author, hasSources, hasTasks, 
     <>
       <GoalHeader goal={goal} canUpdate={canRead} reading={reading} onUpdate={update} />
       <ProgressCard read={read} canRead={canRead} reading={reading} error={error} onUpdate={update} />
-      {read && <NextMoves goalId={goal.id} suggestions={read.suggestions} reading={reading} onDone={update} />}
-      {tasks}
+      {/* Tasks, with the read's suggestions underneath as candidates to add. */}
+      <TasksSection
+        goalId={goal.id}
+        tasks={tasks}
+        suggestions={read?.suggestions ?? []}
+        hasRead={read !== null}
+        reading={reading}
+        onRefresh={update}
+      />
       {sources}
       {/* A new note should change the read, so it triggers one straight away. */}
       <NotesSection goalId={goal.id} notes={notes} author={author} onPosted={update} />

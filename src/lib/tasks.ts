@@ -67,7 +67,12 @@ export async function listTasksForRead(userId: string, goalId: string, days: num
 }
 
 /** Adds a task at the end of the goal's open tasks. */
-export async function createTask(userId: string, goalId: string, title: string): Promise<TaskDTO | null> {
+export async function createTask(
+  userId: string,
+  goalId: string,
+  title: string,
+  extra: { minutes?: number; description?: string | null } = {},
+): Promise<TaskDTO | null> {
   const [goal] = await db
     .select({ id: goals.id })
     .from(goals)
@@ -79,7 +84,14 @@ export async function createTask(userId: string, goalId: string, title: string):
     .where(and(eq(goalTasks.goalId, goalId), isNull(goalTasks.doneAt)));
   const [task] = await db
     .insert(goalTasks)
-    .values({ userId, goalId, title, minutes: DEFAULT_TASK_MINUTES, position: (last ?? -1) + 1 })
+    .values({
+      userId,
+      goalId,
+      title,
+      minutes: extra.minutes ?? DEFAULT_TASK_MINUTES,
+      description: extra.description ?? null,
+      position: (last ?? -1) + 1,
+    })
     .returning(columns);
   return task;
 }

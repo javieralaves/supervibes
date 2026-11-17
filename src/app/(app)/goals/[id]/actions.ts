@@ -8,7 +8,7 @@ import { createPost, createTaskDonePost, deletePost, deleteTaskDonePosts, update
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
 import { tryMatchBlockFits } from "@/lib/blocks";
-import { assessGoal, completeSuggestion, passOnSuggestion, ProgressError } from "@/lib/progress";
+import { assessGoal, completeSuggestion, getLatestRead, passOnSuggestion, ProgressError } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
 import { createTask, deleteTask, setTaskDone, updateTask } from "@/lib/tasks";
@@ -106,27 +106,32 @@ export async function deletePostAction(postId: unknown): Promise<ActionResult> {
 
 const suggestionTitleSchema = z.string().trim().min(1).max(140);
 
-/** "Done" on a suggestion: post the note the person wrote (prefilled "Done: …") and remove it. */
-export async function completeSuggestionAction(
-  goalId: unknown,
-  title: unknown,
-  note: unknown,
-): Promise<ActionResult> {
+/**
+ * "Add as task" on a suggestion: it becomes a task at the end of the list, keeping
+ * its estimate, with its reason as the description. It leaves the suggestions
+ * without being remembered as passed on.
+ */
+export async function addSuggestionAsTaskAction(goalId: unknown, title: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const goal = idSchema.safeParse(goalId);
   const parsed = suggestionTitleSchema.safeParse(title);
   if (!goal.success || !parsed.success) return { ok: false, error: "That suggestion doesn't exist anymore." };
-  const body = postBodySchema.safeParse(note ?? `Done: ${parsed.data}`);
-  if (!body.success) return { ok: false, error: body.error.issues[0]?.message ?? "Check the note." };
 
-  const post = await createPost(user.id, goal.data, body.data, parsed.data);
-  if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
-  await completeSuggestion(user.id, goal.data, parsed.data);
+  const read = await getLatestRead(user.id, goal.data);
+  const suggestion = read?.suggestions.find((s) => s.title === parsed.data);
+  if (!suggestion) return { ok: false, error: "That suggestion doesn't exist anymore." };
+
+  const task = await createTask(user.id, goal.data, suggestion.title, {
+    minutes: suggestion.minutes,
+    description: suggestion.why || null,
+  });
+  if (!task) return { ok: false, error: "That goal doesn't exist anymore." };
+  await completeSuggestion(user.id, goal.data, suggestion.title);
   refresh();
   return { ok: true };
 }
 
-/** "Not now" on a next move: hide it and keep later reads from suggesting it again. */
+/** "Not now" on a suggestion: hide it and keep later reads from suggesting it again. */
 export async function passOnSuggestionAction(goalId: unknown, title: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const goal = idSchema.safeParse(goalId);

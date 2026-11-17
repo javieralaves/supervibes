@@ -1,6 +1,16 @@
 "use client";
 
-import { Add01Icon, Clock01Icon, Delete02Icon, Tick02Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  Cancel01Icon,
+  Clock01Icon,
+  DashedLineCircleIcon,
+  Delete02Icon,
+  Refresh01Icon,
+  SparklesIcon,
+  Tick02Icon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { startTransition, useEffect, useId, useOptimistic, useRef, useState } from "react";
@@ -16,9 +26,18 @@ import {
   taskTitleSchema,
 } from "@/lib/task-schema";
 
-import { addTaskAction, deleteTaskAction, editTaskAction, setTaskDoneAction, type ActionResult } from "./actions";
+import {
+  addSuggestionAsTaskAction,
+  addTaskAction,
+  deleteTaskAction,
+  editTaskAction,
+  passOnSuggestionAction,
+  setTaskDoneAction,
+  type ActionResult,
+} from "./actions";
 
 export type TaskView = { id: string; title: string; description: string | null; minutes: number; doneAt: string | null };
+export type SuggestionView = { title: string; why: string; minutes: number };
 
 type Op =
   | { type: "add"; task: TaskView }
@@ -46,13 +65,40 @@ const LINE = "text-[0.95rem] leading-snug";
 /** A task's description, the same whether shown under a closed row or being edited. */
 const DESCRIPTION = "mt-0.5 text-sm text-muted [overflow-wrap:anywhere]";
 
+/** The time pill, as on suggestions. */
+const PILL =
+  "inline-flex w-fit items-center gap-1 rounded-full border border-card-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted";
+
 /**
  * A goal's open tasks. Click one to open it in place and add a description;
  * it saves when it closes (click elsewhere, Esc, or open another). Checked-off
  * tasks move to the goal's Activity.
+ *
+ * Under the list, the latest read's suggestions: candidates you can add as tasks
+ * or pass on. Once they're all handled, you can ask for new ones.
  */
-export function TasksSection({ goalId, tasks }: { goalId: string; tasks: TaskView[] }) {
+export function TasksSection({
+  goalId,
+  tasks,
+  suggestions,
+  hasRead,
+  reading,
+  onRefresh,
+}: {
+  goalId: string;
+  tasks: TaskView[];
+  suggestions: SuggestionView[];
+  /** Whether the goal has a read yet; before the first one there's nothing to suggest. */
+  hasRead: boolean;
+  /** A read is in progress. */
+  reading: boolean;
+  /** Runs a new read, which brings new suggestions. */
+  onRefresh: () => void;
+}) {
   const [list, apply] = useOptimistic(tasks, applyOp);
+  const [shown, hide] = useOptimistic(suggestions, (all: SuggestionView[], title: string) =>
+    all.filter((s) => s.title !== title),
+  );
   const [newTitle, setNewTitle] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +112,28 @@ export function TasksSection({ goalId, tasks }: { goalId: string; tasks: TaskVie
     startTransition(async () => {
       apply(op);
       const result = await action();
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function addSuggestion(s: SuggestionView) {
+    setError(null);
+    startTransition(async () => {
+      hide(s.title);
+      apply({
+        type: "add",
+        task: { id: `pending-${++pendingSeq}`, title: s.title, description: s.why || null, minutes: s.minutes, doneAt: null },
+      });
+      const result = await addSuggestionAsTaskAction(goalId, s.title);
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function passOn(s: SuggestionView) {
+    setError(null);
+    startTransition(async () => {
+      hide(s.title);
+      const result = await passOnSuggestionAction(goalId, s.title);
       if (!result.ok) setError(result.error);
     });
   }
@@ -194,7 +262,100 @@ export function TasksSection({ goalId, tasks }: { goalId: string; tasks: TaskVie
           {error}
         </p>
       )}
+
+      {hasRead && (
+        <div aria-busy={reading} className="mt-6">
+          <p className="mb-2 flex items-center gap-1.5 px-1 text-sm">
+            <HugeiconsIcon icon={SparklesIcon} size={14} className="text-muted" />
+            <span className="font-medium text-foreground">Suggested</span>
+            <span className="text-muted">· from your latest read</span>
+          </p>
+
+          {shown.length > 0 ? (
+            <ul className={`flex flex-col gap-2 transition-opacity ${reading ? "opacity-50" : ""}`}>
+              {shown.map((s) => (
+                <SuggestedRow
+                  key={s.title}
+                  suggestion={s}
+                  disabled={reading}
+                  onAdd={() => addSuggestion(s)}
+                  onPass={() => passOn(s)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-foreground/15 px-4 py-3">
+              <p className="text-sm text-muted">{reading ? "Looking for what's next…" : "Nothing suggested right now."}</p>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={reading}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-card-border bg-card px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong disabled:opacity-50"
+              >
+                <HugeiconsIcon icon={Refresh01Icon} size={14} className={reading ? "animate-spin" : undefined} />
+                {reading ? "Reading…" : "Get new suggestions"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+/** A suggestion: laid out like a task, but dashed and without a checkbox, since it isn't yours yet. */
+function SuggestedRow({
+  suggestion,
+  disabled,
+  onAdd,
+  onPass,
+}: {
+  suggestion: SuggestionView;
+  disabled: boolean;
+  onAdd: () => void;
+  onPass: () => void;
+}) {
+  return (
+    <li className="flex items-start gap-3 rounded-xl border border-dashed border-foreground/15 px-3 py-1.5">
+      <span className={`flex shrink-0 py-1.5 ${LINE}`}>
+        <span className="flex h-[1lh] items-center text-muted/70">
+          <HugeiconsIcon icon={DashedLineCircleIcon} size={18} />
+        </span>
+      </span>
+      <div className="min-w-0 flex-1 pb-2 pt-1.5">
+        <p className={`text-foreground [overflow-wrap:anywhere] ${LINE}`}>{suggestion.title}</p>
+        {suggestion.why && <p className={`line-clamp-2 ${DESCRIPTION}`}>{suggestion.why}</p>}
+        <span className={`mt-1.5 ${PILL}`}>
+          <HugeiconsIcon icon={Clock01Icon} size={12} />
+          {minutesLabel(suggestion.minutes)}
+        </span>
+      </div>
+      <span className={`flex shrink-0 gap-1 py-1.5 ${LINE}`}>
+        <span className="flex h-[1lh] items-center gap-1">
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={disabled}
+            aria-label={`Add “${suggestion.title}” as a task`}
+            title="Add as task"
+            className="flex h-7 items-center gap-1 rounded-lg border border-card-border bg-card px-2 text-xs font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong disabled:opacity-50"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={13} />
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={onPass}
+            disabled={disabled}
+            aria-label={`Not now: “${suggestion.title}”`}
+            title="Not now"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-wash hover:text-foreground disabled:opacity-50"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} />
+          </button>
+        </span>
+      </span>
+    </li>
   );
 }
 
@@ -242,7 +403,7 @@ function TaskRow({
   );
 
   const estimate = pending ? (
-    <span className="inline-flex w-fit items-center gap-1 rounded-full border border-card-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted">
+    <span className={PILL}>
       <HugeiconsIcon icon={Clock01Icon} size={12} />
       {minutesLabel(task.minutes)}
     </span>
@@ -251,7 +412,7 @@ function TaskRow({
       <DropdownMenu.Trigger
         aria-label={`Estimate: ${minutesLabel(task.minutes)}`}
         // The same time pill as on suggestions; click it to change the estimate.
-        className="inline-flex w-fit items-center gap-1 rounded-full border border-card-border px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted bg-card transition-colors hover:border-line-strong hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/30 data-[state=open]:border-line-strong data-[state=open]:text-foreground"
+        className={`${PILL} bg-card transition-colors hover:border-line-strong hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/30 data-[state=open]:border-line-strong data-[state=open]:text-foreground`}
       >
         <HugeiconsIcon icon={Clock01Icon} size={12} />
         {minutesLabel(task.minutes)}

@@ -16,7 +16,6 @@ import { listTasks } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
 import { SourcesSection } from "./sources-section";
-import { TasksSection } from "./tasks-section";
 
 export const metadata: Metadata = { title: "Goal · Supervibes" };
 
@@ -43,7 +42,6 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     <GoalOverview
       goal={goal}
       hasSources={sources.length > 0}
-      hasTasks={tasks.length > 0}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
       notes={posts.map((p) => ({
         id: p.id,
@@ -56,18 +54,13 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         updatedAt: p.updatedAt.toISOString(),
       }))}
       author={{ name: user.name, image: user.image }}
-      tasks={
-        <TasksSection
-          goalId={goal.id}
-          tasks={tasks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            minutes: t.minutes,
-            doneAt: t.doneAt?.toISOString() ?? null,
-          }))}
-        />
-      }
+      tasks={tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        minutes: t.minutes,
+        doneAt: t.doneAt?.toISOString() ?? null,
+      }))}
       sources={
         <SourcesSection
           goalId={goal.id}
