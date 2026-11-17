@@ -131,7 +131,6 @@ function segments(block: BlockView, base: Date): DaySegment[] {
     id: block.id,
     goalId: block.goalId,
     title: block.title,
-    keepOpen: block.keepOpen,
     fromSuggestion: block.fromSuggestion,
     taskId: block.taskId,
   };
@@ -310,7 +309,7 @@ export function DayCalendar({
       start: seg.start,
       end: seg.end,
       intention: Boolean(block.fromSuggestion || block.taskId),
-      initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+      initial: { goalId: block.goalId, title: block.title },
     });
   }
 
@@ -391,7 +390,7 @@ export function DayCalendar({
       }
       const last = readPref(LAST_GOAL_KEY);
       const goalId = goals.some((g) => g.id === last) ? last! : (goals[0]?.id ?? "");
-      setPopover({ mode: "create", day: drag.day, start, end, initial: { goalId, title: null, keepOpen: false } });
+      setPopover({ mode: "create", day: drag.day, start, end, initial: { goalId, title: null } });
       return;
     }
 
@@ -546,7 +545,6 @@ export function DayCalendar({
           id: pendingId(),
           goalId: task.goalId,
           title: task.title,
-          keepOpen: false,
           fromSuggestion: null,
           taskId: task.id,
           taskDone: false,
@@ -753,7 +751,7 @@ export function DayCalendar({
                               start: seg.start,
                               end: seg.end,
                               intention: Boolean(block.fromSuggestion || block.taskId),
-                              initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+                              initial: { goalId: block.goalId, title: block.title },
                             })
                           }
                           onTomorrow={() => moveToTomorrow(block)}

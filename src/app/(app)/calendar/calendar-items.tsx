@@ -5,7 +5,6 @@ import {
   ArrowTurnBackwardIcon,
   CircleIcon,
   Tick02Icon,
-  DashedLineCircleIcon,
   Delete02Icon,
   PencilEdit02Icon,
 } from "@hugeicons/core-free-icons";
@@ -100,10 +99,10 @@ export function BlockCard({
   onRemove: () => void;
 }) {
   const intention = Boolean(block.fromSuggestion || block.taskId);
-  const kind = intention ? "goal-tint-opaque" : block.keepOpen ? "goal-open border border-card-border" : "goal-hatch";
+  const kind = intention ? "goal-tint-opaque" : "goal-hatch";
   const title = block.title ?? goal?.title ?? "Protected time";
   const time = formatRange(start, end, clock);
-  const what = intention ? (block.taskDone ? "Done" : "Intention") : block.keepOpen ? "Time set aside" : "Protected time";
+  const what = intention ? (block.taskDone ? "Done" : "Intention") : "Protected time";
 
   return (
     <li
@@ -134,8 +133,6 @@ export function BlockCard({
             <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
               <HugeiconsIcon icon={Tick02Icon} size={9} strokeWidth={3} />
             </span>
-          ) : block.keepOpen ? (
-            <HugeiconsIcon icon={DashedLineCircleIcon} size={13} className="mt-[3px] shrink-0 text-[var(--goal)]" />
           ) : undefined
         }
       />

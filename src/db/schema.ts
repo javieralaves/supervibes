@@ -199,7 +199,7 @@ export const userSettings = pgTable("user_settings", {
  * Time on the calendar held for a goal. One table for both kinds:
  * - an intention: a suggestion committed to a time (`fromSuggestion` set);
  * - protected time: made by dragging on the calendar, with an optional title.
- *   `keepOpen` marks it as time set aside rather than protected time.
+ *   `keepOpen` is no longer used (it marked "time set aside"); kept so the column can be dropped separately.
  */
 export const calendarBlocks = pgTable(
   "calendar_blocks",

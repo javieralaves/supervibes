@@ -14,8 +14,7 @@ import { GUTTER } from "./geometry";
 const EST_HEIGHT = 200;
 
 /**
- * Sits next to a block on the timeline to name it, pick its goal and choose
- * whether to keep it open. The goal icon beside the title switches the popover
+ * Sits next to a block on the timeline to name it and pick its goal. The goal icon beside the title switches the popover
  * to a goal list in place. Enter saves; Esc steps back or cancels; a click
  * elsewhere cancels.
  */
@@ -35,7 +34,7 @@ export function BlockPopover({
   timelineHeight: number;
   goals: CalendarGoal[];
   initial: BlockDetails;
-  /** Intentions are a task already; they can't be set aside. */
+  /** Intentions are a task already: the title reads as what you'll do. */
   intention: boolean;
   timeLabel: string;
   onSave: (details: BlockDetails) => void;
@@ -43,13 +42,11 @@ export function BlockPopover({
 }) {
   const [title, setTitle] = useState(initial.title ?? "");
   const [goalId, setGoalId] = useState(initial.goalId);
-  const [keepOpen, setKeepOpen] = useState(initial.keepOpen);
   const [view, setView] = useState<"main" | "goals">("main");
   const ref = useRef<HTMLFormElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const titleId = useId();
-  const switchId = useId();
 
   // Bring it into view, and close it on a press anywhere else.
   useEffect(() => {
@@ -75,7 +72,7 @@ export function BlockPopover({
       data-calendar-popover
       onSubmit={(e) => {
         e.preventDefault();
-        if (goalId) onSave({ goalId, title: title.trim() || null, keepOpen: intention ? false : keepOpen });
+        if (goalId) onSave({ goalId, title: title.trim() || null });
       }}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
@@ -158,36 +155,6 @@ export function BlockPopover({
               />
             </div>
           </div>
-
-          {!intention && (
-            <label
-              htmlFor={switchId}
-              className="flex min-h-10 cursor-pointer items-center gap-3 rounded-xl bg-wash/70 px-3 py-2"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-foreground">Set time aside</span>
-                <span className="block text-xs text-muted [text-wrap:pretty]">
-                  {keepOpen ? "Shown as open time, with nothing planned." : "Shown as protected time for this goal."}
-                </span>
-              </span>
-              <button
-                id={switchId}
-                type="button"
-                role="switch"
-                aria-checked={keepOpen}
-                onClick={() => setKeepOpen((v) => !v)}
-                className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30 ${
-                  keepOpen ? "bg-foreground" : "bg-foreground/15"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-card shadow-[0_1px_2px_rgb(15_17_20/0.2)] transition-[left] ${
-                    keepOpen ? "left-4" : "left-0.5"
-                  }`}
-                />
-              </button>
-            </label>
-          )}
 
           <div className="flex items-center justify-end gap-1 px-1.5 pb-1 pt-2">
             <button

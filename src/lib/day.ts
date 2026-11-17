@@ -14,7 +14,6 @@ export type DaySegment = Span & {
   goalId: string;
   day: number;
   title: string | null;
-  keepOpen: boolean;
   fromSuggestion: string | null;
   taskId: string | null;
 };

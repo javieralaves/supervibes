@@ -24,7 +24,6 @@ const titleSchema = z
 export const blockDetailsSchema = z.object({
   goalId: z.uuid(),
   title: titleSchema,
-  keepOpen: z.boolean(),
 });
 
 export const newBlockSchema = z.intersection(blockDetailsSchema, timesSchema);
@@ -39,7 +38,6 @@ export type BlockView = {
   title: string | null;
   startsAt: string;
   endsAt: string;
-  keepOpen: boolean;
   /** The suggestion it was made from, if any. Kept for history. */
   fromSuggestion: string | null;
   /** The task it schedules: an intention. */

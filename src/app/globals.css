@@ -75,11 +75,6 @@ body {
   );
 }
 
-/* Calendar: time set aside on purpose (kept open). */
-.goal-tint.goal-open {
-  background-color: var(--card);
-}
-
 /* Calendar: a task being dragged onto the day, where it would land. */
 .goal-tint.goal-task-outline {
   background-color: color-mix(in oklab, var(--goal) 3%, var(--card));
@@ -99,9 +94,6 @@ body {
   }
   .goal-tint.goal-hatch {
     background-color: color-mix(in oklab, var(--goal) 6%, var(--card));
-  }
-  .goal-tint.goal-open {
-    background-color: var(--card);
   }
   .goal-tint.goal-task-outline {
     background-color: color-mix(in oklab, var(--goal) 5%, var(--card));

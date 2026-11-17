@@ -43,7 +43,7 @@ export function BlockPanel({
   onToggleDone?: () => void;
 }) {
   const intention = Boolean(block.fromSuggestion || block.taskId);
-  const kind = intention ? (block.taskDone ? "Done" : "Intention") : block.keepOpen ? "Time set aside" : "Protected time";
+  const kind = intention ? (block.taskDone ? "Done" : "Intention") : "Protected time";
   const title = block.title ?? goal?.title ?? "Protected time";
 
   return (

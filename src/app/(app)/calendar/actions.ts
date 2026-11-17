@@ -41,7 +41,6 @@ export async function scheduleTaskAction(taskId: unknown, times: unknown): Promi
     goalId: task.goalId,
     title: task.title,
     taskId: task.id,
-    keepOpen: false,
     startsAt: new Date(when.data.startsAt),
     endsAt: new Date(when.data.endsAt),
   });
@@ -74,7 +73,6 @@ export async function updateBlockAction(blockId: unknown, input: unknown): Promi
   const intention = Boolean(before.fromSuggestion || before.taskId);
   const block = await updateBlock(user.id, id.data, {
     ...parsed.data,
-    keepOpen: intention ? false : parsed.data.keepOpen,
     title: intention ? (parsed.data.title ?? before.title) : parsed.data.title,
     // An agenda is about one goal; moving the block to another goal clears it.
     ...(parsed.data.goalId !== before.goalId ? { agenda: null } : {}),
