@@ -1,12 +1,16 @@
 "use client";
 
-import { Logout01Icon } from "@hugeicons/core-free-icons";
+import { Logout01Icon, Settings02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import Link from "next/link";
 import { useTransition } from "react";
 
 import { Avatar } from "@/components/avatar";
 import { signOutAction } from "@/lib/auth-actions";
+
+const itemClass =
+  "flex h-9 cursor-default select-none items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-foreground outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-wash";
 
 type User = { name: string; email: string; image: string | null | undefined };
 
@@ -40,13 +44,20 @@ export function UserMenu({ user }: { user: User }) {
 
           <DropdownMenu.Separator className="my-1.5 h-px bg-card-border" />
 
+          <DropdownMenu.Item asChild className={itemClass}>
+            <Link href="/settings">
+              <HugeiconsIcon icon={Settings02Icon} size={16} className="text-muted" />
+              Settings
+            </Link>
+          </DropdownMenu.Item>
+
           <DropdownMenu.Item
             disabled={signingOut}
             onSelect={(event) => {
               event.preventDefault();
               startSignOut(() => signOutAction());
             }}
-            className="flex h-9 cursor-default select-none items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-foreground outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-wash"
+            className={itemClass}
           >
             <HugeiconsIcon icon={Logout01Icon} size={16} className="text-muted" />
             {signingOut ? "Signing out…" : "Sign out"}

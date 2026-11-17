@@ -168,3 +168,23 @@ export type Connection = typeof connections.$inferSelect;
 export type GoalSource = typeof goalSources.$inferSelect;
 export type GoalRead = typeof goalReads.$inferSelect;
 export type GoalPost = typeof goalPosts.$inferSelect;
+
+/**
+ * Per-user preferences. One row per user, created on first save; until then
+ * the defaults in src/lib/settings-schema.ts apply.
+ */
+export const userSettings = pgTable("user_settings", {
+  userId: text()
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** Bedtime, in minutes after local midnight (0–1439). */
+  sleepStart: integer().notNull().default(23 * 60),
+  /** Wake-up time, in minutes after local midnight (0–1439). */
+  wakeTime: integer().notNull().default(7 * 60),
+  /** "12h" or "24h"; null follows the device. */
+  clock: text(),
+  updatedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
