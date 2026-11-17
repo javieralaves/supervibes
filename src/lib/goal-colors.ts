@@ -3,15 +3,17 @@
  * palette can be retuned and each colour gets a light- and dark-mode variant.
  */
 export const GOAL_COLORS = {
-  coral: { label: "Coral", light: "#e2542b", dark: "#ff8a65" },
-  amber: { label: "Amber", light: "#c97a04", dark: "#fbbf24" },
-  green: { label: "Green", light: "#15924a", dark: "#4ade80" },
-  teal: { label: "Teal", light: "#0c8a80", dark: "#2dd4bf" },
-  sky: { label: "Sky", light: "#0279b8", dark: "#38bdf8" },
-  indigo: { label: "Indigo", light: "#4f46e5", dark: "#818cf8" },
-  violet: { label: "Violet", light: "#7c3aed", dark: "#a78bfa" },
-  pink: { label: "Pink", light: "#d0246f", dark: "#f472b6" },
-  slate: { label: "Slate", light: "#475569", dark: "#94a3b8" },
+  // Vibrant accents against the monochrome UI. Light values stay dark enough for
+  // icons on a light tint; dark values are brighter for dark mode.
+  coral: { label: "Coral", light: "#e8492f", dark: "#ff7a62" },
+  amber: { label: "Amber", light: "#e08a00", dark: "#ffb627" },
+  green: { label: "Green", light: "#14a05a", dark: "#3ddc84" },
+  teal: { label: "Teal", light: "#0aa395", dark: "#2ee6d0" },
+  sky: { label: "Sky", light: "#0a8be0", dark: "#3cb8ff" },
+  indigo: { label: "Indigo", light: "#4f46e5", dark: "#8b85ff" },
+  violet: { label: "Violet", light: "#8b3df0", dark: "#b88bff" },
+  pink: { label: "Pink", light: "#e6327f", dark: "#ff6fae" },
+  slate: { label: "Slate", light: "#475569", dark: "#a3b0c2" },
 } as const;
 
 export type GoalColor = keyof typeof GOAL_COLORS;

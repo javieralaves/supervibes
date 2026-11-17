@@ -15,6 +15,41 @@
       "when": 1794925048865,
       "tag": "0001_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794925798731,
+      "tag": "0002_context_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794928591307,
+      "tag": "0003_merge_source_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794928918334,
+      "tag": "0004_drop_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794928930413,
+      "tag": "0005_goal_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794929295385,
+      "tag": "0006_latest_read_only",
+      "breakpoints": true
     }
   ]
 }

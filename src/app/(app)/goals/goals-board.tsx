@@ -1,7 +1,8 @@
 "use client";
 
-import { Add01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import Link from "next/link";
 import { startTransition, useOptimistic, useState } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
@@ -122,26 +123,33 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {optimisticGoals.map((goal) => {
             const pending = goal.id.startsWith(PENDING_PREFIX);
+            const cardClass =
+              "group relative flex h-full w-full items-start gap-4 rounded-2xl border border-card-border bg-card p-5 text-left transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30";
+            const content = (
+              <>
+                <GoalBadge icon={goal.icon} color={goal.color} />
+                <span className="min-w-0 flex-1 pt-0.5 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
+                  {goal.title}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
+                >
+                  <HugeiconsIcon icon={ArrowRight01Icon} size={16} />
+                </span>
+              </>
+            );
             return (
               <li key={goal.id}>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => openDialog({ mode: "edit", goal })}
-                  className="group relative flex h-full w-full items-start gap-4 rounded-3xl border border-card-border bg-card p-5 text-left backdrop-blur-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgb(22_20_31/0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2 disabled:opacity-60"
-                >
-                  <GoalBadge icon={goal.icon} color={goal.color} />
-                  <span className="min-w-0 flex-1 pt-0.5 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
-                    {goal.title}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
-                  >
-                    <HugeiconsIcon icon={PencilEdit02Icon} size={16} />
-                  </span>
-                  <span className="sr-only">Edit</span>
-                </button>
+                {pending ? (
+                  <div aria-busy="true" className={`${cardClass} pointer-events-none opacity-60`}>
+                    {content}
+                  </div>
+                ) : (
+                  <Link href={`/goals/${goal.id}`} className={cardClass}>
+                    {content}
+                  </Link>
+                )}
               </li>
             );
           })}
@@ -151,7 +159,7 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
               <button
                 type="button"
                 onClick={() => openDialog({ mode: "create", initial: BLANK })}
-                className="flex h-full min-h-[84px] w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-foreground/15 text-sm font-medium text-muted transition-colors hover:border-foreground/30 hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2"
+                className="flex h-full min-h-[84px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-foreground/15 text-sm font-medium text-muted transition-colors hover:border-foreground/30 hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30"
               >
                 <HugeiconsIcon icon={Add01Icon} size={18} />
                 New goal
@@ -178,7 +186,7 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
 
 function EmptyState({ onCreate }: { onCreate: (initial: GoalInput) => void }) {
   return (
-    <div className="rounded-3xl border border-card-border bg-card p-6 backdrop-blur-2xl sm:p-8">
+    <div className="rounded-2xl border border-card-border bg-card p-6 sm:p-8">
       <h3 className="text-xl font-semibold tracking-[-0.02em] text-foreground">
         What are you working toward?
       </h3>
@@ -192,7 +200,7 @@ function EmptyState({ onCreate }: { onCreate: (initial: GoalInput) => void }) {
             key={s.title}
             type="button"
             onClick={() => onCreate(s)}
-            className="flex items-center gap-3 rounded-2xl border border-card-border bg-background/60 p-3 pr-4 text-left text-sm font-medium text-foreground transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2"
+            className="flex items-center gap-3 rounded-2xl border border-card-border bg-background/60 p-3 pr-4 text-left text-sm font-medium text-foreground transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30"
           >
             <GoalBadge icon={s.icon} color={s.color} />
             <span className="min-w-0 flex-1">{s.title}</span>

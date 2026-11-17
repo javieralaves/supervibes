@@ -59,10 +59,10 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgb(12_11_17/0.35)] backdrop-blur-sm data-[state=open]:animate-[fade-in_150ms_ease-out]" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-[fade-in_150ms_ease-out]" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-[28px] border border-card-border bg-background shadow-2xl outline-none data-[state=open]:animate-[sheet-in_220ms_cubic-bezier(0.2,0.7,0.2,1)] sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:h-[min(640px,85dvh)] sm:max-h-none sm:w-[480px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:data-[state=open]:animate-[pop-in_180ms_cubic-bezier(0.2,0.7,0.2,1)]"
+          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-[28px] border border-card-border bg-background shadow-2xl outline-none data-[state=open]:animate-[sheet-in_220ms_cubic-bezier(0.2,0.7,0.2,1)] sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:h-[min(640px,85dvh)] sm:max-h-none sm:w-[480px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[20px] sm:data-[state=open]:animate-[pop-in_180ms_cubic-bezier(0.2,0.7,0.2,1)]"
         >
           <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
             <div className="flex items-center justify-between px-6 pt-5">
@@ -107,7 +107,7 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
             <div className="min-h-0 flex-1 overflow-y-auto border-t border-card-border px-6 py-5">
               {/* Colour */}
               <fieldset>
-                <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+                <legend className="sr-only">
                   Color
                 </legend>
                 <div className="flex flex-wrap gap-2 sm:gap-2.5">
@@ -129,7 +129,7 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
 
               {/* Icon */}
               <fieldset className="mt-6">
-                <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+                <legend className="sr-only">
                   Icon
                 </legend>
                 <label className="relative block">

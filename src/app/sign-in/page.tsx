@@ -23,8 +23,8 @@ export default function SignInPage() {
           <Wordmark size="lg" />
         </div>
 
-        <div className="rounded-[28px] border border-card-border bg-card p-8 shadow-[0_1px_0_0_var(--ring)_inset,0_24px_60px_-20px_rgb(22_20_31/0.25)] backdrop-blur-2xl sm:p-10">
-          <h1 className="text-[1.65rem] font-semibold leading-tight tracking-[-0.025em] text-foreground">
+        <div className="rounded-[20px] border border-card-border bg-card p-8 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-16px_rgb(15_17_20/0.12)] sm:p-10">
+          <h1 className="text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground">
             Welcome back
           </h1>
           <p className="mt-2 text-[0.95rem] leading-relaxed text-muted">

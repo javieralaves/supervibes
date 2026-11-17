@@ -1,0 +1,3 @@
+/** Small round icon button (more options, add): white surface with a soft shadow so it stands out. */
+export const roundButtonClass =
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-card-border bg-card text-foreground/70 shadow-[0_1px_2px_rgb(15_17_20/0.06),0_2px_6px_-2px_rgb(15_17_20/0.10)] transition-[color,border-color,box-shadow] hover:border-line-strong hover:text-foreground hover:shadow-[0_1px_2px_rgb(15_17_20/0.08),0_4px_10px_-3px_rgb(15_17_20/0.14)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30 data-[state=open]:border-line-strong data-[state=open]:text-foreground";

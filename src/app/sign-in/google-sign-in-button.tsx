@@ -6,7 +6,7 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
 const buttonClass =
-  "group flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-black/[.08] bg-white px-5 text-[0.95rem] font-semibold text-zinc-900 shadow-[0_1px_2px_rgb(0_0_0/0.06),0_8px_24px_-12px_rgb(22_20_31/0.35)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_1px_2px_rgb(0_0_0/0.06),0_14px_30px_-12px_rgb(22_20_31/0.45)] active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2 disabled:pointer-events-none disabled:opacity-70 dark:border-white/[.1]";
+  "group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-card-border bg-card px-5 text-[0.95rem] font-medium text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-colors hover:border-line-strong hover:bg-wash focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30 disabled:pointer-events-none disabled:opacity-70";
 
 function GoogleIcon() {
   return (
