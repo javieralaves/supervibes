@@ -316,10 +316,12 @@ function SuggestedRow({
   onPass: () => void;
 }) {
   return (
-    <li className="flex items-start gap-3 rounded-xl border border-dashed border-foreground/15 px-3 py-1.5">
+    // 18px sides: the Tasks card's border, padding and row padding add up to the same, so circles and text line up.
+    <li className="flex items-start gap-3 rounded-xl border border-dashed border-foreground/15 px-[18px] py-1.5">
       <span className={`flex shrink-0 py-1.5 ${LINE}`}>
-        <span className="flex h-[1lh] items-center text-muted/70">
-          <HugeiconsIcon icon={DashedLineCircleIcon} size={18} />
+        {/* The icon's circle is drawn inside a margin, so it's sized up to match the 18px task checkbox. */}
+        <span className="flex h-[1lh] w-[18px] items-center justify-center text-muted/70">
+          <HugeiconsIcon icon={DashedLineCircleIcon} size={21} className="shrink-0" />
         </span>
       </span>
       <div className="min-w-0 flex-1 pb-2 pt-1.5">
