@@ -215,7 +215,11 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
           ...notes.map(
             (n) =>
               `- ${n.createdAt.toISOString().slice(0, 10)}: ${
-                n.completedSuggestion ? `[Completed suggestion: ${n.completedSuggestion}] ` : ""
+                n.completedSuggestion
+                  ? `[Completed suggestion: ${n.completedSuggestion}] `
+                  : n.completedTask
+                    ? `[Completed task: ${n.completedTask}] `
+                    : ""
               }${n.body.replace(/\s+/g, " ")}`,
           ),
         ]

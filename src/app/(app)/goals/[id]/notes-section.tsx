@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckmarkCircle02Icon, Delete02Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon, Delete02Icon, PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { startTransition, useId, useOptimistic, useState, useTransition } from "react";
 
@@ -10,13 +10,19 @@ import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
 import { MAX_POST, postBodySchema } from "@/lib/post-schema";
 import { shortAgo } from "@/lib/time";
 
-import { addPostAction, deletePostAction, editPostAction } from "./actions";
+import { addPostAction, deletePostAction, editPostAction, setTaskDoneAction } from "./actions";
 
 export type NoteView = {
   id: string;
   body: string;
   /** Title of the suggestion this note marks as done, if it came from "Done" on a suggestion. */
   completedSuggestion?: string | null;
+  /** Title of the task this records as done, if it was posted by checking a task off. */
+  completedTask?: string | null;
+  /** The task it records, while that task still exists, so it can be reopened from here. */
+  taskId?: string | null;
+  /** That task's description, if it has one. */
+  taskDescription?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -89,12 +95,12 @@ export function NotesSection({
   }
 
   return (
-    <section aria-labelledby="notes-heading" className="mt-12">
+    <section aria-labelledby="activity-heading" className="mt-12">
       <div className="mb-4">
-        <h2 id="notes-heading" className="text-lg font-semibold tracking-[-0.02em] text-foreground">
-          Notes
+        <h2 id="activity-heading" className="text-lg font-semibold tracking-[-0.02em] text-foreground">
+          Activity
         </h2>
-        <p className="text-sm text-muted">Context your apps can&apos;t show. Each note feeds the progress read.</p>
+        <p className="text-sm text-muted">Your notes and finished tasks. All of it feeds the progress read.</p>
       </div>
 
       {/* Composer */}
@@ -142,18 +148,110 @@ export function NotesSection({
 
       {optimisticNotes.length > 0 && (
         <ul className="mt-3 grid gap-3">
-          {optimisticNotes.map((note) => (
-            <NoteCard
-              key={note.id}
-              note={note}
-              author={author}
-              onEdit={(body) => run({ type: "edit", id: note.id, body }, () => editPostAction(note.id, body))}
-              onDelete={() => run({ type: "delete", id: note.id }, () => deletePostAction(note.id))}
-            />
-          ))}
+          {optimisticNotes.map((note) =>
+            note.completedTask ? (
+              <TaskDoneCard
+                key={note.id}
+                note={note}
+                task={note.completedTask}
+                author={author}
+                // Reopening the task also takes this entry back out of the activity.
+                onReopen={
+                  note.taskId
+                    ? () => run({ type: "delete", id: note.id }, () => setTaskDoneAction(note.taskId, false))
+                    : undefined
+                }
+                onDelete={() => run({ type: "delete", id: note.id }, () => deletePostAction(note.id))}
+              />
+            ) : (
+              <NoteCard
+                key={note.id}
+                note={note}
+                author={author}
+                onEdit={(body) => run({ type: "edit", id: note.id, body }, () => editPostAction(note.id, body))}
+                onDelete={() => run({ type: "delete", id: note.id }, () => deletePostAction(note.id))}
+              />
+            ),
+          )}
         </ul>
       )}
     </section>
+  );
+}
+
+/** Posted automatically when a task is checked off: who, when, and the task itself. */
+function TaskDoneCard({
+  note,
+  task,
+  author,
+  onReopen,
+  onDelete,
+}: {
+  note: NoteView;
+  task: string;
+  author: NoteAuthor;
+  /** Missing when the task has since been deleted. */
+  onReopen?: () => void;
+  onDelete: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <li className="rounded-2xl border border-card-border bg-card px-4 py-4 sm:px-5">
+      <div className="flex items-center gap-3">
+        <Avatar name={author.name} image={author.image} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">{author.name}</p>
+          <p className="text-xs text-muted" suppressHydrationWarning>
+            Completed a task · {shortAgo(note.createdAt)}
+          </p>
+        </div>
+        <MoreMenu label="Options for this entry">
+          {onReopen && (
+            <MoreMenuItem icon={ArrowTurnBackwardIcon} onSelect={onReopen}>
+              Reopen task
+            </MoreMenuItem>
+          )}
+          <MoreMenuItem icon={Delete02Icon} destructive onSelect={() => setConfirming(true)}>
+            Delete
+          </MoreMenuItem>
+        </MoreMenu>
+      </div>
+
+      {/* The task, shown the way it looks when checked off in the Tasks list. */}
+      <div className="mt-3 flex items-start gap-2.5 text-[0.95rem] leading-relaxed">
+        {/* One line tall, so the check centres on the first line of the title. */}
+        <span aria-hidden="true" className="flex h-[1lh] shrink-0 items-center">
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-foreground text-background">
+            <HugeiconsIcon icon={Tick02Icon} size={12} strokeWidth={2.5} />
+          </span>
+        </span>
+        <p className="min-w-0 font-medium text-foreground [overflow-wrap:anywhere]">
+          <span className="sr-only">Completed task: </span>
+          {task}
+        </p>
+      </div>
+      {/* Lined up under the title, past the check. */}
+      {note.taskDescription && (
+        <p className="ml-[28px] mt-1 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">
+          {note.taskDescription}
+        </p>
+      )}
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete this entry?"
+        description="The task stays done. Only this entry is removed from your activity."
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        pending={false}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete();
+        }}
+      />
+    </li>
   );
 }
 

@@ -11,11 +11,21 @@ import { DEFAULT_TASK_MINUTES } from "@/lib/task-schema";
  * owner, and writes check the goal belongs to them.
  */
 
-export type TaskDTO = { id: string; title: string; minutes: number; doneAt: Date | null; createdAt: Date };
+export type TaskDTO = {
+  id: string;
+  goalId: string;
+  title: string;
+  description: string | null;
+  minutes: number;
+  doneAt: Date | null;
+  createdAt: Date;
+};
 
 const columns = {
   id: goalTasks.id,
+  goalId: goalTasks.goalId,
   title: goalTasks.title,
+  description: goalTasks.description,
   minutes: goalTasks.minutes,
   doneAt: goalTasks.doneAt,
   createdAt: goalTasks.createdAt,
@@ -53,7 +63,7 @@ export async function createTask(userId: string, goalId: string, title: string):
 export async function updateTask(
   userId: string,
   taskId: string,
-  patch: { title?: string; minutes?: number },
+  patch: { title?: string; description?: string | null; minutes?: number },
 ): Promise<TaskDTO | null> {
   const [task] = await db.update(goalTasks).set(patch).where(mine(userId, taskId)).returning(columns);
   return task ?? null;

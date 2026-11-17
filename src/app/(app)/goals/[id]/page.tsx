@@ -48,6 +48,9 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         id: p.id,
         body: p.body,
         completedSuggestion: p.completedSuggestion,
+        completedTask: p.completedTask,
+        taskId: p.taskId,
+        taskDescription: p.taskDescription ?? null,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       }))}
@@ -55,7 +58,13 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
       tasks={
         <TasksSection
           goalId={goal.id}
-          tasks={tasks.map((t) => ({ id: t.id, title: t.title, minutes: t.minutes, doneAt: t.doneAt?.toISOString() ?? null }))}
+          tasks={tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            minutes: t.minutes,
+            doneAt: t.doneAt?.toISOString() ?? null,
+          }))}
         />
       }
       sources={

@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import * as z from "zod";
 
 import { postBodySchema } from "@/lib/post-schema";
-import { createPost, deletePost, updatePost } from "@/lib/posts";
+import { createPost, createTaskDonePost, deletePost, deleteTaskDonePosts, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
 import { tryMatchBlockFits } from "@/lib/blocks";
@@ -168,7 +168,12 @@ export async function setTaskDoneAction(taskId: unknown, done: unknown): Promise
   const user = await requireUser();
   const id = idSchema.safeParse(taskId);
   if (!id.success || typeof done !== "boolean") return { ok: false, error: TASK_GONE };
-  if (!(await setTaskDone(user.id, id.data, done))) return { ok: false, error: TASK_GONE };
+  const task = await setTaskDone(user.id, id.data, done);
+  if (!task) return { ok: false, error: TASK_GONE };
+  // Checking a task off shows up in the goal's notes; reopening it takes that back.
+  // One note per completion, even if a double click marks it done twice.
+  await deleteTaskDonePosts(user.id, task.id);
+  if (done) await createTaskDonePost(user.id, task.goalId, task.id, task.title);
   refresh();
   return { ok: true };
 }

@@ -155,6 +155,10 @@ export const goalPosts = pgTable(
     body: text().notNull(),
     /** Title of the suggestion this note marks as done, if it came from "Done" on a suggestion. */
     completedSuggestion: text(),
+    /** Title of the task this note records as done; posted when the task is checked off. */
+    completedTask: text(),
+    /** The task it records, while that task exists. */
+    taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
@@ -235,6 +239,8 @@ export const goalTasks = pgTable(
       .notNull()
       .references(() => goals.id, { onDelete: "cascade" }),
     title: text().notNull(),
+    /** Optional details, plain text. */
+    description: text(),
     /** Estimate in minutes: 15, 30, 60 or 120. */
     minutes: integer().notNull().default(30),
     /** When it was checked off; null while open. */

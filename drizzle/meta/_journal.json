@@ -92,6 +92,20 @@
       "when": 1794941895094,
       "tag": "0012_goal_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794942119456,
+      "tag": "0013_post_completed_task",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794942517789,
+      "tag": "0014_task_description",
+      "breakpoints": true
     }
   ]
 }
