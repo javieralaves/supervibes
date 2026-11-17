@@ -1,71 +1,177 @@
 "use client";
 
-import { ArrowLeft01Icon, ArrowRight01Icon, Moon02Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, Moon02Icon, ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react";
 
+import type { BlockDetails, BlockView } from "@/lib/block-schema";
+import { BLOCK_STEP } from "@/lib/block-schema";
 import { formatHour, formatRange, formatTime, useClock } from "@/lib/clock";
-import { goalColorStyle } from "@/lib/goal-colors";
-import { DAY_MINUTES, planDays, sleepSpans } from "@/lib/plan-day";
-import type { Clock, Settings } from "@/lib/settings-schema";
+import { DAY_MINUTES, planDays, sleepSpans, type PlanBlock } from "@/lib/plan-day";
+import type { Settings } from "@/lib/settings-schema";
 
-export type CalendarGoal = { id: string; title: string; icon: string; color: string };
+import { createBlockAction, createIntentionAction, deleteBlockAction, moveBlockAction, updateBlockAction } from "./actions";
+import { BlockPopover } from "./block-popover";
+import { BlockCard, SuggestionCard, type CalendarGoal } from "./calendar-items";
+import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
+
+export type { CalendarGoal };
 export type CalendarGroup = {
   goal: CalendarGoal;
   suggestions: { title: string; why: string; minutes: number }[];
 };
 
-type Item = { key: string; title: string; minutes: number; goal: CalendarGoal };
+type Item = { key: string; goalId: string; title: string; minutes: number; goal: CalendarGoal };
+type Result = { ok: true } | { ok: false; error: string };
 
-/** Height of one hour on the timeline, in px. */
-const HOUR = 64;
-/** Room above midnight and below the last hour so their labels aren't clipped. */
-const PAD = 12;
-/** Width of the hour-label column. */
-const GUTTER = "4rem";
+const TIMELINE_HEIGHT = y(DAY_MINUTES) + PAD;
 
-const y = (minutes: number) => PAD + (minutes / 60) * HOUR;
+/** Temporary ids for blocks shown before the server has saved them. */
+let pendingSeq = 0;
+const pendingId = () => `pending-${++pendingSeq}`;
+const snapDown = (m: number) => Math.floor(m / BLOCK_STEP) * BLOCK_STEP;
+const snapUp = (m: number) => Math.ceil(m / BLOCK_STEP) * BLOCK_STEP;
+const clamp = (m: number) => Math.min(DAY_MINUTES, Math.max(0, m));
 
 /* The clock ticks per minute in the browser only; the server has no idea of the viewer's time. */
-function subscribe(onChange: () => void) {
+function subscribeClock(onChange: () => void) {
   const id = setInterval(onChange, 15_000);
   return () => clearInterval(id);
 }
 const minuteNow = () => Math.floor(Date.now() / 60_000);
 const noClock = () => null;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/* Small per-browser preferences. Storage can be unavailable, so fall back to memory. */
+const memory = new Map<string, string>();
+function readPref(key: string) {
+  try {
+    return localStorage.getItem(key) ?? memory.get(key) ?? null;
+  } catch {
+    return memory.get(key) ?? null;
+  }
+}
+function writePref(key: string, value: string) {
+  memory.set(key, value);
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Memory still has it for this visit.
+  }
+}
+
+const GLIMPSE_KEY = "sv-calendar-glimpse";
+const LAST_GOAL_KEY = "sv-calendar-last-goal";
+const glimpseListeners = new Set<() => void>();
+function subscribeGlimpse(onChange: () => void) {
+  glimpseListeners.add(onChange);
+  return () => glimpseListeners.delete(onChange);
+}
+const readGlimpse = () => readPref(GLIMPSE_KEY) !== "off";
+const serverGlimpse = () => true;
+function setGlimpse(on: boolean) {
+  writePref(GLIMPSE_KEY, on ? "on" : "off");
+  glimpseListeners.forEach((l) => l());
+}
 
 function dayLabel(offset: number) {
   return offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : offset === -1 ? "Yesterday" : null;
 }
 
+type Op =
+  | { type: "add"; block: BlockView }
+  | { type: "update"; id: string; patch: Partial<BlockView> }
+  | { type: "remove"; id: string };
+
+function applyOp(blocks: BlockView[], op: Op): BlockView[] {
+  switch (op.type) {
+    case "add":
+      return [...blocks, op.block];
+    case "update":
+      return blocks.map((b) => (b.id === op.id ? { ...b, ...op.patch } : b));
+    case "remove":
+      return blocks.filter((b) => b.id !== op.id);
+  }
+}
+
+/** A block cut into its parts on each day it touches (blocks rarely cross midnight). */
+function segments(block: BlockView, base: Date): PlanBlock[] {
+  const s = new Date(block.startsAt);
+  const e = new Date(block.endsAt);
+  const d0 = dayOffset(s, base);
+  const d1 = dayOffset(e, base);
+  const startMin = s.getHours() * 60 + s.getMinutes();
+  const endMin = e.getHours() * 60 + e.getMinutes();
+  const common = {
+    id: block.id,
+    goalId: block.goalId,
+    title: block.title,
+    keepOpen: block.keepOpen,
+    fromSuggestion: block.fromSuggestion,
+    fits: block.fits,
+  };
+  if (d0 === d1) return [{ ...common, day: d0, start: startMin, end: endMin }];
+  const parts: PlanBlock[] = [{ ...common, day: d0, start: startMin, end: DAY_MINUTES }];
+  for (let d = d0 + 1; d < d1; d++) parts.push({ ...common, day: d, start: 0, end: DAY_MINUTES });
+  if (endMin > 0) parts.push({ ...common, day: d1, start: 0, end: endMin });
+  return parts;
+}
+
+type Popover =
+  | { mode: "create"; day: number; start: number; end: number; initial: BlockDetails }
+  | { mode: "edit"; blockId: string; day: number; start: number; end: number; initial: BlockDetails; intention: boolean };
+
+type Drag =
+  | { kind: "create"; day: number; from: number; to: number; moved: boolean; originY: number }
+  | { kind: "move"; blockId: string; day: number; start: number; end: number; delta: number; originY: number; moved: boolean };
+
 /**
- * One day, hour by hour. Every goal's open suggestions are placed in your awake
- * time from now on, spilling into the following days; the chevrons step between days.
+ * One day, hour by hour. Intentions and protected time are yours: drag on empty
+ * space to protect time, drag a block to move it, click it to edit. With Glimpse
+ * on, the goals' open suggestions are placed around and inside them, from now
+ * on, spilling into the following days; + commits one to its time.
  */
-export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; settings: Settings }) {
-  const stamp = useSyncExternalStore(subscribe, minuteNow, noClock);
+export function DayCalendar({
+  groups,
+  goals,
+  blocks: savedBlocks,
+  settings,
+}: {
+  groups: CalendarGroup[];
+  goals: CalendarGoal[];
+  blocks: BlockView[];
+  settings: Settings;
+}) {
+  const stamp = useSyncExternalStore(subscribeClock, minuteNow, noClock);
+  const glimpse = useSyncExternalStore(subscribeGlimpse, readGlimpse, serverGlimpse);
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
+  const [blocks, apply] = useOptimistic(savedBlocks, applyOp);
+  const [popover, setPopover] = useState<Popover | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const ready = stamp !== null;
   const today = ready ? new Date(stamp * 60_000) : null;
+  const base = today ? startOfDay(today) : null;
   const now = today ? today.getHours() * 60 + today.getMinutes() : null;
   const isToday = offset === 0;
-  // Noon avoids landing on the wrong date across a daylight-saving change.
-  const shown = today
-    ? new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).getTime() + offset * DAY_MS
-    : null;
+  const goalById = new Map(goals.map((g) => [g.id, g]));
+
+  const allSegments = base ? blocks.flatMap((b) => segments(b, base)) : [];
+  const daySegments = allSegments.filter((s) => s.day === offset);
 
   const placed =
-    now === null
+    now === null || !glimpse
       ? []
       : planDays(
           groups.map((g) =>
-            g.suggestions.map((s): Item => ({ key: `${g.goal.id}:${s.title}`, title: s.title, minutes: s.minutes, goal: g.goal })),
+            g.suggestions.map(
+              (s): Item => ({ key: `${g.goal.id}:${s.title}`, goalId: g.goal.id, title: s.title, minutes: s.minutes, goal: g.goal }),
+            ),
           ),
           now,
           settings,
+          allSegments,
         ).filter((p) => p.day === offset);
   const count = groups.reduce((n, g) => n + g.suggestions.length, 0);
   // Earlier days are all behind you; later days haven't started.
@@ -88,17 +194,173 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [data-calendar-popover], [role='menu']")) return;
       const focused = card.current?.contains(document.activeElement) ?? false;
       if (!hovered.current && !focused) return;
       e.preventDefault();
+      setPopover(null);
       setOffset((o) => o + (e.key === "ArrowLeft" ? -1 : 1));
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [ready]);
 
+  function run(op: Op, action: () => Promise<Result>) {
+    setError(null);
+    startTransition(async () => {
+      apply(op);
+      const result = await action();
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  const closePopover = useCallback(() => setPopover(null), []);
+
+  // --- Dragging: on empty space to protect time, on a block to move it. ---
+
+  const timeline = useRef<HTMLDivElement>(null);
+  const minuteAtPointer = (clientY: number) => {
+    const rect = timeline.current!.getBoundingClientRect();
+    return clamp(minutesAt(clientY - rect.top));
+  };
+
+  function onTimelineDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!ready || e.button !== 0 || e.target !== e.currentTarget) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (e.clientX - rect.left < parseFloat(GUTTER) * 16) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const m = minuteAtPointer(e.clientY);
+    setDrag({ kind: "create", day: offset, from: m, to: m, moved: false, originY: e.clientY });
+  }
+
+  function onBlockDown(e: React.PointerEvent<HTMLLIElement>, seg: PlanBlock) {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button, [role='menuitem']")) return;
+    e.stopPropagation();
+    timeline.current?.setPointerCapture(e.pointerId);
+    setDrag({ kind: "move", blockId: seg.id, day: seg.day, start: seg.start, end: seg.end, delta: 0, originY: e.clientY, moved: false });
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!drag) return;
+    const moved = drag.moved || Math.abs(e.clientY - drag.originY) > 4;
+    if (drag.kind === "create") {
+      setDrag({ ...drag, to: minuteAtPointer(e.clientY), moved });
+    } else {
+      const raw = ((e.clientY - drag.originY) / HOUR) * 60;
+      const delta = Math.max(-drag.start, Math.min(DAY_MINUTES - drag.end, Math.round(raw / BLOCK_STEP) * BLOCK_STEP));
+      setDrag({ ...drag, delta, moved });
+    }
+  }
+
+  function onPointerUp() {
+    if (!drag || !base) return setDrag(null);
+    setDrag(null);
+
+    if (drag.kind === "create") {
+      let start: number;
+      let end: number;
+      if (!drag.moved) {
+        start = snapDown(drag.from);
+        end = Math.min(DAY_MINUTES, start + 60);
+        if (end - start < BLOCK_STEP) start = end - BLOCK_STEP;
+      } else {
+        start = snapDown(Math.min(drag.from, drag.to));
+        end = Math.max(start + BLOCK_STEP, snapUp(Math.max(drag.from, drag.to)));
+      }
+      const last = readPref(LAST_GOAL_KEY);
+      const goalId = goals.some((g) => g.id === last) ? last! : (goals[0]?.id ?? "");
+      setPopover({ mode: "create", day: drag.day, start, end, initial: { goalId, title: null, keepOpen: false } });
+      return;
+    }
+
+    const block = blocks.find((b) => b.id === drag.blockId);
+    if (!block) return;
+    if (!drag.moved) {
+      // A click: edit it.
+      setPopover({
+        mode: "edit",
+        blockId: block.id,
+        day: drag.day,
+        start: drag.start,
+        end: drag.end,
+        intention: Boolean(block.fromSuggestion),
+        initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+      });
+      return;
+    }
+    if (drag.delta === 0) return;
+    const shift = drag.delta * 60_000;
+    const times = {
+      startsAt: new Date(Date.parse(block.startsAt) + shift).toISOString(),
+      endsAt: new Date(Date.parse(block.endsAt) + shift).toISOString(),
+    };
+    run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
+  }
+
+  // --- Saving ---
+
+  function saveCreate(p: Extract<Popover, { mode: "create" }>, details: BlockDetails) {
+    if (!base) return;
+    writePref(LAST_GOAL_KEY, details.goalId);
+    const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
+    setPopover(null);
+    run(
+      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, fits: [] } },
+      () => createBlockAction({ ...details, ...times }),
+    );
+  }
+
+  function saveEdit(p: Extract<Popover, { mode: "edit" }>, details: BlockDetails) {
+    writePref(LAST_GOAL_KEY, details.goalId);
+    setPopover(null);
+    run({ type: "update", id: p.blockId, patch: details }, () => updateBlockAction(p.blockId, details));
+  }
+
+  function moveToTomorrow(block: BlockView) {
+    const shift = (d: string) => {
+      const date = new Date(d);
+      date.setDate(date.getDate() + 1);
+      return date.toISOString();
+    };
+    const times = { startsAt: shift(block.startsAt), endsAt: shift(block.endsAt) };
+    run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
+  }
+
+  function addIntention(item: Item, start: number, end: number) {
+    if (!base) return;
+    const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, end) };
+    run(
+      {
+        type: "add",
+        block: {
+          id: pendingId(),
+          goalId: item.goalId,
+          title: item.title,
+          keepOpen: false,
+          fromSuggestion: item.title,
+          fits: [],
+          ...times,
+        },
+      },
+      () => createIntentionAction(item.goalId, item.title, times),
+    );
+  }
+
+  const shownDay = base ? new Date(base.getTime() + 12 * 3600_000 + offset * DAY_MS) : null;
   const relative = dayLabel(offset);
+  const dayName = (day: number) =>
+    base ? new Date(base.getTime() + 12 * 3600_000 + day * DAY_MS).toLocaleDateString(undefined, { weekday: "long" }) : "";
+
+  // The draft while creating: live while dragging, then held while the popover is open.
+  let draft: { start: number; end: number } | null = null;
+  if (drag?.kind === "create" && drag.moved && drag.day === offset) {
+    const start = snapDown(Math.min(drag.from, drag.to));
+    draft = { start, end: Math.max(start + BLOCK_STEP, snapUp(Math.max(drag.from, drag.to))) };
+  } else if (popover?.mode === "create" && popover.day === offset) {
+    draft = { start: popover.start, end: popover.end };
+  }
+
+  const popoverBlock = popover?.mode === "edit" ? blocks.find((b) => b.id === popover.blockId) : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -114,7 +376,7 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
         onPointerLeave={() => (hovered.current = false)}
         className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-card-border bg-card"
       >
-        {/* Day header: step between days on the left, the date beside them. */}
+        {/* Day header: step between days on the left, the date beside them, Glimpse on the right. */}
         <div className="flex shrink-0 items-center gap-3 border-b border-card-border px-3 py-3 sm:px-4">
           <div className="flex shrink-0 items-center gap-1">
             <NavButton label="Previous day" icon={ArrowLeft01Icon} disabled={!ready} onClick={() => setOffset((o) => o - 1)} />
@@ -122,35 +384,65 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
           </div>
           <h2 aria-live="polite" className="flex min-w-0 items-baseline gap-2" suppressHydrationWarning>
             <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
-              {shown === null
+              {shownDay === null
                 ? "Today"
-                : new Date(shown).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                : shownDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
             </span>
-            {shown !== null && relative && <span className="shrink-0 text-sm text-muted">{relative}</span>}
+            {shownDay !== null && relative && <span className="hidden shrink-0 text-sm text-muted sm:inline">{relative}</span>}
           </h2>
-          {!isToday && (
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {!isToday && (
+              <button
+                type="button"
+                onClick={() => setOffset(0)}
+                className="h-8 rounded-lg border border-card-border bg-card px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong"
+              >
+                Today
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setOffset(0)}
-              className="ml-auto h-8 shrink-0 rounded-lg border border-card-border bg-card px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-colors hover:border-line-strong"
+              aria-pressed={glimpse}
+              onClick={() => setGlimpse(!glimpse)}
+              title={glimpse ? "Hide suggestions" : "Show suggestions"}
+              className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors ${
+                glimpse
+                  ? "border-line-strong bg-foreground/[.06] text-foreground"
+                  : "border-card-border bg-card text-muted shadow-[0_1px_2px_rgb(15_17_20/0.05)] hover:border-line-strong hover:text-foreground"
+              }`}
             >
-              Today
+              <HugeiconsIcon icon={glimpse ? ViewIcon : ViewOffIcon} size={15} />
+              Glimpse
             </button>
-          )}
+          </div>
         </div>
+
+        {error && (
+          <p role="alert" className="shrink-0 border-b border-card-border px-4 py-2 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        )}
 
         <div
           ref={scroller}
           tabIndex={0}
-          aria-label="Day timeline. Use the left and right arrow keys to change day."
+          aria-label="Day timeline. Drag on empty space to protect time. Use the left and right arrow keys to change day."
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foreground/20"
         >
-          <div className="relative" style={{ height: y(DAY_MINUTES) + PAD }}>
+          <div
+            ref={timeline}
+            onPointerDown={onTimelineDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={() => setDrag(null)}
+            className={`relative select-none ${drag?.kind === "create" ? "cursor-ns-resize" : ""}`}
+            style={{ height: TIMELINE_HEIGHT }}
+          >
             {/* Hour lines and labels */}
             {Array.from({ length: 25 }, (_, h) => {
               const nearNow = isToday && now !== null && Math.abs(h * 60 - now) < 14;
               return (
-                <div key={h} className="absolute inset-x-0" style={{ top: y(h * 60) }}>
+                <div key={h} className="pointer-events-none absolute inset-x-0" style={{ top: y(h * 60) }}>
                   <span
                     className={`absolute -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted transition-opacity ${
                       nearNow ? "opacity-0" : ""
@@ -169,7 +461,7 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
               <div
                 key={span.start}
                 aria-hidden="true"
-                className="absolute right-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--foreground)_6%,transparent)_0_1px,transparent_1px_7px)]"
+                className="pointer-events-none absolute right-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--foreground)_6%,transparent)_0_1px,transparent_1px_7px)]"
                 style={{ left: GUTTER, top: y(span.start), height: y(span.end) - y(span.start) }}
               >
                 {span.end - span.start >= 45 && (
@@ -185,23 +477,82 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
             {pastUntil !== null && (
               <div
                 aria-hidden="true"
-                className="absolute right-0 bg-foreground/[.03]"
+                className="pointer-events-none absolute right-0 bg-foreground/[.03]"
                 style={{ left: GUTTER, top: PAD, height: y(pastUntil) - PAD }}
               />
             )}
 
-            {/* Suggestions */}
+            {/* Your intentions and protected time */}
+            {daySegments.length > 0 && (
+              <ul aria-label="Your time on this day">
+                {daySegments.map((seg) => {
+                  const block = blocks.find((b) => b.id === seg.id)!;
+                  const moving = drag?.kind === "move" && drag.blockId === seg.id && drag.moved;
+                  const shift = moving ? drag.delta : 0;
+                  return (
+                    <BlockCard
+                      key={`${seg.id}:${seg.day}`}
+                      block={block}
+                      goal={goalById.get(block.goalId)}
+                      start={seg.start + shift}
+                      end={seg.end + shift}
+                      clock={clock}
+                      pending={block.id.startsWith("pending-")}
+                      dragging={moving}
+                      onPointerDown={(e) => onBlockDown(e, seg)}
+                      onEdit={() =>
+                        setPopover({
+                          mode: "edit",
+                          blockId: block.id,
+                          day: seg.day,
+                          start: seg.start,
+                          end: seg.end,
+                          intention: Boolean(block.fromSuggestion),
+                          initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
+                        })
+                      }
+                      onTomorrow={() => moveToTomorrow(block)}
+                      onRemove={() => run({ type: "remove", id: block.id }, () => deleteBlockAction(block.id))}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* Glimpse: suggestions, not yet committed */}
             {placed.length > 0 && (
               <ol aria-label="Suggestions on this day">
-                {placed.map(({ item, start, end }) => (
-                  <Block key={item.key} item={item} start={start} end={end} clock={clock} />
+                {placed.map(({ item, start, end, blockId }) => (
+                  <SuggestionCard
+                    key={item.key}
+                    title={item.title}
+                    goal={item.goal}
+                    start={start}
+                    end={end}
+                    clock={clock}
+                    inBlock={blockId !== null}
+                    onAdd={() => addIntention(item, start, end)}
+                  />
                 ))}
               </ol>
             )}
 
+            {/* The block being drawn */}
+            {draft && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute z-30 rounded-lg border-2 border-dashed border-foreground/40 bg-foreground/[.04]"
+                style={{ top: y(draft.start) + 1, height: y(draft.end) - y(draft.start) - 2, left: `calc(${GUTTER} + 4px)`, right: 8 }}
+              >
+                <span className="absolute left-3 top-1.5 text-[11px] font-medium tabular-nums text-muted">
+                  {formatRange(draft.start, draft.end, clock)}
+                </span>
+              </div>
+            )}
+
             {/* Now */}
             {isToday && now !== null && (
-              <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: y(now) }}>
+              <div className="pointer-events-none absolute inset-x-0 z-30" style={{ top: y(now) }}>
                 <span
                   className="absolute -translate-y-1/2 pr-2 text-right text-[11px] font-semibold tabular-nums text-red-500"
                   style={{ width: GUTTER }}
@@ -212,6 +563,21 @@ export function DayCalendar({ groups, settings }: { groups: CalendarGroup[]; set
                   <span className="absolute -left-[5px] -top-[6px] h-2.5 w-2.5 rounded-full bg-red-500" />
                 </div>
               </div>
+            )}
+
+            {popover && popover.day === offset && (popover.mode === "create" || popoverBlock) && (
+              <BlockPopover
+                key={popover.mode === "edit" ? popover.blockId : `new-${popover.start}`}
+                anchorTop={y(popover.start)}
+                anchorBottom={y(popover.end)}
+                timelineHeight={TIMELINE_HEIGHT}
+                goals={goals}
+                initial={popover.initial}
+                intention={popover.mode === "edit" && popover.intention}
+                timeLabel={`${dayName(popover.day)} · ${formatRange(popover.start, popover.end, clock)}`}
+                onCancel={closePopover}
+                onSave={(details) => (popover.mode === "create" ? saveCreate(popover, details) : saveEdit(popover, details))}
+              />
             )}
           </div>
         </div>
@@ -242,33 +608,5 @@ function NavButton({
     >
       <HugeiconsIcon icon={icon} size={16} strokeWidth={2} />
     </button>
-  );
-}
-
-function Block({ item, start, end, clock }: { item: Item; start: number; end: number; clock: Clock }) {
-  const short = item.minutes < 60;
-  const time = formatRange(start, end, clock);
-
-  return (
-    <li
-      style={{ ...goalColorStyle(item.goal.color), top: y(start) + 1, height: y(end) - y(start) - 2, left: `calc(${GUTTER} + 4px)` }}
-      className="goal-tint goal-tint-opaque absolute right-2 overflow-hidden rounded-lg"
-      title={`${item.title}\n${item.goal.title} · ${time}`}
-    >
-      <span aria-hidden="true" className="goal-solid absolute inset-y-0 left-0 w-[3px]" />
-      {short ? (
-        <div className="flex h-full items-center gap-2 pl-3 pr-2.5">
-          <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{item.title}</p>
-          <span className="shrink-0 text-[11px] tabular-nums text-muted">{time}</span>
-        </div>
-      ) : (
-        <div className="flex h-full flex-col gap-1 py-2 pl-3 pr-2.5">
-          <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
-            {item.title}
-          </p>
-          <p className="text-xs tabular-nums text-muted">{time}</p>
-        </div>
-      )}
-    </li>
   );
 }

@@ -7,6 +7,7 @@ import { postBodySchema } from "@/lib/post-schema";
 import { createPost, deletePost, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
+import { tryMatchBlockFits } from "@/lib/blocks";
 import { assessGoal, completeSuggestion, passOnSuggestion, ProgressError } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 
@@ -54,6 +55,8 @@ export async function refreshProgressAction(goalId: unknown): Promise<ActionResu
 
   try {
     await assessGoal(user.id, id.data);
+    // New suggestions: re-judge which fit the goal's titled blocks of time.
+    await tryMatchBlockFits(user.id, id.data);
     refresh();
     return { ok: true };
   } catch (error) {

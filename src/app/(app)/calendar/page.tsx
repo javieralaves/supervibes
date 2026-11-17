@@ -3,6 +3,8 @@ import { Suspense } from "react";
 
 import { Skeleton } from "@/components/skeleton";
 import { listOpenSuggestions } from "@/lib/progress";
+import { listBlocksAroundNow } from "@/lib/blocks";
+import { listGoals } from "@/lib/goals";
 import { requireUser } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
 
@@ -12,8 +14,20 @@ export const metadata: Metadata = { title: "Calendar · Supervibes" };
 
 async function Today() {
   const user = await requireUser();
-  const [groups, settings] = await Promise.all([listOpenSuggestions(user.id), getSettings(user.id)]);
-  return <DayCalendar groups={groups} settings={settings} />;
+  const [groups, settings, goals, blocks] = await Promise.all([
+    listOpenSuggestions(user.id),
+    getSettings(user.id),
+    listGoals(user.id),
+    listBlocksAroundNow(user.id),
+  ]);
+  return (
+    <DayCalendar
+      groups={groups}
+      settings={settings}
+      goals={goals.map(({ id, title, icon, color }) => ({ id, title, icon, color }))}
+      blocks={blocks.map((b) => ({ ...b, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() }))}
+    />
+  );
 }
 
 export default function CalendarPage() {

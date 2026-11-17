@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { db } from "@/db";
 import { goalReads, goals, goalSources } from "@/db/schema";
+import { listUpcomingBlocks } from "@/lib/blocks";
 import { getUsableConnection, markConnectionError } from "@/lib/connections";
 import { listPosts } from "@/lib/posts";
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
@@ -36,7 +37,7 @@ What to return:
   - minutes: 30, 60 or 120. Aim for a spread, such as one of each.
   - Ground each one in something specific you saw. Never invent details.
   - Make them different from each other: for example, one that moves the goal forward, one that removes a blocker or closes a feedback loop, and one quick win.
-  - Skip anything already done, anything their notes say to ignore or pause, and anything they've passed on before.
+  - Skip anything already done, anything already planned on their calendar, anything their notes say to ignore or pause, and anything they've passed on before.
   - Don't suggest meetings or waiting on others unless the context clearly calls for it.
 If there's a previous read, use it for continuity, but describe where things stand now.
 Be honest. Don't inflate thin activity into progress, and don't pad.`;
@@ -191,6 +192,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
   const now = new Date();
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const previous = await getLatestRead(userId, goalId);
+  const planned = await listUpcomingBlocks(userId, goalId);
 
   const serverName = (connectionId: string) => `${servers.get(connectionId)!.provider}-${connectionId.slice(0, 8)}`;
   const prompt = [
@@ -219,6 +221,18 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
         ]
       : ["The person hasn't written any notes for this goal."]),
     "",
+    ...(planned.length > 0
+      ? [
+          "Time on the person's calendar for this goal, soonest first:",
+          ...planned.map((b) => {
+            const when = `${b.startsAt.toISOString()} to ${b.endsAt.toISOString()}`;
+            if (b.fromSuggestion) return `- ${when}: planned to do "${b.fromSuggestion}" (already planned, don't suggest it again)`;
+            const what = b.title ? `"${b.title}"` : "untitled";
+            return `- ${when}: time set aside for this goal, ${what}${b.keepOpen ? ", kept open on purpose" : ""}`;
+          }),
+          "",
+        ]
+      : []),
     previous
       ? `Previous read (${previous.createdAt.toISOString()}): ${previous.headline} ${previous.summary}`
       : "There is no previous read.",

@@ -65,6 +65,27 @@ body {
   background-color: color-mix(in oklab, var(--goal) 8%, var(--card));
 }
 
+/* Calendar: time protected for a goal. */
+.goal-tint.goal-hatch {
+  background-color: color-mix(in oklab, var(--goal) 4%, var(--card));
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--goal) 16%, transparent) 0 1px,
+    transparent 1px 8px
+  );
+}
+
+/* Calendar: protected time kept open on purpose. */
+.goal-tint.goal-open {
+  background-color: var(--card);
+}
+
+/* Calendar: a suggestion, not yet committed. */
+.goal-tint.goal-suggest {
+  background-color: color-mix(in oklab, var(--goal) 4%, var(--card));
+  border: 1px dashed color-mix(in oklab, var(--goal) 55%, transparent);
+}
+
 @media (prefers-color-scheme: dark) {
   .goal-tint {
     --goal: var(--goal-dark);
@@ -75,6 +96,15 @@ body {
   }
   .goal-tint.goal-tint-opaque {
     background-color: color-mix(in oklab, var(--goal) 12%, var(--card));
+  }
+  .goal-tint.goal-hatch {
+    background-color: color-mix(in oklab, var(--goal) 6%, var(--card));
+  }
+  .goal-tint.goal-open {
+    background-color: var(--card);
+  }
+  .goal-tint.goal-suggest {
+    background-color: color-mix(in oklab, var(--goal) 6%, var(--card));
   }
 }
 

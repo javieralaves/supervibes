@@ -7,14 +7,26 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { roundButtonClass } from "@/components/round-button";
 
 /** Circular "more options" button with a dropdown of actions. */
-export function MoreMenu({ label, children }: { label: string; children: React.ReactNode }) {
+const smallTriggerClass =
+  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-card-border bg-card text-foreground/70 shadow-[0_1px_2px_rgb(15_17_20/0.08)] transition-colors hover:border-line-strong hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/30 data-[state=open]:border-line-strong data-[state=open]:text-foreground";
+
+export function MoreMenu({
+  label,
+  children,
+  small = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** A compact trigger for tight spots, like calendar blocks. */
+  small?: boolean;
+}) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
         aria-label={label}
-        className={roundButtonClass}
+        className={small ? smallTriggerClass : roundButtonClass}
       >
-        <HugeiconsIcon icon={MoreHorizontalIcon} size={18} />
+        <HugeiconsIcon icon={MoreHorizontalIcon} size={small ? 14 : 18} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content

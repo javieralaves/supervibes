@@ -188,3 +188,37 @@ export const userSettings = pgTable("user_settings", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 });
+
+/**
+ * Time on the calendar held for a goal. One table for both kinds:
+ * - an intention: a suggestion committed to a time (`fromSuggestion` set);
+ * - protected time: made by dragging on the calendar, with an optional title.
+ *   `keepOpen` means nothing gets placed inside; otherwise the goal's
+ *   suggestions can fill it (only those in `fits` when it has a title).
+ */
+export const calendarBlocks = pgTable(
+  "calendar_blocks",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    title: text(),
+    startsAt: timestamp({ withTimezone: true }).notNull(),
+    endsAt: timestamp({ withTimezone: true }).notNull(),
+    keepOpen: boolean().notNull().default(false),
+    /** Title of the suggestion this block commits to, making it an intention. */
+    fromSuggestion: text(),
+    /** Suggestion titles judged to fit this block's title; refreshed by a model call. */
+    fits: jsonb().$type<string[]>().notNull().default([]),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt)],
+);
