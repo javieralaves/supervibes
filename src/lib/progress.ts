@@ -228,7 +228,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
             const when = `${b.startsAt.toISOString()} to ${b.endsAt.toISOString()}`;
             if (b.fromSuggestion) return `- ${when}: planned to do "${b.fromSuggestion}" (already planned, don't suggest it again)`;
             const what = b.title ? `"${b.title}"` : "untitled";
-            return `- ${when}: time set aside for this goal, ${what}${b.keepOpen ? ", kept open on purpose" : ""}`;
+            return `- ${when}: time protected for this goal, ${what}${b.keepOpen ? ", set aside on purpose with no tasks" : ""}`;
           }),
           "",
         ]

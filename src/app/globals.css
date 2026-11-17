@@ -75,7 +75,7 @@ body {
   );
 }
 
-/* Calendar: protected time kept open on purpose. */
+/* Calendar: time set aside on purpose (kept open). */
 .goal-tint.goal-open {
   background-color: var(--card);
 }

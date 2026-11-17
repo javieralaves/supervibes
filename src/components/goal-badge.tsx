@@ -6,6 +6,9 @@ import { goalColorStyle } from "@/lib/goal-colors";
 import { goalIcon } from "@/lib/goal-icons";
 
 const sizes = {
+  xs: { tile: "h-6 w-6 rounded-md", icon: 14 },
+  // Sits beside a two-line field, like the calendar popover's title.
+  field: { tile: "h-9 w-9 rounded-lg", icon: 18 },
   sm: { tile: "h-10 w-10 rounded-xl", icon: 20 },
   lg: { tile: "h-14 w-14 rounded-2xl", icon: 28 },
 };

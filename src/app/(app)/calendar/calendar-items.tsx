@@ -79,18 +79,27 @@ export function BlockCard({
   const kind = intention ? "goal-tint-opaque" : block.keepOpen ? "goal-open border border-card-border" : "goal-hatch";
   const title = block.title ?? goal?.title ?? "Protected time";
   const time = formatRange(start, end, clock);
-  const what = intention ? "Intention" : block.keepOpen ? "Time kept open" : "Protected time";
+  const what = intention ? "Intention" : block.keepOpen ? "Time set aside" : "Protected time";
 
   return (
     <li
       style={{ ...goalColorStyle(goal?.color ?? "slate"), ...place(start, end) }}
       onPointerDown={pending ? undefined : onPointerDown}
       aria-label={`${what}: ${title}, ${time}`}
-      className={`goal-tint ${kind} group absolute z-10 touch-none select-none overflow-hidden rounded-lg transition-shadow ${
-        pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing shadow-[0_8px_24px_-8px_rgb(15_17_20/0.3)]" : "cursor-grab"
+      className={`goal-tint ${kind} group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
+        pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-grab"
       }`}
     >
       <span aria-hidden="true" className="goal-solid absolute inset-y-0 left-0 w-[3px]" />
+      {!pending && (
+        <>
+          {/* Drag the top or bottom edge to change the length. */}
+          <span aria-hidden="true" data-edge="start" className="absolute inset-x-0 top-0 z-10 h-1.5 cursor-ns-resize" />
+          <span aria-hidden="true" data-edge="end" className="absolute inset-x-0 bottom-0 z-10 flex h-2 cursor-ns-resize justify-center">
+            <span className="mt-0.5 h-1 w-6 rounded-full bg-foreground/20 opacity-0 transition-opacity group-hover:opacity-100" />
+          </span>
+        </>
+      )}
       <Label
         title={title}
         time={time}

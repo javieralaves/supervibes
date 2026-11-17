@@ -122,7 +122,25 @@ type Popover =
 
 type Drag =
   | { kind: "create"; day: number; from: number; to: number; moved: boolean; originY: number }
-  | { kind: "move"; blockId: string; day: number; start: number; end: number; delta: number; originY: number; moved: boolean };
+  | {
+      kind: "move";
+      /** "move" drags the whole block; "start" and "end" drag its top or bottom edge. */
+      edge: Edge;
+      blockId: string;
+      day: number;
+      start: number;
+      end: number;
+      delta: number;
+      originY: number;
+      moved: boolean;
+    };
+
+type Edge = "move" | "start" | "end";
+
+/** Where a block's edges sit while one of them, or the whole block, is being dragged. */
+function dragged(edge: Edge, start: number, end: number, delta: number) {
+  return { start: start + (edge === "end" ? 0 : delta), end: end + (edge === "start" ? 0 : delta) };
+}
 
 /**
  * One day, hour by hour. Intentions and protected time are yours: drag on empty
@@ -234,10 +252,12 @@ export function DayCalendar({
   }
 
   function onBlockDown(e: React.PointerEvent<HTMLLIElement>, seg: PlanBlock) {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button, [role='menuitem']")) return;
+    const target = e.target as HTMLElement;
+    if (e.button !== 0 || target.closest("button, [role='menuitem']")) return;
     e.stopPropagation();
     timeline.current?.setPointerCapture(e.pointerId);
-    setDrag({ kind: "move", blockId: seg.id, day: seg.day, start: seg.start, end: seg.end, delta: 0, originY: e.clientY, moved: false });
+    const edge = (target.closest("[data-edge]")?.getAttribute("data-edge") as Edge | null) ?? "move";
+    setDrag({ kind: "move", edge, blockId: seg.id, day: seg.day, start: seg.start, end: seg.end, delta: 0, originY: e.clientY, moved: false });
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -246,8 +266,15 @@ export function DayCalendar({
     if (drag.kind === "create") {
       setDrag({ ...drag, to: minuteAtPointer(e.clientY), moved });
     } else {
-      const raw = ((e.clientY - drag.originY) / HOUR) * 60;
-      const delta = Math.max(-drag.start, Math.min(DAY_MINUTES - drag.end, Math.round(raw / BLOCK_STEP) * BLOCK_STEP));
+      const raw = Math.round((((e.clientY - drag.originY) / HOUR) * 60) / BLOCK_STEP) * BLOCK_STEP;
+      // Keep it within the day, and at least 15 minutes long when changing its length.
+      const [min, max] =
+        drag.edge === "start"
+          ? [-drag.start, drag.end - BLOCK_STEP - drag.start]
+          : drag.edge === "end"
+            ? [drag.start + BLOCK_STEP - drag.end, DAY_MINUTES - drag.end]
+            : [-drag.start, DAY_MINUTES - drag.end];
+      const delta = Math.max(min, Math.min(max, raw));
       setDrag({ ...drag, delta, moved });
     }
   }
@@ -276,6 +303,7 @@ export function DayCalendar({
     const block = blocks.find((b) => b.id === drag.blockId);
     if (!block) return;
     if (!drag.moved) {
+      if (drag.edge !== "move") return;
       // A click: edit it.
       setPopover({
         mode: "edit",
@@ -291,8 +319,8 @@ export function DayCalendar({
     if (drag.delta === 0) return;
     const shift = drag.delta * 60_000;
     const times = {
-      startsAt: new Date(Date.parse(block.startsAt) + shift).toISOString(),
-      endsAt: new Date(Date.parse(block.endsAt) + shift).toISOString(),
+      startsAt: new Date(Date.parse(block.startsAt) + (drag.edge === "end" ? 0 : shift)).toISOString(),
+      endsAt: new Date(Date.parse(block.endsAt) + (drag.edge === "start" ? 0 : shift)).toISOString(),
     };
     run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
   }
@@ -435,7 +463,7 @@ export function DayCalendar({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={() => setDrag(null)}
-            className={`relative select-none ${drag?.kind === "create" ? "cursor-ns-resize" : ""}`}
+            className={`relative select-none ${drag?.kind === "create" || (drag?.kind === "move" && drag.edge !== "move") ? "cursor-ns-resize" : ""}`}
             style={{ height: TIMELINE_HEIGHT }}
           >
             {/* Hour lines and labels */}
@@ -488,14 +516,14 @@ export function DayCalendar({
                 {daySegments.map((seg) => {
                   const block = blocks.find((b) => b.id === seg.id)!;
                   const moving = drag?.kind === "move" && drag.blockId === seg.id && drag.moved;
-                  const shift = moving ? drag.delta : 0;
+                  const at = moving ? dragged(drag.edge, seg.start, seg.end, drag.delta) : seg;
                   return (
                     <BlockCard
                       key={`${seg.id}:${seg.day}`}
                       block={block}
                       goal={goalById.get(block.goalId)}
-                      start={seg.start + shift}
-                      end={seg.end + shift}
+                      start={at.start}
+                      end={at.end}
                       clock={clock}
                       pending={block.id.startsWith("pending-")}
                       dragging={moving}
