@@ -179,7 +179,13 @@ function NoteCard({
   }
 
   return (
-    <li className={`rounded-2xl border border-card-border bg-card px-4 py-4 sm:px-5 ${pending ? "opacity-60" : ""}`}>
+    <li
+      className={`rounded-2xl border bg-card px-4 py-4 transition-[border-color,box-shadow] sm:px-5 ${
+        editing
+          ? "border-line-strong shadow-[0_0_0_4px_color-mix(in_oklab,var(--foreground)_6%,transparent)]"
+          : "border-card-border"
+      } ${pending ? "opacity-60" : ""}`}
+    >
       {/* Who and when, with the note's menu on the same row. */}
       <div className="flex items-center gap-3">
         <Avatar name={author.name} image={author.image} size="sm" />
@@ -231,10 +237,13 @@ function NoteCard({
               }
               if (e.key === "Escape") cancel();
             }}
-            className={`${textareaClass} rounded-lg border border-card-border bg-background px-3 py-2`}
+            // Same type and position as the note itself, so editing happens in place.
+            className={`${textareaClass} [overflow-wrap:anywhere]`}
           />
-          <div className="mt-2 flex justify-end gap-2">
-            <button type="button" onClick={cancel} className="h-8 rounded-lg px-3 text-sm font-medium text-foreground hover:bg-wash">
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="hidden text-xs text-muted sm:block">⌘↵ to save · Esc to cancel</p>
+            <div className="ml-auto flex gap-1.5">
+            <button type="button" onClick={cancel} className="h-8 rounded-lg px-3 text-sm font-medium text-muted hover:bg-wash hover:text-foreground">
               Cancel
             </button>
             <button
@@ -245,6 +254,7 @@ function NoteCard({
             >
               Save
             </button>
+            </div>
           </div>
         </div>
       ) : (

@@ -30,23 +30,57 @@ How to work:
 What to return:
 - headline: one plain sentence, at most 12 words, that says at a glance whether they're making progress. No jargon, no ids.
 - summary: two or three short sentences, under 60 words in total, addressed to the person as "you". Name only what matters most for the goal, and if something is in the way, say what. No lists, no issue ids, no links, no dates unless they matter.
+- suggestions: two or three next moves the person could do on their own, each fitting in 30 minutes to 2 hours.
+  - title: an imperative action, at most 10 words, specific enough to start right away. Not a theme ("Improve listings"), but an action ("Turn Jacob's last three comments into listing filters").
+  - why: one short sentence tying it to what you saw in their sources or notes.
+  - minutes: 30, 60 or 120. Aim for a spread, such as one of each.
+  - Ground each one in something specific you saw. Never invent details.
+  - Make them different from each other: for example, one that moves the goal forward, one that removes a blocker or closes a feedback loop, and one quick win.
+  - Skip anything already done, anything their notes say to ignore or pause, and anything they've passed on before.
+  - Don't suggest meetings or waiting on others unless the context clearly calls for it.
 If there's a previous read, use it for continuity, but describe where things stand now.
 Be honest. Don't inflate thin activity into progress, and don't pad.`;
 
 const OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["headline", "summary"],
+  required: ["headline", "summary", "suggestions"],
   properties: {
     headline: { type: "string" },
     summary: { type: "string" },
+    suggestions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "why", "minutes"],
+        properties: {
+          title: { type: "string" },
+          why: { type: "string" },
+          minutes: { type: "integer", enum: [30, 60, 120] },
+        },
+      },
+    },
   },
 } as const;
+
+const suggestionSchema = z.object({
+  title: z.string().trim().min(1).max(140),
+  why: z.string().trim().max(300),
+  minutes: z.union([z.literal(30), z.literal(60), z.literal(120)]),
+});
 
 const readSchema = z.object({
   headline: z.string().trim().min(1).max(200),
   summary: z.string().trim().min(1).max(1500),
+  suggestions: z.array(suggestionSchema).transform((list) => list.slice(0, 3)),
 });
+
+/** Stored shape; minutes is 30, 60 or 120. */
+export type Suggestion = { title: string; why: string; minutes: number };
+
+/** How many passed-on suggestions to remember and show to later reads. */
+const MAX_DISMISSED = 15;
 
 export class ProgressError extends Error {}
 
@@ -54,6 +88,8 @@ export type GoalReadDTO = {
   headline: string;
   summary: string;
   basedOn: string[];
+  suggestions: Suggestion[];
+  dismissed: string[];
   createdAt: Date;
 };
 
@@ -61,6 +97,8 @@ const readColumns = {
   headline: goalReads.headline,
   summary: goalReads.summary,
   basedOn: goalReads.basedOn,
+  suggestions: goalReads.suggestions,
+  dismissed: goalReads.dismissed,
   createdAt: goalReads.createdAt,
 };
 
@@ -152,6 +190,9 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     previous
       ? `Previous read (${previous.createdAt.toISOString()}): ${previous.headline} ${previous.summary}`
       : "There is no previous read.",
+    ...(previous && previous.dismissed.length > 0
+      ? ["", "Suggestions the person passed on (don't suggest these again):", ...previous.dismissed.map((t) => `- ${t}`)]
+      : []),
   ].join("\n");
 
   const mcpServers = [...servers.entries()].map(([id, s]) => ({
@@ -208,6 +249,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
 
   const basedOn: string[] = [...new Set([...servers.values()].map((s) => s.provider))];
   if (notes.length > 0) basedOn.push(NOTES_MARKER);
+  // Replaces headline, summary and suggestions; keeps the list of passed-on suggestions.
   const values = { ...parsed, basedOn, createdAt: new Date() };
   const [saved] = await db
     .insert(goalReads)
@@ -223,4 +265,29 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
       .where(eq(goalSources.id, source.id));
   }
   return saved;
+}
+
+/** Removes a suggestion from the goal's latest read. Returns false if there's no read. */
+async function removeSuggestion(userId: string, goalId: string, title: string, rememberAsPassed: boolean) {
+  const read = await getLatestRead(userId, goalId);
+  if (!read) return false;
+  const suggestions = read.suggestions.filter((s) => s.title !== title);
+  const dismissed = rememberAsPassed
+    ? [title, ...read.dismissed.filter((t) => t !== title)].slice(0, MAX_DISMISSED)
+    : read.dismissed;
+  await db
+    .update(goalReads)
+    .set({ suggestions, dismissed })
+    .where(and(eq(goalReads.goalId, goalId), eq(goalReads.userId, userId)));
+  return true;
+}
+
+/** "Not now": hide the suggestion and tell later reads not to suggest it again. */
+export function passOnSuggestion(userId: string, goalId: string, title: string) {
+  return removeSuggestion(userId, goalId, title, true);
+}
+
+/** "Done": hide the suggestion. The caller records it as a note, which the next read sees. */
+export function completeSuggestion(userId: string, goalId: string, title: string) {
+  return removeSuggestion(userId, goalId, title, false);
 }

@@ -57,6 +57,13 @@
       "when": 1794932898985,
       "tag": "0007_goal_posts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794933758917,
+      "tag": "0008_read_suggestions",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ import { postBodySchema } from "@/lib/post-schema";
 import { createPost, deletePost, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
-import { assessGoal, ProgressError } from "@/lib/progress";
+import { assessGoal, completeSuggestion, passOnSuggestion, ProgressError } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -94,6 +94,36 @@ export async function deletePostAction(postId: unknown): Promise<ActionResult> {
   const id = idSchema.safeParse(postId);
   if (!id.success || !(await deletePost(user.id, id.data))) {
     return { ok: false, error: "That note doesn't exist anymore." };
+  }
+  refresh();
+  return { ok: true };
+}
+
+const suggestionTitleSchema = z.string().trim().min(1).max(140);
+
+/** "Done" on a next move: record it as a note (the page then refreshes the read). */
+export async function completeSuggestionAction(goalId: unknown, title: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const parsed = suggestionTitleSchema.safeParse(title);
+  if (!goal.success || !parsed.success) return { ok: false, error: "That suggestion doesn't exist anymore." };
+
+  const post = await createPost(user.id, goal.data, `Done: ${parsed.data}`);
+  if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
+  await completeSuggestion(user.id, goal.data, parsed.data);
+  refresh();
+  return { ok: true };
+}
+
+/** "Not now" on a next move: hide it and keep later reads from suggesting it again. */
+export async function passOnSuggestionAction(goalId: unknown, title: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const parsed = suggestionTitleSchema.safeParse(title);
+  if (!goal.success || !parsed.success) return { ok: false, error: "That suggestion doesn't exist anymore." };
+
+  if (!(await passOnSuggestion(user.id, goal.data, parsed.data))) {
+    return { ok: false, error: "That suggestion doesn't exist anymore." };
   }
   refresh();
   return { ok: true };

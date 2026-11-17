@@ -128,6 +128,10 @@ export const goalReads = pgTable(
     summary: text().notNull(),
     /** Provider keys of the apps this read drew on, e.g. ["linear"]. */
     basedOn: jsonb().$type<string[]>().notNull().default([]),
+    /** 2–3 concrete next moves (30 min to 2 hr), replaced on every read. */
+    suggestions: jsonb().$type<{ title: string; why: string; minutes: number }[]>().notNull().default([]),
+    /** Titles of suggestions the person passed on, so later reads don't repeat them. Kept across reads. */
+    dismissed: jsonb().$type<string[]>().notNull().default([]),
     /** When this read was made. */
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },

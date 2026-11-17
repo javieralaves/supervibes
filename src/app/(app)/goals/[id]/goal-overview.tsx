@@ -4,12 +4,13 @@ import { useState, useTransition } from "react";
 
 import { refreshProgressAction } from "./actions";
 import { GoalHeader } from "./goal-header";
+import { NextMoves, type SuggestionView } from "./next-moves";
 import { NotesSection, type NoteAuthor, type NoteView } from "./notes-section";
 import { ProgressCard, type ReadView } from "./progress-card";
 
 type Props = {
   goal: { id: string; title: string; icon: string; color: string };
-  read: ReadView | null;
+  read: (ReadView & { suggestions: SuggestionView[] }) | null;
   notes: NoteView[];
   author: NoteAuthor;
   hasSources: boolean;
@@ -17,7 +18,7 @@ type Props = {
   sources: React.ReactNode;
 };
 
-/** Goal header, progress read, sources and notes, sharing one "reading progress" state. */
+/** Goal header, progress read, next moves, sources and notes, sharing one "reading progress" state. */
 export function GoalOverview({ goal, read, notes, author, hasSources, sources }: Props) {
   const [reading, startReading] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function GoalOverview({ goal, read, notes, author, hasSources, sources }:
     <>
       <GoalHeader goal={goal} canUpdate={canRead} reading={reading} onUpdate={update} />
       <ProgressCard read={read} canRead={canRead} reading={reading} error={error} onUpdate={update} />
+      {read && <NextMoves goalId={goal.id} suggestions={read.suggestions} reading={reading} onDone={update} />}
       {sources}
       {/* A new note should change the read, so it triggers one straight away. */}
       <NotesSection goalId={goal.id} notes={notes} author={author} onPosted={update} />
