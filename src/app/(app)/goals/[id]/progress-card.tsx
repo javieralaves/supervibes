@@ -1,6 +1,6 @@
 "use client";
 
-import { Note01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
+import { CheckListIcon, Note01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ProviderMark } from "@/components/provider-mark";
@@ -41,8 +41,8 @@ export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props)
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-muted">
           {canRead
-            ? "Supervibes will look at your notes and sources and tell you, in a few lines, whether you're moving forward."
-            : "Add a note or a source below. Supervibes will read them and tell you, in a few lines, whether you're moving forward."}
+            ? "Supervibes will look at your tasks, notes and sources and tell you, in a few lines, whether you're moving forward."
+            : "Add a task, a note or a source below. Supervibes will read them and tell you, in a few lines, whether you're moving forward."}
         </p>
         {canRead && (
           <button
@@ -62,7 +62,12 @@ export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props)
 
   const apps = [...new Set(read.basedOn.map(toProvider).filter((p): p is ProviderKey => p !== null))];
   const usedNotes = read.basedOn.includes("notes");
-  const basedOnLabel = [...apps.map((a) => PROVIDERS[a].label), ...(usedNotes ? ["your notes"] : [])].join(", ");
+  const usedTasks = read.basedOn.includes("tasks");
+  const basedOnLabel = [
+    ...apps.map((a) => PROVIDERS[a].label),
+    ...(usedNotes ? ["your notes"] : []),
+    ...(usedTasks ? ["your tasks"] : []),
+  ].join(", ");
 
   return (
     <section
@@ -90,6 +95,11 @@ export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props)
               {usedNotes && (
                 <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-card-border bg-wash text-foreground">
                   <HugeiconsIcon icon={Note01Icon} size={11} />
+                </span>
+              )}
+              {usedTasks && (
+                <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-card-border bg-wash text-foreground">
+                  <HugeiconsIcon icon={CheckListIcon} size={11} />
                 </span>
               )}
             </span>

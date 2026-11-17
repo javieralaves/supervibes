@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, max, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goals, goalTasks } from "@/db/schema";
@@ -40,6 +40,30 @@ export async function listTasks(userId: string, goalId: string): Promise<TaskDTO
     .from(goalTasks)
     .where(and(eq(goalTasks.goalId, goalId), eq(goalTasks.userId, userId)))
     .orderBy(sql`${goalTasks.doneAt} is not null`, desc(goalTasks.doneAt), asc(goalTasks.position), asc(goalTasks.createdAt));
+}
+
+/**
+ * What a progress read needs: every open task in order, and tasks finished in
+ * the last `days` days, most recent first.
+ */
+export async function listTasksForRead(userId: string, goalId: string, days: number) {
+  const mineOnGoal = and(eq(goalTasks.goalId, goalId), eq(goalTasks.userId, userId));
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const [open, done] = await Promise.all([
+    db
+      .select(columns)
+      .from(goalTasks)
+      .where(and(mineOnGoal, isNull(goalTasks.doneAt)))
+      .orderBy(asc(goalTasks.position), asc(goalTasks.createdAt))
+      .limit(50),
+    db
+      .select(columns)
+      .from(goalTasks)
+      .where(and(mineOnGoal, gte(goalTasks.doneAt, since)))
+      .orderBy(desc(goalTasks.doneAt))
+      .limit(30),
+  ]);
+  return { open, done };
 }
 
 /** Adds a task at the end of the goal's open tasks. */

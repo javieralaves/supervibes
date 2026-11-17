@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowTurnBackwardIcon, CheckmarkCircle02Icon, Delete02Icon, PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { ArrowTurnBackwardIcon, Delete02Icon, PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { startTransition, useId, useOptimistic, useState, useTransition } from "react";
 
@@ -218,23 +218,8 @@ function TaskDoneCard({
         </MoreMenu>
       </div>
 
-      {/* The task, shown the way it looks when checked off in the Tasks list. */}
-      {/* The check sits inline with the title, so the description lines up under both. */}
-      <p className="mt-3 text-[0.95rem] font-medium leading-relaxed text-foreground [overflow-wrap:anywhere]">
-        <span
-          aria-hidden="true"
-          className="mr-2 inline-flex h-3.5 w-3.5 -translate-y-px items-center justify-center rounded-full bg-foreground align-middle text-background"
-        >
-          <HugeiconsIcon icon={Tick02Icon} size={9} strokeWidth={3} />
-        </span>
-        <span className="sr-only">Completed task: </span>
-        {task}
-      </p>
-      {note.taskDescription && (
-        <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">
-          {note.taskDescription}
-        </p>
-      )}
+      <CompletedTitle kind="task">{task}</CompletedTitle>
+      {note.taskDescription && <p className={`mt-1 line-clamp-3 ${detailClass}`}>{note.taskDescription}</p>}
 
       <ConfirmDialog
         open={confirming}
@@ -250,6 +235,25 @@ function TaskDoneCard({
         }}
       />
     </li>
+  );
+}
+
+/** What a completion entry's text under the title looks like. */
+const detailClass = "whitespace-pre-wrap text-sm leading-relaxed text-muted [overflow-wrap:anywhere]";
+
+/** A finished task or suggestion: a small check inline with its title, so text below lines up under both. */
+function CompletedTitle({ kind, children }: { kind: "task" | "suggestion"; children: React.ReactNode }) {
+  return (
+    <p className="mt-3 text-[0.95rem] font-medium leading-relaxed text-foreground [overflow-wrap:anywhere]">
+      <span
+        aria-hidden="true"
+        className="mr-2 inline-flex h-3.5 w-3.5 -translate-y-px items-center justify-center rounded-full bg-foreground align-middle text-background"
+      >
+        <HugeiconsIcon icon={Tick02Icon} size={9} strokeWidth={3} />
+      </span>
+      <span className="sr-only">Completed {kind}: </span>
+      {children}
+    </p>
   );
 }
 
@@ -269,6 +273,8 @@ function NoteCard({
   const [confirming, setConfirming] = useState(false);
   const pending = note.id.startsWith("pending-");
   const edited = new Date(note.updatedAt).getTime() - new Date(note.createdAt).getTime() > 1000;
+  // Posted from "Done" on a suggestion: shown like a completed task, with the note as its detail.
+  const completion = Boolean(note.completedSuggestion);
 
   function save() {
     const parsed = postBodySchema.safeParse(draft);
@@ -296,6 +302,7 @@ function NoteCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">{author.name}</p>
           <p className="text-xs text-muted" suppressHydrationWarning>
+            {completion && !pending ? "Completed a suggestion · " : ""}
             {pending ? "Posting…" : shortAgo(note.createdAt)}
             {edited && !pending ? " · edited" : ""}
           </p>
@@ -318,16 +325,10 @@ function NoteCard({
         )}
       </div>
 
-      {/* Notes posted from "Done" on a suggestion say which one they complete. */}
-      {note.completedSuggestion && (
-        <p className="mt-3 flex items-start gap-1.5 text-sm font-medium text-muted">
-          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="min-w-0 [text-wrap:pretty]">{note.completedSuggestion}</span>
-        </p>
-      )}
+      {completion && <CompletedTitle kind="suggestion">{note.completedSuggestion}</CompletedTitle>}
 
       {editing ? (
-        <div className={note.completedSuggestion ? "mt-2" : "mt-3"}>
+        <div className={completion ? "mt-1" : "mt-3"}>
           <label className="sr-only" htmlFor={`edit-${note.id}`}>
             Edit note
           </label>
@@ -350,7 +351,11 @@ function NoteCard({
               if (e.key === "Escape") cancel();
             }}
             // Same type and position as the note itself, so editing happens in place.
-            className={`${textareaClass} [overflow-wrap:anywhere]`}
+            className={
+              completion
+                ? "block w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none [field-sizing:content] [overflow-wrap:anywhere]"
+                : `${textareaClass} [overflow-wrap:anywhere]`
+            }
           />
           <div className="mt-3 flex items-center justify-between gap-3">
             <p className="hidden text-xs text-muted sm:block">⌘↵ to save · Esc to cancel</p>
@@ -370,7 +375,13 @@ function NoteCard({
           </div>
         </div>
       ) : (
-        <p className={`${note.completedSuggestion ? "mt-2" : "mt-3"} whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]`}>
+        <p
+          className={
+            completion
+              ? `mt-1 ${detailClass}`
+              : "mt-3 whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]"
+          }
+        >
           {note.body}
         </p>
       )}

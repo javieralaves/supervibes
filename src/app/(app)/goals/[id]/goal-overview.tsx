@@ -14,6 +14,8 @@ type Props = {
   notes: NoteView[];
   author: NoteAuthor;
   hasSources: boolean;
+  /** Whether the goal has any tasks, which a read can also go on. */
+  hasTasks: boolean;
   /** The Tasks section, rendered between the suggestions and the sources. */
   tasks: React.ReactNode;
   /** The Sources section, rendered between the tasks and the notes. */
@@ -21,10 +23,10 @@ type Props = {
 };
 
 /** Goal header, progress read, suggestions, tasks, sources and notes, sharing one "reading progress" state. */
-export function GoalOverview({ goal, read, notes, author, hasSources, tasks, sources }: Props) {
+export function GoalOverview({ goal, read, notes, author, hasSources, hasTasks, tasks, sources }: Props) {
   const [reading, startReading] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const canRead = hasSources || notes.length > 0;
+  const canRead = hasSources || hasTasks || notes.length > 0;
 
   function update() {
     setError(null);

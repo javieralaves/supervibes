@@ -9,6 +9,8 @@ import { goalReads, goals, goalSources } from "@/db/schema";
 import { listUpcomingBlocks } from "@/lib/blocks";
 import { getUsableConnection, markConnectionError } from "@/lib/connections";
 import { listPosts } from "@/lib/posts";
+import { minutesLabel } from "@/lib/task-schema";
+import { listTasksForRead } from "@/lib/tasks";
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
 
 const MODEL = "claude-sonnet-5-5";
@@ -18,10 +20,13 @@ const WINDOW_DAYS = 30;
 const MAX_NOTES = 30;
 /** Marker stored in a read's basedOn when the person's notes were used. */
 export const NOTES_MARKER = "notes";
+/** Marker stored in a read's basedOn when the goal's tasks were used. */
+export const TASKS_MARKER = "tasks";
 
 const SYSTEM = `You give a person one honest, high-level read on whether they're making progress toward a goal, using the apps they've connected and the notes they've written.
 
 How to work:
+- The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
 - Weigh everything together. You're judging momentum toward the goal, not listing activity.
@@ -37,6 +42,7 @@ What to return:
   - minutes: 30, 60 or 120. Aim for a spread, such as one of each.
   - Ground each one in something specific you saw. Never invent details.
   - Make them different from each other: for example, one that moves the goal forward, one that removes a blocker or closes a feedback loop, and one quick win.
+  - Never suggest something already on their open task list, even reworded. A suggestion can be a distinct, concrete step that starts, unblocks or finishes one of those tasks.
   - Skip anything already done, anything already planned on their calendar, anything their notes say to ignore or pause, and anything they've passed on before.
   - Don't suggest meetings or waiting on others unless the context clearly calls for it.
 If there's a previous read, use it for continuity, but describe where things stand now.
@@ -76,6 +82,12 @@ const readSchema = z.object({
   summary: z.string().trim().min(1).max(1500),
   suggestions: z.array(suggestionSchema).transform((list) => list.slice(0, 3)),
 });
+
+/** A task as one prompt line: its title, then its description on the same line. */
+function taskLine(t: { title: string; description: string | null }) {
+  const description = t.description?.replace(/\s+/g, " ").trim();
+  return description ? `${t.title} — ${description.slice(0, 400)}` : t.title;
+}
 
 /** Stored shape; minutes is 30, 60 or 120. */
 export type Suggestion = { title: string; why: string; minutes: number };
@@ -155,9 +167,12 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     .select({ id: goalSources.id, connectionId: goalSources.connectionId, relation: goalSources.relation })
     .from(goalSources)
     .where(and(eq(goalSources.goalId, goalId), eq(goalSources.userId, userId), eq(goalSources.enabled, true)));
-  const notes = await listPosts(userId, goalId, MAX_NOTES);
-  if (sources.length === 0 && notes.length === 0) {
-    throw new ProgressError("Add a source or a note first, so there's something to read.");
+  // Completed-task entries are covered by the tasks themselves, below.
+  const notes = (await listPosts(userId, goalId, MAX_NOTES * 2)).filter((n) => !n.completedTask).slice(0, MAX_NOTES);
+  const tasks = await listTasksForRead(userId, goalId, WINDOW_DAYS);
+  const hasTasks = tasks.open.length > 0 || tasks.done.length > 0;
+  if (sources.length === 0 && notes.length === 0 && !hasTasks) {
+    throw new ProgressError("Add a source, a note or a task first, so there's something to read.");
   }
 
   // One MCP server per connected app, shared by all sources that use it.
@@ -185,7 +200,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     });
     usable.push(source);
   }
-  if (usable.length === 0 && notes.length === 0) {
+  if (usable.length === 0 && notes.length === 0 && !hasTasks) {
     throw new ProgressError("None of this goal's apps could be reached. Reconnect them first.");
   }
 
@@ -207,7 +222,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
             return `${i + 1}. ${PROVIDERS[server.provider].label} (tools from "${serverName(s.connectionId)}"): ${s.relation}`;
           }),
         ]
-      : ["No connected sources for this read; rely on the person's notes."]),
+      : ["No connected sources for this read; rely on the person's notes and tasks."]),
     "",
     ...(notes.length > 0
       ? [
@@ -224,6 +239,21 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
           ),
         ]
       : ["The person hasn't written any notes for this goal."]),
+    "",
+    ...(hasTasks
+      ? [
+          "Tasks the person has set for this goal (their own plan):",
+          ...(tasks.open.length > 0
+            ? ["Open, in their order:", ...tasks.open.map((t) => `- [${minutesLabel(t.minutes)}] ${taskLine(t)}`)]
+            : ["No open tasks."]),
+          ...(tasks.done.length > 0
+            ? [
+                "Finished within the time window, newest first:",
+                ...tasks.done.map((t) => `- ${t.doneAt!.toISOString().slice(0, 10)}: ${taskLine(t)}`),
+              ]
+            : ["Nothing finished within the time window."]),
+        ]
+      : ["The person hasn't set any tasks for this goal."]),
     "",
     ...(planned.length > 0
       ? [
@@ -299,6 +329,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
 
   const basedOn: string[] = [...new Set([...servers.values()].map((s) => s.provider))];
   if (notes.length > 0) basedOn.push(NOTES_MARKER);
+  if (hasTasks) basedOn.push(TASKS_MARKER);
   // Replaces headline, summary and suggestions; keeps the list of passed-on suggestions.
   const values = { ...parsed, basedOn, createdAt: new Date() };
   const [saved] = await db

@@ -43,6 +43,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     <GoalOverview
       goal={goal}
       hasSources={sources.length > 0}
+      hasTasks={tasks.length > 0}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
       notes={posts.map((p) => ({
         id: p.id,
