@@ -35,7 +35,6 @@
   --color-line-strong: var(--line-strong);
   --color-wash: var(--wash);
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-app-mono), ui-monospace, monospace;
 }
 
 body {
@@ -61,6 +60,11 @@ body {
   background-color: var(--goal-light);
 }
 
+/* Same light tone as .goal-tint, mixed into the card colour so it's fully opaque. */
+.goal-tint.goal-tint-opaque {
+  background-color: color-mix(in oklab, var(--goal) 8%, var(--card));
+}
+
 @media (prefers-color-scheme: dark) {
   .goal-tint {
     --goal: var(--goal-dark);
@@ -68,6 +72,9 @@ body {
   }
   .goal-solid {
     background-color: var(--goal-dark);
+  }
+  .goal-tint.goal-tint-opaque {
+    background-color: color-mix(in oklab, var(--goal) 12%, var(--card));
   }
 }
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { Plug01Icon, Target02Icon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon, Plug01Icon, Target02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/", label: "Goals", icon: Target02Icon, match: (p: string) => p === "/" || p.startsWith("/goals") },
+  { href: "/calendar", label: "Calendar", icon: Calendar03Icon, match: (p: string) => p.startsWith("/calendar") },
   { href: "/connections", label: "Connections", icon: Plug01Icon, match: (p: string) => p.startsWith("/connections") },
 ];
 
