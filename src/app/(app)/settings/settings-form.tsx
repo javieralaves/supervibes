@@ -66,7 +66,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     <div className="grid gap-3">
       <Card
         title="Sleep schedule"
-        description="Suggestions on your calendar only go in your awake hours."
+        description="Shaded on your calendar, so your awake hours stand out."
         status={statusFor("sleep")}
       >
         <div className="grid gap-3 sm:grid-cols-2">

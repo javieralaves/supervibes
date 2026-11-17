@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Add01Icon,
   ArrowRight02Icon,
   ArrowTurnBackwardIcon,
   CircleIcon,
@@ -182,7 +181,7 @@ export function DropPreview({
     <div
       aria-hidden="true"
       style={{ ...goalColorStyle(goal?.color ?? "slate"), ...place(start, end) }}
-      className="goal-tint goal-glimpse-task pointer-events-none absolute z-30 overflow-hidden rounded-lg border-dashed! shadow-[0_6px_16px_rgb(15_17_20/0.12)]"
+      className="goal-tint goal-task-outline pointer-events-none absolute z-30 overflow-hidden rounded-lg border-dashed! shadow-[0_6px_16px_rgb(15_17_20/0.12)]"
     >
       {isShort(start, end) ? (
         // Unlike a card, the time stays visible even on one line: it's what you're choosing.
@@ -199,62 +198,5 @@ export function DropPreview({
         />
       )}
     </div>
-  );
-}
-
-/**
- * Something Glimpse proposes, with + to commit it to this time. Your own tasks
- * have a thin solid outline and a circle like their checkbox; suggestions are dashed.
- */
-export function GlimpseCard({
-  kind,
-  title,
-  goal,
-  start,
-  end,
-  clock,
-  inBlock,
-  onAdd,
-  onOpenBlock,
-}: {
-  kind: "task" | "suggestion";
-  title: string;
-  goal: CalendarGoal;
-  start: number;
-  end: number;
-  clock: Clock;
-  /** Sits inside a protected block, so it's inset to keep the block visible around it. */
-  inBlock: boolean;
-  onAdd: () => void;
-  /** Inside a protected block: a click opens that block's panel, since the card covers it. */
-  onOpenBlock?: () => void;
-}) {
-  const time = formatRange(start, end, clock);
-  const task = kind === "task";
-  return (
-    <li
-      style={{ ...goalColorStyle(goal.color), ...place(start, end, inBlock ? 8 : 0) }}
-      aria-label={`${task ? "Task" : "Suggestion"}: ${title}, ${time}`}
-      onClick={onOpenBlock && ((e) => !(e.target as HTMLElement).closest("button") && onOpenBlock())}
-      className={`goal-tint ${task ? "goal-glimpse-task" : "goal-suggest"} group absolute z-20 overflow-hidden rounded-lg ${
-        onOpenBlock ? "cursor-pointer" : ""
-      }`}
-    >
-      <Label
-        title={title}
-        time={time}
-        short={isShort(start, end)}
-        icon={task ? <HugeiconsIcon icon={CircleIcon} size={13} className="mt-[3px] shrink-0 text-[var(--goal)]" /> : undefined}
-      />
-      <button
-        type="button"
-        onClick={onAdd}
-        aria-label={`Schedule “${title}” at ${time}`}
-        title="Add to your calendar"
-        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-card-border bg-card text-foreground/70 opacity-0 shadow-[0_1px_2px_rgb(15_17_20/0.08)] transition-[opacity,color,border-color] hover:border-line-strong hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/30 group-hover:opacity-100"
-      >
-        <HugeiconsIcon icon={Add01Icon} size={14} />
-      </button>
-    </li>
   );
 }

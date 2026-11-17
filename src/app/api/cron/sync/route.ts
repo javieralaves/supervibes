@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goalSources } from "@/db/schema";
-import { tryMatchBlockFits } from "@/lib/blocks";
 import { assessGoal } from "@/lib/progress";
 
 export const maxDuration = 300;
@@ -36,7 +35,6 @@ export async function GET(request: Request) {
     }
     try {
       await assessGoal(goal.userId, goal.goalId);
-      await tryMatchBlockFits(goal.userId, goal.goalId);
       read++;
     } catch (error) {
       failed++;

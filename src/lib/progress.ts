@@ -1,7 +1,7 @@
 import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as z from "zod";
 
 import { db } from "@/db";
@@ -121,33 +121,6 @@ export async function getLatestRead(userId: string, goalId: string): Promise<Goa
     .from(goalReads)
     .where(and(eq(goalReads.goalId, goalId), eq(goalReads.userId, userId)));
   return read ?? null;
-}
-
-export type GoalSuggestionsDTO = {
-  goal: { id: string; title: string; icon: string; color: string };
-  suggestions: Suggestion[];
-};
-
-/**
- * Every goal's open suggestions, in the goals' own order. Passed-on and done
- * suggestions are already removed from the read, so what's here is what's left.
- */
-export async function listOpenSuggestions(userId: string): Promise<GoalSuggestionsDTO[]> {
-  const rows = await db
-    .select({
-      id: goals.id,
-      title: goals.title,
-      icon: goals.icon,
-      color: goals.color,
-      suggestions: goalReads.suggestions,
-    })
-    .from(goals)
-    .innerJoin(goalReads, eq(goalReads.goalId, goals.id))
-    .where(and(eq(goals.userId, userId), eq(goalReads.userId, userId)))
-    .orderBy(asc(goals.position), asc(goals.createdAt));
-  return rows
-    .filter((r) => r.suggestions.length > 0)
-    .map(({ suggestions, ...goal }) => ({ goal, suggestions }));
 }
 
 /**

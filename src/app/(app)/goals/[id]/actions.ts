@@ -1,14 +1,12 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { after } from "next/server";
 import * as z from "zod";
 
 import { postBodySchema } from "@/lib/post-schema";
 import { createPost, deletePost, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
 import { createSource, deleteSource, updateSource } from "@/lib/sources";
-import { tryMatchBlockFits } from "@/lib/blocks";
 import { assessGoal, completeSuggestion, getLatestRead, passOnSuggestion, ProgressError } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
@@ -58,8 +56,6 @@ export async function refreshProgressAction(goalId: unknown): Promise<ActionResu
 
   try {
     await assessGoal(user.id, id.data);
-    // New suggestions: re-judge which fit the goal's titled blocks of time.
-    await tryMatchBlockFits(user.id, id.data);
     refresh();
     return { ok: true };
   } catch (error) {
@@ -128,7 +124,6 @@ export async function addSuggestionAsTaskAction(goalId: unknown, title: unknown)
   });
   if (!task) return { ok: false, error: "That goal doesn't exist anymore." };
   await completeSuggestion(user.id, goal.data, suggestion.title);
-  rematchLater(user.id, goal.data);
   refresh();
   return { ok: true };
 }
@@ -149,11 +144,6 @@ export async function passOnSuggestionAction(goalId: unknown, title: unknown): P
 
 const TASK_GONE = "That task doesn't exist anymore.";
 
-/** Titled blocks of time can take tasks too; re-judge which fit once the response is out. */
-function rematchLater(userId: string, goalId: string) {
-  after(() => tryMatchBlockFits(userId, goalId));
-}
-
 export async function addTaskAction(goalId: unknown, title: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const goal = idSchema.safeParse(goalId);
@@ -161,7 +151,6 @@ export async function addTaskAction(goalId: unknown, title: unknown): Promise<Ac
   if (!goal.success) return { ok: false, error: "That goal doesn't exist anymore." };
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the task." };
   if (!(await createTask(user.id, goal.data, parsed.data))) return { ok: false, error: "That goal doesn't exist anymore." };
-  rematchLater(user.id, goal.data);
   refresh();
   return { ok: true };
 }
@@ -174,7 +163,6 @@ export async function editTaskAction(taskId: unknown, patch: unknown): Promise<A
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the task." };
   const task = await updateTask(user.id, id.data, parsed.data);
   if (!task) return { ok: false, error: TASK_GONE };
-  if (parsed.data.title !== undefined || parsed.data.description !== undefined) rematchLater(user.id, task.goalId);
   refresh();
   return { ok: true };
 }
@@ -186,7 +174,6 @@ export async function setTaskDoneAction(taskId: unknown, done: unknown): Promise
   // Checking a task off shows up in the goal's activity; reopening it takes that back.
   const task = await markTaskDone(user.id, id.data, done);
   if (!task) return { ok: false, error: TASK_GONE };
-  rematchLater(user.id, task.goalId);
   refresh();
   return { ok: true };
 }

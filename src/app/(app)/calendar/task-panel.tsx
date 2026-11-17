@@ -1,6 +1,6 @@
 "use client";
 
-import { Add01Icon, CircleIcon } from "@hugeicons/core-free-icons";
+import { CircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { GoalBadge } from "@/components/goal-badge";
@@ -20,16 +20,14 @@ export type PanelTask = {
   minutes: number;
   /** Its next block that hasn't ended. Dropping the task moves this block instead of adding another. */
   block: BlockView | null;
-  /** Where Glimpse would put it, for +. Null when it's already scheduled or nothing fits this week. */
-  spot: { day: number; start: number; end: number } | null;
 };
 
 export type PanelGroup = { goal: CalendarGoal; tasks: PanelTask[] };
 
 /**
  * Open tasks across goals, beside the calendar. Drag one onto the day to give it
- * a time, or + to take the time Glimpse would give it. Scheduled tasks sit at the
- * end of their goal, faded, with their time; dragging one moves its block.
+ * a time. Scheduled tasks sit at the end of their goal, faded, with their time;
+ * dragging one moves its block.
  */
 export function TaskPanel({
   groups,
@@ -37,7 +35,6 @@ export function TaskPanel({
   today,
   draggingId,
   onTaskPointerDown,
-  onSchedule,
 }: {
   groups: PanelGroup[];
   clock: Clock;
@@ -46,7 +43,6 @@ export function TaskPanel({
   /** The task being dragged, if any. */
   draggingId: string | null;
   onTaskPointerDown: (e: React.PointerEvent<HTMLElement>, task: PanelTask) => void;
-  onSchedule: (task: PanelTask) => void;
 }) {
   const count = groups.reduce((n, g) => n + g.tasks.length, 0);
   return (
@@ -76,7 +72,6 @@ export function TaskPanel({
                     today={today}
                     dragging={task.id === draggingId}
                     onPointerDown={(e) => onTaskPointerDown(e, task)}
-                    onSchedule={() => onSchedule(task)}
                   />
                 ))}
               </ul>
@@ -95,7 +90,6 @@ function TaskRow({
   today,
   dragging,
   onPointerDown,
-  onSchedule,
 }: {
   task: PanelTask;
   goal: CalendarGoal;
@@ -103,7 +97,6 @@ function TaskRow({
   today: Date | null;
   dragging: boolean;
   onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
-  onSchedule: () => void;
 }) {
   const pending = task.block?.id.startsWith("pending-") ?? false;
   const scheduled = task.block ? scheduleLabel(task.block.startsAt, today, clock) : null;
@@ -129,17 +122,6 @@ function TaskRow({
           {scheduled && <> · {scheduled}</>}
         </p>
       </div>
-      {task.spot && !task.block && (
-        <button
-          type="button"
-          onClick={onSchedule}
-          aria-label={`Schedule “${task.title}” at the next free time`}
-          title="Add at the next free time"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-card-border bg-card text-foreground/70 opacity-0 shadow-[0_1px_2px_rgb(15_17_20/0.08)] transition-[opacity,color,border-color] hover:border-line-strong hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/30 group-hover:opacity-100"
-        >
-          <HugeiconsIcon icon={Add01Icon} size={14} />
-        </button>
-      )}
     </li>
   );
 }

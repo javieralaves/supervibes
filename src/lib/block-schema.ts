@@ -46,8 +46,6 @@ export type BlockView = {
   taskId: string | null;
   /** Whether that task is done. */
   taskDone: boolean;
-  /** What fits this titled block: "t:<task id>" or "s:<suggestion title>". */
-  fits: string[];
   /** A plan for the session, if one has been prepared. */
   agenda: BlockAgenda | null;
 };

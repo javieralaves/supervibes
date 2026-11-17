@@ -167,11 +167,7 @@ export function BlockPopover({
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-foreground">Set time aside</span>
                 <span className="block text-xs text-muted [text-wrap:pretty]">
-                  {keepOpen
-                    ? "No suggestions go here."
-                    : title.trim()
-                      ? "Suggestions that fit the title can go here."
-                      : "Any of this goal's suggestions can go here."}
+                  {keepOpen ? "Shown as open time, with nothing planned." : "Shown as protected time for this goal."}
                 </span>
               </span>
               <button

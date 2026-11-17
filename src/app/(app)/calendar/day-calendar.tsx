@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft01Icon, ArrowRight01Icon, CheckListIcon, CircleIcon, Moon02Icon, ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, CheckListIcon, CircleIcon, Moon02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   startTransition,
@@ -17,12 +17,11 @@ import type { BlockDetails, BlockView } from "@/lib/block-schema";
 import { BLOCK_STEP } from "@/lib/block-schema";
 import { formatHour, formatRange, formatTime, useClock } from "@/lib/clock";
 import { goalColorStyle } from "@/lib/goal-colors";
-import { DAY_MINUTES, planDays, sleepSpans, type PlanBlock, type PlanItem } from "@/lib/plan-day";
+import { DAY_MINUTES, sleepSpans, type DaySegment } from "@/lib/day";
 import type { Settings } from "@/lib/settings-schema";
 
 import {
   createBlockAction,
-  createIntentionAction,
   deleteBlockAction,
   moveBlockAction,
   scheduleTaskAction,
@@ -31,21 +30,15 @@ import {
 } from "./actions";
 import { BlockPanel } from "./block-panel";
 import { BlockPopover } from "./block-popover";
-import { BlockCard, DropPreview, GlimpseCard, type CalendarGoal } from "./calendar-items";
+import { BlockCard, DropPreview, type CalendarGoal } from "./calendar-items";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
 import { TaskPanel, type PanelGroup, type PanelTask } from "./task-panel";
 
 export type { CalendarGoal };
-export type CalendarGroup = {
-  goal: CalendarGoal;
-  suggestions: { title: string; why: string; minutes: number }[];
-};
 
-/** An open task the calendar can place. */
+/** An open task the calendar can schedule. */
 export type CalendarTask = { id: string; goalId: string; title: string; minutes: number };
 
-/** Something Glimpse places: a task of yours or a suggestion, with its goal. */
-type Item = PlanItem & { key: string; id: string; goal: CalendarGoal };
 type Result = { ok: true } | { ok: false; error: string };
 
 const TIMELINE_HEIGHT = y(DAY_MINUTES) + PAD;
@@ -83,19 +76,12 @@ function writePref(key: string, value: string) {
   }
 }
 
-const GLIMPSE_KEY = "sv-calendar-glimpse";
 const TASK_PANEL_KEY = "sv-calendar-task-panel";
 const LAST_GOAL_KEY = "sv-calendar-last-goal";
 const prefListeners = new Set<() => void>();
 function subscribePrefs(onChange: () => void) {
   prefListeners.add(onChange);
   return () => prefListeners.delete(onChange);
-}
-const readGlimpse = () => readPref(GLIMPSE_KEY) !== "off";
-const serverGlimpse = () => true;
-function setGlimpse(on: boolean) {
-  writePref(GLIMPSE_KEY, on ? "on" : "off");
-  prefListeners.forEach((l) => l());
 }
 const readTaskPanel = () => readPref(TASK_PANEL_KEY) === "on";
 const serverTaskPanel = () => false;
@@ -104,7 +90,7 @@ function setTaskPanel(on: boolean) {
   prefListeners.forEach((l) => l());
 }
 
-/** Header toggles (Tasks, Glimpse): pressed or not. */
+/** A header toggle, pressed or not. */
 const toggleClass = (on: boolean) =>
   on
     ? "border-line-strong bg-foreground/[.06] text-foreground"
@@ -134,7 +120,7 @@ function applyOp(blocks: BlockView[], op: Op): BlockView[] {
 }
 
 /** A block cut into its parts on each day it touches (blocks rarely cross midnight). */
-function segments(block: BlockView, base: Date): PlanBlock[] {
+function segments(block: BlockView, base: Date): DaySegment[] {
   const s = new Date(block.startsAt);
   const e = new Date(block.endsAt);
   const d0 = dayOffset(s, base);
@@ -148,10 +134,9 @@ function segments(block: BlockView, base: Date): PlanBlock[] {
     keepOpen: block.keepOpen,
     fromSuggestion: block.fromSuggestion,
     taskId: block.taskId,
-    fits: block.fits,
   };
   if (d0 === d1) return [{ ...common, day: d0, start: startMin, end: endMin }];
-  const parts: PlanBlock[] = [{ ...common, day: d0, start: startMin, end: DAY_MINUTES }];
+  const parts: DaySegment[] = [{ ...common, day: d0, start: startMin, end: DAY_MINUTES }];
   for (let d = d0 + 1; d < d1; d++) parts.push({ ...common, day: d, start: 0, end: DAY_MINUTES });
   if (endMin > 0) parts.push({ ...common, day: d1, start: 0, end: endMin });
   return parts;
@@ -201,20 +186,16 @@ function dragged(edge: Edge, start: number, end: number, delta: number) {
 
 /**
  * One day, hour by hour. Intentions and protected time are yours: drag on empty
- * space to protect time, drag a block to move it, click it to edit. With Glimpse
- * on, your open tasks are placed inside and around them, and suggestions inside
- * their goal's protected time only, from now on, spilling into the following
- * days; + commits one to its time. The task
- * panel lists open tasks across goals; drag one onto the day to schedule it.
+ * space to protect time, drag a block to move it, click it to open its panel
+ * (where protected time can get an agenda). The task panel lists open tasks
+ * across goals; drag one onto the day to schedule it.
  */
 export function DayCalendar({
-  groups,
   tasks,
   goals,
   blocks: savedBlocks,
   settings,
 }: {
-  groups: CalendarGroup[];
   /** Open tasks across goals, in each goal's order. */
   tasks: CalendarTask[];
   goals: CalendarGoal[];
@@ -222,7 +203,6 @@ export function DayCalendar({
   settings: Settings;
 }) {
   const stamp = useSyncExternalStore(subscribeClock, minuteNow, noClock);
-  const glimpse = useSyncExternalStore(subscribePrefs, readGlimpse, serverGlimpse);
   const taskPanel = useSyncExternalStore(subscribePrefs, readTaskPanel, serverTaskPanel);
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
@@ -244,18 +224,6 @@ export function DayCalendar({
   const allSegments = base ? blocks.flatMap((b) => segments(b, base)) : [];
   const daySegments = allSegments.filter((s) => s.day === offset);
 
-  // Goal by goal, in the goals' order: its tasks (in your order), then its suggestions.
-  const items: Item[] = goals.flatMap((goal) => [
-    ...tasks
-      .filter((t) => t.goalId === goal.id)
-      .map((t): Item => ({ kind: "task", key: `t:${t.id}`, id: t.id, goalId: goal.id, title: t.title, minutes: t.minutes, fitKey: `t:${t.id}`, goal })),
-    ...(groups.find((g) => g.goal.id === goal.id)?.suggestions ?? []).map(
-      (s): Item => ({ kind: "suggestion", key: `s:${goal.id}:${s.title}`, id: s.title, goalId: goal.id, title: s.title, minutes: s.minutes, fitKey: `s:${s.title}`, goal }),
-    ),
-  ]);
-  const plan = now === null || (!glimpse && !taskPanel) ? [] : planDays(items, now, settings, allSegments);
-  const placed = glimpse ? plan.filter((p) => p.day === offset) : [];
-  const count = items.length;
   // Earlier days are all behind you; later days haven't started.
   const pastUntil = offset < 0 ? DAY_MINUTES : isToday ? now : null;
 
@@ -269,16 +237,11 @@ export function DayCalendar({
       const seen = nextBlock.get(b.taskId);
       if (!seen || Date.parse(b.startsAt) < Date.parse(seen.startsAt)) nextBlock.set(b.taskId, b);
     }
-    const spots = new Map(plan.filter((p) => p.item.kind === "task").map((p) => [p.item.id, p]));
     panelGroups = goals
       .map((goal) => {
         const mine = tasks
           .filter((t) => t.goalId === goal.id)
-          .map((t): PanelTask => {
-            const block = nextBlock.get(t.id) ?? null;
-            const spot = block ? undefined : spots.get(t.id);
-            return { ...t, block, spot: spot ? { day: spot.day, start: spot.start, end: spot.end } : null };
-          });
+          .map((t): PanelTask => ({ ...t, block: nextBlock.get(t.id) ?? null }));
         return { goal, tasks: [...mine.filter((t) => !t.block), ...mine.filter((t) => t.block)] };
       })
       .filter((g) => g.tasks.length > 0);
@@ -383,7 +346,7 @@ export function DayCalendar({
     setDrag({ kind: "create", day: offset, from: m, to: m, moved: false, originY: e.clientY });
   }
 
-  function onBlockDown(e: React.PointerEvent<HTMLLIElement>, seg: PlanBlock) {
+  function onBlockDown(e: React.PointerEvent<HTMLLIElement>, seg: DaySegment) {
     const target = e.target as HTMLElement;
     if (e.button !== 0 || target.closest("button, [role='menuitem']")) return;
     e.stopPropagation();
@@ -436,21 +399,8 @@ export function DayCalendar({
     if (!block) return;
     if (!drag.moved) {
       if (drag.edge !== "move") return;
-      // A click: open its panel. Below the width the panel needs, edit it in place as before.
-      if (window.matchMedia("(min-width: 64rem)").matches) {
-        setPopover(null);
-        setSelectedId(block.id);
-        return;
-      }
-      setPopover({
-        mode: "edit",
-        blockId: block.id,
-        day: drag.day,
-        start: drag.start,
-        end: drag.end,
-        intention: Boolean(block.fromSuggestion || block.taskId),
-        initial: { goalId: block.goalId, title: block.title, keepOpen: block.keepOpen },
-      });
+      // A click: open its panel.
+      openBlockPanel(block.id);
       return;
     }
     if (drag.delta === 0) return;
@@ -566,7 +516,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, fits: [], agenda: null } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, agenda: null } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -600,45 +550,12 @@ export function DayCalendar({
           fromSuggestion: null,
           taskId: task.id,
           taskDone: false,
-          fits: [],
           agenda: null,
           ...times,
         },
       },
       () => scheduleTaskAction(task.id, times),
     );
-  }
-
-  /** + on a glimpse: schedule the task, or turn the suggestion into a task and schedule that. */
-  function addIntention(item: Item, start: number, end: number) {
-    if (!base) return;
-    const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, end) };
-    if (item.kind === "task") return scheduleTask(item, times);
-    run(
-      {
-        type: "add",
-        block: {
-          id: pendingId(),
-          goalId: item.goalId,
-          title: item.title,
-          keepOpen: false,
-          fromSuggestion: item.title,
-          taskId: null,
-          taskDone: false,
-          fits: [],
-          agenda: null,
-          ...times,
-        },
-      },
-      () => createIntentionAction(item.goalId, item.title, times),
-    );
-  }
-
-  /** + in the task panel: schedule it where Glimpse would put it. */
-  function scheduleAtSpot(task: PanelTask) {
-    if (!base || !task.spot) return;
-    const { day, start, end } = task.spot;
-    scheduleTask(task, { startsAt: isoAt(base, day, start), endsAt: isoAt(base, day, end) });
   }
 
   const shownDay = base ? new Date(base.getTime() + 12 * 3600_000 + offset * DAY_MS) : null;
@@ -682,7 +599,7 @@ export function DayCalendar({
       onPointerLeave={() => (hovered.current = false)}
       className="flex min-h-0 flex-1 flex-col"
     >
-      {/* Top bar, across the page: the task panel's toggle, then stepping between days and the date; Glimpse on the right. */}
+      {/* Top bar, across the page: the task panel's toggle, then stepping between days and the date; Today on the right. */}
       <header className="flex h-14 shrink-0 items-center gap-3 bg-background px-4 shadow-[inset_0_-1px_0_var(--card-border)] sm:px-6">
         <button
           type="button"
@@ -716,16 +633,6 @@ export function DayCalendar({
               Today
             </button>
           )}
-          <button
-            type="button"
-            aria-pressed={glimpse}
-            onClick={() => setGlimpse(!glimpse)}
-            title={glimpse ? "Hide suggestions" : "Show suggestions"}
-            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors ${toggleClass(glimpse)}`}
-          >
-            <HugeiconsIcon icon={glimpse ? ViewIcon : ViewOffIcon} size={15} />
-            Glimpse
-          </button>
         </div>
       </header>
 
@@ -740,12 +647,6 @@ export function DayCalendar({
                 : "max-w-3xl"
         }`}
       >
-        {count === 0 && (
-          <p className="mb-3 shrink-0 rounded-2xl border border-dashed border-foreground/15 p-4 text-sm text-muted">
-            Nothing to place yet. Add tasks to a goal, or get suggestions from its status update, and they show up here.
-          </p>
-        )}
-
         <div className="flex min-h-0 flex-1 gap-4">
           {taskPanel && (
             <TaskPanel
@@ -754,7 +655,6 @@ export function DayCalendar({
               today={base}
               draggingId={placing?.moved ? placing.task.id : null}
               onTaskPointerDown={onTaskPointerDown}
-              onSchedule={scheduleAtSpot}
             />
           )}
 
@@ -870,26 +770,6 @@ export function DayCalendar({
                       );
                     })}
                   </ul>
-                )}
-
-                {/* Glimpse: your open tasks and suggestions, not yet committed to a time */}
-                {placed.length > 0 && (
-                  <ol aria-label="Glimpse: tasks and suggestions on this day">
-                    {placed.map(({ item, start, end, blockId }) => (
-                      <GlimpseCard
-                        key={item.key}
-                        kind={item.kind}
-                        title={item.title}
-                        goal={item.goal}
-                        start={start}
-                        end={end}
-                        clock={clock}
-                        inBlock={blockId !== null}
-                        onAdd={() => addIntention(item, start, end)}
-                        onOpenBlock={blockId ? () => openBlockPanel(blockId) : undefined}
-                      />
-                    ))}
-                  </ol>
                 )}
 
                 {/* The block being drawn */}
