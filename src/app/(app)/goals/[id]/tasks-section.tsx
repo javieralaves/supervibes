@@ -7,7 +7,6 @@ import {
   DashedLineCircleIcon,
   Delete02Icon,
   Refresh01Icon,
-  SparklesIcon,
   Tick02Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
@@ -266,9 +265,8 @@ export function TasksSection({
       {hasRead && (
         <div aria-busy={reading} className="mt-6">
           <p className="mb-2 flex items-center gap-1.5 px-1 text-sm">
-            <HugeiconsIcon icon={SparklesIcon} size={14} className="text-muted" />
             <span className="font-medium text-foreground">Suggested</span>
-            <span className="text-muted">· from your latest read</span>
+            <span className="text-muted">from your latest read</span>
           </p>
 
           {shown.length > 0 ? (
