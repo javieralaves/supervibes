@@ -6,7 +6,7 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
 const buttonClass =
-  "flex h-11 w-full items-center justify-center gap-3 rounded-full border border-black/[.12] bg-white px-5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-white/[.16] dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
+  "group flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-black/[.08] bg-white px-5 text-[0.95rem] font-semibold text-zinc-900 shadow-[0_1px_2px_rgb(0_0_0/0.06),0_8px_24px_-12px_rgb(22_20_31/0.35)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_1px_2px_rgb(0_0_0/0.06),0_14px_30px_-12px_rgb(22_20_31/0.45)] active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2 disabled:pointer-events-none disabled:opacity-70 dark:border-white/[.1]";
 
 function GoogleIcon() {
   return (
@@ -52,8 +52,12 @@ export function GoogleSignInButton() {
         {pending ? "Redirecting…" : "Continue with Google"}
       </button>
       {error && (
-        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
-          Sign-in didn&apos;t go through. Access is limited to approved accounts.
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-red-500/20 bg-red-500/[.07] px-4 py-3 text-sm leading-relaxed text-red-700 dark:text-red-300"
+        >
+          That account isn&apos;t on the guest list yet. Try another Google account, or ask
+          for an invite.
         </p>
       )}
     </>

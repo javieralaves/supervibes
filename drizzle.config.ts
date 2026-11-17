@@ -16,6 +16,8 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: { url },
+  // Must match the casing in src/db/index.ts so camelCase keys map to snake_case columns.
+  casing: "snake_case",
   strict: true,
   verbose: true,
 });

@@ -2,8 +2,13 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { Backdrop } from "@/components/backdrop";
+import { Wordmark } from "@/components/logo";
 import { auth } from "@/lib/auth";
+import { listGoals } from "@/lib/goals";
 import { requireUser } from "@/lib/session";
+
+import { GoalsBoard } from "./goals/goals-board";
 
 async function signOut() {
   "use server";
@@ -11,34 +16,36 @@ async function signOut() {
   redirect("/sign-in");
 }
 
-async function Account() {
+function Avatar({ name, image }: { name: string; image: string | null | undefined }) {
+  return image ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={image}
+      alt=""
+      referrerPolicy="no-referrer"
+      className="h-9 w-9 rounded-full ring-2 ring-white/80 dark:ring-white/10"
+    />
+  ) : (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-glow-1 to-glow-2 text-sm font-semibold text-white">
+      {name.charAt(0)}
+    </span>
+  );
+}
+
+async function UserMenu() {
   const user = await requireUser();
 
   return (
-    <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-4">
-        {user.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={user.image}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="h-12 w-12 rounded-full"
-          />
-        ) : (
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-200 text-lg font-medium dark:bg-zinc-800">
-            {user.name.charAt(0)}
-          </div>
-        )}
-        <div>
-          <p className="font-medium text-black dark:text-zinc-50">{user.name}</p>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">{user.email}</p>
-        </div>
+    <div className="flex items-center gap-3">
+      <div className="hidden text-right sm:block">
+        <p className="text-sm font-semibold leading-tight text-foreground">{user.name}</p>
+        <p className="text-xs leading-tight text-muted">{user.email}</p>
       </div>
+      <Avatar name={user.name} image={user.image} />
       <form action={signOut}>
         <button
           type="submit"
-          className="h-10 rounded-full border border-black/[.12] px-5 text-sm font-medium transition-colors hover:bg-zinc-50 dark:border-white/[.16] dark:hover:bg-zinc-900"
+          className="h-9 rounded-xl border border-card-border bg-card px-3.5 text-sm font-medium text-foreground backdrop-blur-xl transition-colors hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glow-2 dark:hover:bg-white/10"
         >
           Sign out
         </button>
@@ -47,31 +54,80 @@ async function Account() {
   );
 }
 
-function AccountSkeleton() {
+async function Greeting() {
+  const user = await requireUser();
+  const firstName = user.name.split(" ")[0] || user.name;
+
   return (
-    <div className="flex items-center gap-4" aria-hidden="true">
-      <div className="h-12 w-12 animate-pulse rounded-full bg-zinc-200 dark:bg-zinc-800" />
-      <div className="flex flex-col gap-2">
-        <div className="h-4 w-32 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
-        <div className="h-3 w-44 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
-      </div>
-    </div>
+    <h1 className="text-4xl font-semibold leading-[1.05] tracking-[-0.035em] text-foreground sm:text-5xl">
+      Hey {firstName},
+      <br />
+      <span className="bg-linear-to-r from-ink-1 via-ink-2 to-ink-3 bg-clip-text text-transparent">
+        good to see you.
+      </span>
+    </h1>
   );
+}
+
+async function Goals() {
+  const user = await requireUser();
+  const goals = await listGoals(user.id);
+  return <GoalsBoard goals={goals} />;
+}
+
+function Skeleton({ className }: { className: string }) {
+  return <div aria-hidden="true" className={`animate-pulse rounded-xl bg-foreground/[.07] ${className}`} />;
 }
 
 export default function Home() {
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
-      <div className="w-full max-w-2xl">
-        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          Supervibes
-        </h1>
-        <section className="mt-8 rounded-2xl border border-black/[.08] bg-white p-6 dark:border-white/[.12] dark:bg-zinc-950">
-          <Suspense fallback={<AccountSkeleton />}>
-            <Account />
+    <div className="flex flex-1 flex-col">
+      <Backdrop intensity="soft" />
+
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
+        <Wordmark />
+        <Suspense
+          fallback={
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <Skeleton className="h-9 w-20" />
+            </div>
+          }
+        >
+          <UserMenu />
+        </Suspense>
+      </header>
+
+      <main className="animate-rise mx-auto w-full max-w-5xl flex-1 px-4 pb-16 pt-10 sm:px-6 sm:pt-16">
+        <Suspense
+          fallback={
+            <div className="space-y-3">
+              <Skeleton className="h-11 w-64" />
+              <Skeleton className="h-11 w-80" />
+            </div>
+          }
+        >
+          <Greeting />
+        </Suspense>
+
+        <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
+          Here&apos;s what you&apos;re working toward.
+        </p>
+
+        <div className="mt-12">
+          <Suspense
+            fallback={
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Skeleton className="h-[84px] rounded-3xl" />
+                <Skeleton className="h-[84px] rounded-3xl" />
+                <Skeleton className="h-[84px] rounded-3xl" />
+              </div>
+            }
+          >
+            <Goals />
           </Suspense>
-        </section>
-      </div>
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }
