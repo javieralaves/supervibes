@@ -201,8 +201,9 @@ function dragged(edge: Edge, start: number, end: number, delta: number) {
 /**
  * One day, hour by hour. Intentions and protected time are yours: drag on empty
  * space to protect time, drag a block to move it, click it to edit. With Glimpse
- * on, the goals' open suggestions are placed around and inside them, from now
- * on, spilling into the following days; + commits one to its time. The task
+ * on, your open tasks are placed inside and around them, and suggestions inside
+ * their goal's protected time only, from now on, spilling into the following
+ * days; + commits one to its time. The task
  * panel lists open tasks across goals; drag one onto the day to schedule it.
  */
 export function DayCalendar({

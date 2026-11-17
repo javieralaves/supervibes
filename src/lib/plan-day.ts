@@ -95,10 +95,13 @@ function takeTurns<T>(groups: T[][]): T[] {
  *    takes any of them; a titled one only those judged to fit it; kept-open
  *    blocks and intentions take nothing.
  * 3. Free awake time, back to back with blocks but never inside
- *    another goal's protected time: first the remaining tasks, goals taking
- *    turns and each goal's tasks in your order; then the remaining
- *    suggestions, goals taking turns and longer ones first. Each takes the
- *    earliest gap it fits, so a short one can still use a gap.
+ *    another goal's protected time: the remaining tasks, goals taking turns
+ *    and each goal's tasks in your order. Each takes the earliest gap it
+ *    fits, so a short one can still use a gap.
+ *
+ * Suggestions only ever go in their goal's protected time. They're the least
+ * certain things on the calendar, so they don't claim time you haven't given
+ * a goal; one that doesn't fit its goal's blocks isn't shown.
  *
  * `items` should list goals in their order. Nothing crosses midnight; anything
  * that doesn't fit within a week is left out.
@@ -136,7 +139,7 @@ export function planDays<T extends PlanItem>(items: T[], now: number, sleep: Sle
     }
   }
 
-  // 3. Free time for the rest.
+  // 3. Free time for the remaining tasks. Suggestions stay in protected time (step 2).
   const awake = subtract([{ start: 0, end: DAY_MINUTES }], sleepSpans(sleep));
   const windows: (Span & { day: number; cursor: number })[] = [];
   for (let day = 0; day < MAX_DAYS; day++) {
@@ -150,11 +153,9 @@ export function planDays<T extends PlanItem>(items: T[], now: number, sleep: Sle
     }
   }
 
-  const rest = open.filter((i) => !taken.has(i));
-  const tasks = takeTurns(byGoal(rest.filter((i) => i.kind === "task")));
-  const suggestions = takeTurns(byGoal(rest.filter((i) => i.kind === "suggestion"))).sort((a, b) => b.minutes - a.minutes);
+  const tasks = takeTurns(byGoal(open.filter((i) => i.kind === "task" && !taken.has(i))));
 
-  for (const item of [...tasks, ...suggestions]) {
+  for (const item of tasks) {
     const window = windows.find((w) => w.cursor + item.minutes <= w.end);
     if (!window) continue;
     placed.push({ item, day: window.day, start: window.cursor, end: window.cursor + item.minutes, blockId: null });
