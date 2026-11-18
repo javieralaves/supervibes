@@ -1,0 +1,4 @@
+#include "Base.xcconfig"
+
+// Release builds talk to production.
+SUPERVIBES_BASE_URL = https:/$()/supervibes-one.vercel.app

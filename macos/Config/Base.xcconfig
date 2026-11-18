@@ -1,0 +1,12 @@
+// Shared by every target and configuration.
+
+// Until there is a development certificate, builds are signed ad hoc ("Sign to Run Locally").
+// To sign with your own identity, create Config/Signing.local.xcconfig (gitignored) with:
+//   CODE_SIGN_STYLE = Automatic
+//   CODE_SIGN_IDENTITY = Apple Development
+//   DEVELOPMENT_TEAM = <your team id>
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Signing.local.xcconfig"
