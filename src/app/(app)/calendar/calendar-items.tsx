@@ -82,6 +82,7 @@ export function BlockCard({
   onTomorrow,
   onToggleDone,
   onRemove,
+  elapsed,
 }: {
   block: BlockView;
   goal: CalendarGoal | undefined;
@@ -98,6 +99,11 @@ export function BlockCard({
   /** Only for intentions that schedule a task. */
   onToggleDone?: () => void;
   onRemove: () => void;
+  /**
+   * How much of this part of the block has happened, 0 to 1: filled in up to there,
+   * an outline after. 1 once it's over, 0 while it's still ahead.
+   */
+  elapsed: number;
 }) {
   const intention = Boolean(block.fromSuggestion || block.taskId);
   const kind = intention ? "goal-tint-opaque" : "goal-hatch";
@@ -109,14 +115,18 @@ export function BlockCard({
 
   return (
     <li
-      style={{ ...goalColorStyle(goal?.color ?? "slate"), ...place(start, end) }}
+      style={{
+        ...goalColorStyle(goal?.color ?? "slate"),
+        ...place(start, end),
+        ["--elapsed" as string]: `${Math.round(Math.min(1, Math.max(0, elapsed)) * 1000) / 10}%`,
+      }}
       onPointerDown={pending ? undefined : onPointerDown}
       aria-label={`${what}: ${title}, ${time}${recapWaiting ? (block.recap ? ", recap to review" : ", drafting recap") : ""}`}
-      className={`goal-tint ${kind} group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
+      className={`goal-tint ${kind} block-time group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
         pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-grab"
       } ${selected ? "ring-2 ring-[var(--goal)]/60" : ""}`}
     >
-      <span aria-hidden="true" className="goal-solid absolute inset-y-0 left-0 w-[3px]" />
+      <span aria-hidden="true" className="block-bar absolute inset-y-0 left-0 w-[3px]" />
       {!pending && (
         <>
           {/* Drag the top or bottom edge to change the length. */}

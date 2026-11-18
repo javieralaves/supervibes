@@ -91,6 +91,37 @@ body {
   border: 1px solid color-mix(in oklab, var(--goal) 40%, transparent);
 }
 
+/*
+ * Calendar blocks over time: what happened is filled in, what's ahead is an outline.
+ * A block is drawn filled, then a veil in the card colour covers the part that
+ * hasn't happened yet (below --elapsed, 0% to 100%), so a session in progress
+ * fills in as the now line passes through it. Colour, not opacity: text stays crisp.
+ */
+.goal-tint.block-time {
+  --elapsed: 0%;
+  --veil: color-mix(in oklab, var(--card) 72%, transparent);
+  /* A border, not a shadow: the selected ring is a shadow. */
+  border: 1px solid color-mix(in oklab, var(--goal) 22%, transparent);
+}
+.goal-tint.goal-tint-opaque.block-time {
+  background-color: color-mix(in oklab, var(--goal) 18%, var(--card));
+  background-image: linear-gradient(to bottom, transparent var(--elapsed), var(--veil) var(--elapsed));
+}
+.goal-tint.goal-hatch.block-time {
+  background-color: color-mix(in oklab, var(--goal) 10%, var(--card));
+  background-image:
+    linear-gradient(to bottom, transparent var(--elapsed), var(--veil) var(--elapsed)),
+    repeating-linear-gradient(135deg, color-mix(in oklab, var(--goal) 26%, transparent) 0 1px, transparent 1px 8px);
+}
+/* The bar down a block's left edge: solid where time has passed, a soft tint ahead. */
+.block-bar {
+  background-image: linear-gradient(
+    to bottom,
+    var(--goal) var(--elapsed),
+    color-mix(in oklab, var(--goal) 40%, var(--card)) var(--elapsed)
+  );
+}
+
 @media (prefers-color-scheme: dark) {
   .goal-tint {
     --goal: var(--goal-dark);
@@ -107,6 +138,12 @@ body {
   }
   .goal-tint.goal-task-outline {
     background-color: color-mix(in oklab, var(--goal) 5%, var(--card));
+  }
+  .goal-tint.goal-tint-opaque.block-time {
+    background-color: color-mix(in oklab, var(--goal) 24%, var(--card));
+  }
+  .goal-tint.goal-hatch.block-time {
+    background-color: color-mix(in oklab, var(--goal) 13%, var(--card));
   }
 }
 

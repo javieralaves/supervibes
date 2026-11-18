@@ -853,9 +853,14 @@ export function DayCalendar({
                       const block = blocks.find((b) => b.id === seg.id)!;
                       const moving = drag?.kind === "move" && drag.blockId === seg.id && drag.moved;
                       const at = moving ? dragged(drag.edge, seg.start, seg.end, drag.delta) : seg;
+                      // How much of it has happened, by the calendar's clock: filled in up to now.
+                      const from = new Date(base!.getFullYear(), base!.getMonth(), base!.getDate() + seg.day, 0, at.start).getTime();
+                      const to = new Date(base!.getFullYear(), base!.getMonth(), base!.getDate() + seg.day, 0, at.end).getTime();
+                      const elapsed = today && to > from ? (today.getTime() - from) / (to - from) : 0;
                       return (
                         <BlockCard
                           key={`${seg.id}:${seg.day}`}
+                          elapsed={elapsed}
                           block={block}
                           goal={goalById.get(block.goalId)}
                           start={at.start}
