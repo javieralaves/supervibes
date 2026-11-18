@@ -42,4 +42,27 @@ enum Fixtures {
     static func upcoming(at now: Date) -> [Block] {
         blocks(around: now).filter { $0.start > now }
     }
+
+    /// A month of calls to Claude, spread over the days before `referenceNow`.
+    static var usageCalls: [UsageCall] {
+        let features: [UsageCall.Feature] = [.progressRead, .progressRead, .recap, .agenda, .progressRead, .recap]
+        let triggers = ["cron", "note", "auto", "manual", "recap", "draft"]
+        let goals = ["Ship Supervibes for Mac", "Run a calm week", "Make time for movement"]
+        return (0..<42).map { i in
+            let feature = features[i % features.count]
+            return UsageCall(
+                id: "call-\(i)",
+                feature: feature,
+                trigger: triggers[i % triggers.count],
+                goalTitle: goals[i % goals.count],
+                model: "claude-sonnet-5-5",
+                inputTokens: 18_000 + (i * 1_731) % 22_000,
+                outputTokens: 900 + (i * 377) % 2_400,
+                toolCalls: i % 4,
+                durationMs: 6_000 + (i * 2_113) % 30_000,
+                cost: feature == .agenda ? 0.021 + Double(i % 5) * 0.004 : 0.048 + Double(i % 7) * 0.011,
+                createdAt: referenceNow.addingTimeInterval(-Double(i) * 16.5 * 3600)
+            )
+        }
+    }
 }

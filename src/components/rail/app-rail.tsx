@@ -22,7 +22,7 @@ async function RailUser() {
 /** The app's left rail: main sections, and the account menu at the bottom. It sits on the shell, beside the app's window. */
 export function AppRail() {
   return (
-    <aside className="relative z-30 flex w-16 shrink-0 flex-col items-center py-3">
+    <aside data-app-rail className="relative z-30 flex w-16 shrink-0 flex-col items-center py-3">
       <Suspense fallback={<RailNavView pathname={null} />}>
         <RailNav />
       </Suspense>

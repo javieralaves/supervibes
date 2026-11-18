@@ -22,6 +22,19 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 - `APIClient.make` adds the bearer token and decodes dates with fractional seconds (the server sends `.000Z`). Map generated types into the app's own models (e.g. `Block.init(api:)`) rather than using them in views, so views stay snapshot-testable with fixtures.
 - Handle `.unauthorized` by calling `auth.sessionEnded()`.
 
+## Design system
+
+- Native screens look like the web app, not like stock macOS. Use `Shared/DesignSystem/`: `Theme` colours (ported from `src/app/globals.css`, light and dark), `.appText(.sm, .medium, tracking:)` for Tailwind's type scale in Instrument Sans (bundled), `Icon` for the web's Hugeicons, and the components (`Card`, `CardHeader`, `SelectField`, `ToggleGroup`, `SaveStatusView`, `PageHeader`, `Backdrop`, `Avatar`). Each component names the Tailwind classes it matches; compare against the web source when building a screen.
+- Icons are generated: add the Hugeicons name and stroke width to `scripts/mac-icons.mjs`, run `node scripts/mac-icons.mjs`, and add a case to `Icon`.
+- Put shadows on a background shape, never on a view with text in it, or the text gets a halo.
+- If `globals.css` tokens change, change `Theme` to match.
+
+## The window and moving a screen from web to native
+
+- The main window is native: `MainView` puts the native `Rail` (Shared/UI/Shell) beside `AppWindowFrame`, which shows either the web view (`WebContentModel`) or a native screen, chosen by `ShellModel.route`. The web page is told it's inside the app (`html[data-shell="mac"]`) and hides its own rail and frame (`[data-app-rail]`, `[data-app-window]` in globals.css).
+- To move a page: build it in `Shared/UI/` against plain models (`Shared/Models/`), with fixtures and a snapshot test (render it inside `Rail` + `AppWindowFrame` too); keep the API calls in an `@Observable` model in `Supervibes/`. Add a `Route` case, add its web path to `WebContentModel.nativePaths`, route it in `ShellModel`, and give it a rail item or menu entry. A page script catches in-app links to native paths before Next.js handles them, and full loads of them are cancelled.
+- Done so far: `/settings` → `SettingsPage` (also ⌘,), opened from the account menu.
+
 ## Commands (run from `macos/`)
 
 | Goal | Command |

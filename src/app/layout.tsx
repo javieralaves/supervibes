@@ -14,7 +14,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} h-full`}>
+    // The Mac app sets data-shell="mac" on <html> before React loads (see globals.css), so this
+    // element's attributes can differ from the server's. Only <html> itself is exempted.
+    <html lang="en" className={`${sans.variable} h-full`} suppressHydrationWarning>
       <body className="relative flex min-h-full flex-col">{children}</body>
     </html>
   );

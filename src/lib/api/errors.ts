@@ -24,4 +24,4 @@ export function apiError(code: string, message: string): ApiError {
 export const errorResponses = {
   400: { description: "The request didn't make sense.", content: { "application/json": { schema: ErrorSchema } } },
   401: { description: "Not signed in, or the session ended.", content: { "application/json": { schema: ErrorSchema } } },
-} as const;
+};

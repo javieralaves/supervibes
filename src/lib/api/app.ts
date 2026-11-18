@@ -5,7 +5,9 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { requireApiUser, type ApiEnv } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { me } from "@/lib/api/routes/me";
+import { settings } from "@/lib/api/routes/settings";
 import { today } from "@/lib/api/routes/today";
+import { usage } from "@/lib/api/routes/usage";
 
 /*
  * The Supervibes API, served at /api/v1 (see app/api/v1/[[...route]]/route.ts).
@@ -46,7 +48,9 @@ api.use("/*", async (c, next) => {
 });
 
 api.route("/", me);
+api.route("/", settings);
 api.route("/", today);
+api.route("/", usage);
 
 api.notFound((c) => c.json(apiError("not_found", "There's nothing here."), 404));
 

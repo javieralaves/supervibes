@@ -24,6 +24,59 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now, isSignedIn: false), width: 300)
     }
 
+    func testSettingsPage() {
+        let settings = SleepSettings(sleepStart: 23 * 60 + 30, wakeTime: 8 * 60, clock: .twelveHour)
+        assertAppearances(
+            SettingsPage(
+                settings: .constant(settings),
+                status: (.sleep, .saved),
+                usage: UsageSummary(calls: Fixtures.usageCalls, today: now)
+            )
+            .background(Theme.background),
+            width: 900, height: 2600
+        )
+    }
+
+    func testSettingsPageWithProblem() {
+        let settings = SleepSettings(sleepStart: 8 * 60, wakeTime: 8 * 60, clock: nil)
+        assertAppearances(
+            SettingsPage(settings: .constant(settings), status: (.sleep, .failed(settings.problem!)), usage: nil)
+                .background(Theme.background),
+            width: 900, height: 900
+        )
+    }
+
+    func testShellWithSettings() {
+        let account = RailAccount(name: "Javi", email: "you@example.com", imageURL: nil)
+        let settings = SleepSettings(sleepStart: 23 * 60 + 30, wakeTime: 8 * 60, clock: .twelveHour)
+        assertAppearances(
+            HStack(spacing: 0) {
+                Rail(active: nil, account: account, topInset: 28)
+                AppWindowFrame {
+                    ZStack {
+                        Backdrop()
+                        SettingsPage(settings: .constant(settings), usage: UsageSummary(calls: Fixtures.usageCalls, today: now))
+                    }
+                }
+            }
+            .background(Theme.shell),
+            width: 1280, height: 820
+        )
+    }
+
+    func testRailAndAccountMenu() {
+        let account = RailAccount(name: "Javi", email: "you@example.com", imageURL: nil)
+        assertAppearances(
+            HStack(alignment: .bottom, spacing: 12) {
+                Rail(active: .calendar, account: account, isMenuOpen: true)
+                AccountMenu(account: account).padding(.bottom, 12)
+            }
+            .frame(height: 360, alignment: .leading)
+            .background(Theme.shell),
+            width: 360, height: 360
+        )
+    }
+
     func testSignIn() {
         assertAppearances(SignInView(), width: 640, height: 360)
     }
