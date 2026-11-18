@@ -25,6 +25,7 @@ const TRIGGER_LABEL: Record<AiTrigger, string> = {
   cron: "Daily read",
   draft: "First draft",
   redraft: "Drafted again",
+  auto: "After a session",
 };
 
 const DAYS = 30;

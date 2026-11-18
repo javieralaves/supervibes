@@ -62,6 +62,8 @@ export type BlockView = {
   recap: BlockRecap | null;
   /** The recap posted to the goal's activity, once there is one. */
   recapPost: PostedRecap | null;
+  /** A recap is drafting itself in the background; it shows up on a later refresh. */
+  recapDrafting: boolean;
 };
 
 /** A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made. */

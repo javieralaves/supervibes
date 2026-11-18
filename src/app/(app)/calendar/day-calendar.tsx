@@ -2,6 +2,7 @@
 
 import { ArrowLeft01Icon, ArrowRight01Icon, CheckListIcon, CircleIcon, Moon02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { useRouter } from "next/navigation";
 import {
   startTransition,
   useCallback,
@@ -35,6 +36,9 @@ import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y }
 import { TaskPanel, type PanelGroup, type PanelTask } from "./task-panel";
 
 export type { CalendarGoal };
+
+/** How often to check for recaps drafting themselves in the background. */
+const RECAP_POLL_MS = 15_000;
 
 /** An open task the calendar can schedule. */
 export type CalendarTask = { id: string; goalId: string; title: string; minutes: number };
@@ -206,6 +210,14 @@ export function DayCalendar({
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
   const [blocks, apply] = useOptimistic(savedBlocks, applyOp);
+  const router = useRouter();
+  // While recaps draft themselves in the background, check back for them now and then.
+  const recapsDrafting = savedBlocks.some((b) => b.recapDrafting);
+  useEffect(() => {
+    if (!recapsDrafting) return;
+    const timer = setInterval(() => router.refresh(), RECAP_POLL_MS);
+    return () => clearInterval(timer);
+  }, [recapsDrafting, router]);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
@@ -515,7 +527,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, description: null, fromSuggestion: null, taskId: null, taskDone: false, agenda: null, recap: null, recapPost: null } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, description: null, fromSuggestion: null, taskId: null, taskDone: false, agenda: null, recap: null, recapPost: null, recapDrafting: false } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -552,6 +564,7 @@ export function DayCalendar({
           agenda: null,
           recap: null,
           recapPost: null,
+          recapDrafting: false,
           ...times,
         },
       },

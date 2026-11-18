@@ -169,6 +169,13 @@
       "when": 1794997161046,
       "tag": "0023_block_description",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795003994338,
+      "tag": "0024_auto_recaps",
+      "breakpoints": true
     }
   ]
 }

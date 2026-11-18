@@ -14,7 +14,7 @@ import { costMicros, type TokenCounts } from "@/lib/ai-pricing";
  */
 
 export type AiFeature = "progress_read" | "recap" | "agenda";
-export type AiTrigger = "manual" | "note" | "recap" | "cron" | "draft" | "redraft";
+export type AiTrigger = "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto";
 
 /** Who and what a call is for; passed down to whatever makes the call. */
 export type AiCallContext = { userId: string; goalId: string; feature: AiFeature; trigger: AiTrigger };

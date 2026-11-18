@@ -5,7 +5,7 @@ import { and, asc, eq, gt, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { calendarBlocks, goalPosts, goals, goalTasks } from "@/db/schema";
 import type { BlockAgenda } from "@/lib/block-schema";
-import type { BlockRecap, PostedRecap } from "@/lib/recap-schema";
+import { AUTO_STALE_MS, autoRecapExpired, type BlockRecap, type PostedRecap } from "@/lib/recap-schema";
 
 /*
  * Calendar blocks: intentions and protected time. Same rule as everything else:
@@ -31,6 +31,8 @@ export type BlockDTO = {
   recap: BlockRecap | null;
   /** The recap posted to the goal's activity, if there is one; only filled when listing. */
   recapPost?: PostedRecap | null;
+  /** Whether a recap is drafting itself in the background right now; only filled when listing. */
+  recapDrafting?: boolean;
 };
 
 const columns = {
@@ -66,16 +68,22 @@ export async function listBlocks(userId: string, from: Date, to: Date): Promise<
       recapPostId: goalPosts.id,
       recapBody: goalPosts.body,
       recapBreadcrumbs: goalPosts.breadcrumbs,
+      autoRecap: calendarBlocks.autoRecap,
+      updatedAt: calendarBlocks.updatedAt,
     })
     .from(calendarBlocks)
     .leftJoin(goalTasks, eq(goalTasks.id, calendarBlocks.taskId))
     .leftJoin(goalPosts, eq(goalPosts.blockId, calendarBlocks.id))
     .where(and(eq(calendarBlocks.userId, userId), gt(calendarBlocks.endsAt, from), lt(calendarBlocks.startsAt, to)))
     .orderBy(asc(calendarBlocks.startsAt));
-  return rows.map(({ taskDoneAt, recapPostId, recapBody, recapBreadcrumbs, ...block }) => ({
+  const now = Date.now();
+  return rows.map(({ taskDoneAt, recapPostId, recapBody, recapBreadcrumbs, autoRecap, updatedAt, ...block }) => ({
     ...block,
+    // A draft that wrote itself and sat unposted too long is on its way out; don't show it meanwhile.
+    recap: autoRecapExpired(block.recap, block.endsAt) ? null : block.recap,
     taskDone: taskDoneAt !== null,
     recapPost: recapPostId !== null ? { body: recapBody ?? "", breadcrumbs: recapBreadcrumbs ?? [] } : null,
+    recapDrafting: autoRecap === "drafting" && now - updatedAt.getTime() < AUTO_STALE_MS,
   }));
 }
 

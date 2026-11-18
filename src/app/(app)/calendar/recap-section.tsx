@@ -15,7 +15,8 @@ import { discardRecapAction, postRecapAction, prepareRecapAction } from "./actio
 /**
  * "Recap session", once a block has ended: a draft of what was meant to happen
  * and what did, from the goal's connected apps, that the person edits and posts
- * to the goal's activity. With no apps to read, it's an empty write-up. Once
+ * to the goal's activity. With no apps to read, it's an empty write-up. Sessions
+ * that said what they were for draft one on their own (see recap.ts). Once
  * posted, the recap itself shows here, as the record of how the session went.
  */
 export function RecapSection({ block }: { block: BlockView }) {
@@ -49,9 +50,11 @@ export function RecapSection({ block }: { block: BlockView }) {
 
   return (
     <section aria-label="Recap" className="mt-6">
-      {preparing && !recap ? (
+      {(preparing || block.recapDrafting) && !recap ? (
         <div aria-label="Recapping session">
-          <p className="text-[13px] text-muted">Looking through your connected apps…</p>
+          <p className="text-[13px] text-muted">
+            {preparing ? "Looking through your connected apps…" : "Drafting a recap from your connected apps…"}
+          </p>
           <div className="mt-3 space-y-2">
             {["w-full", "w-[90%]", "w-full", "w-2/3"].map((w, i) => (
               <div key={i} className={`h-3 animate-pulse rounded bg-foreground/[.07] ${w}`} />
@@ -97,6 +100,9 @@ const FOUND_HINT: Record<BlockRecap["found"], string> = {
   none: "Nothing in your connected apps from this session. Write what happened.",
   "no-sources": "This goal has no connected apps. Write what happened.",
 };
+
+const AUTO_HINT =
+  "Drafted on its own once the session ended. Edit anything before posting; it's cleared in a couple of days if you don't.";
 
 function RecapDraft({
   block,
@@ -161,7 +167,9 @@ function RecapDraft({
           </button>
         )}
       </div>
-      <p className="mt-0.5 text-xs leading-relaxed text-muted [text-wrap:pretty]">{FOUND_HINT[recap.found]}</p>
+      <p className="mt-0.5 text-xs leading-relaxed text-muted [text-wrap:pretty]">
+        {recap.auto ? AUTO_HINT : FOUND_HINT[recap.found]}
+      </p>
 
       {recap.planned && (
         <p className="mt-3 text-[13px] leading-snug text-muted [text-wrap:pretty]">

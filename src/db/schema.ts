@@ -246,6 +246,12 @@ export const calendarBlocks = pgTable(
     agenda: jsonb().$type<BlockAgenda>(),
     /** A draft recap of the session, until it's posted to the goal's activity or discarded. */
     recap: jsonb().$type<BlockRecap>(),
+    /**
+     * Drafting a recap on its own, after the session ended: "drafting" while it runs,
+     * "done" once it has (whether or not there was anything worth a draft). Set once,
+     * so a session is drafted or passed over at most once. Null: not tried.
+     */
+    autoRecap: text().$type<"drafting" | "done">(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
@@ -299,7 +305,7 @@ export const aiCalls = pgTable(
     goalId: uuid().references(() => goals.id, { onDelete: "set null" }),
     /** "progress_read" | "recap" | "agenda". */
     feature: text().notNull(),
-    /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft". */
+    /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto". */
     trigger: text().notNull(),
     /** The model that answered (a refusal can be answered by a fallback model). */
     model: text().notNull(),

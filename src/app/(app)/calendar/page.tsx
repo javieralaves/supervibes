@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/skeleton";
 import { listBlocksAroundNow } from "@/lib/blocks";
 import { listGoals } from "@/lib/goals";
 import { requireUser } from "@/lib/session";
+import { draftRecapsAfterResponse, listAutoRecapCandidates } from "@/lib/recap";
 import { listOpenTasks } from "@/lib/tasks";
 import { getSettings } from "@/lib/settings";
 
@@ -12,17 +13,25 @@ import { DayCalendar } from "./day-calendar";
 
 export const metadata: Metadata = { title: "Calendar · Supervibes" };
 
-// Posting a recap starts a progress read that runs after the response, within this limit.
+// Posting a recap starts a progress read, and ended sessions draft their recaps,
+// after the response, within this limit.
 export const maxDuration = 300;
+
+/** Sessions drafted per visit; any more wait for the next visit. */
+const AUTO_RECAPS_PER_VISIT = 3;
 
 async function Today() {
   const user = await requireUser();
-  const [tasks, settings, goals, blocks] = await Promise.all([
+  const [tasks, settings, goals, blocks, toRecap] = await Promise.all([
     listOpenTasks(user.id),
     getSettings(user.id),
     listGoals(user.id),
     listBlocksAroundNow(user.id),
+    listAutoRecapCandidates(user.id, AUTO_RECAPS_PER_VISIT),
   ]);
+  // Sessions that just ended draft their recaps once the page is sent; the calendar refreshes to pick them up.
+  const drafting = new Set(toRecap);
+  draftRecapsAfterResponse(user.id, toRecap);
   return (
     <DayCalendar
       tasks={tasks.map(({ id, goalId, title, minutes }) => ({ id, goalId, title, minutes }))}
@@ -32,6 +41,7 @@ async function Today() {
         ...b,
         taskDone: b.taskDone ?? false,
         recapPost: b.recapPost ?? null,
+        recapDrafting: drafting.has(b.id) || (b.recapDrafting ?? false),
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
       }))}

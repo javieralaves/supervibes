@@ -104,12 +104,14 @@ export function BlockCard({
   const title = block.title ?? goal?.title ?? "Protected time";
   const time = formatRange(start, end, clock);
   const what = intention ? (block.taskDone ? "Done" : "Intention") : "Protected time";
+  // A recap waiting to be read and posted, or one drafting itself.
+  const recapWaiting = !block.recapPost && (block.recap !== null || block.recapDrafting);
 
   return (
     <li
       style={{ ...goalColorStyle(goal?.color ?? "slate"), ...place(start, end) }}
       onPointerDown={pending ? undefined : onPointerDown}
-      aria-label={`${what}: ${title}, ${time}`}
+      aria-label={`${what}: ${title}, ${time}${recapWaiting ? (block.recap ? ", recap to review" : ", drafting recap") : ""}`}
       className={`goal-tint ${kind} group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
         pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-grab"
       } ${selected ? "ring-2 ring-[var(--goal)]/60" : ""}`}
@@ -137,6 +139,15 @@ export function BlockCard({
           ) : undefined
         }
       />
+      {recapWaiting && (
+        <span
+          aria-hidden="true"
+          title={block.recap ? "Recap to review" : "Drafting recap"}
+          className={`goal-solid absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full transition-opacity group-hover:opacity-0 ${
+            block.recap ? "" : "animate-pulse"
+          }`}
+        />
+      )}
       {!pending && !dragging && (
         <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
           <MoreMenu label={`Options for ${title}`} small>

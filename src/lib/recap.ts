@@ -1,14 +1,15 @@
 import "server-only";
 
-import { and, asc, desc, eq, gte, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { after } from "next/server";
 import * as z from "zod";
 
 import { db } from "@/db";
-import { calendarBlocks, goals, goalTasks } from "@/db/schema";
+import { calendarBlocks, goalPosts, goals, goalSources, goalTasks } from "@/db/schema";
 import type { AiTrigger } from "@/lib/ai-usage";
 import { answerText, askWithApps, clearSourceErrors, openGoalApps, sourceLines, type GoalApps } from "@/lib/goal-apps";
 import { PROVIDER_KEYS, type ProviderKey } from "@/lib/providers";
-import { MAX_BREADCRUMBS, type BlockRecap, type Breadcrumb } from "@/lib/recap-schema";
+import { AUTO_KEEP_MS, MAX_BREADCRUMBS, type BlockRecap, type Breadcrumb } from "@/lib/recap-schema";
 import { targetDateForPrompt } from "@/lib/target-date";
 
 /*
@@ -304,4 +305,131 @@ export async function discardRecap(userId: string, blockId: string) {
     .update(calendarBlocks)
     .set({ recap: null })
     .where(and(eq(calendarBlocks.id, blockId), eq(calendarBlocks.userId, userId)));
+}
+
+/*
+ * Recaps that draft themselves. Once a session's margin has passed, a draft is
+ * prepared in the background, but only where it has something to judge against
+ * and something to judge with: the session said what it was for (an aim, an
+ * agenda, or a task still open), and its goal has apps to read. A draft whose apps
+ * show nothing from the session is dropped rather than shown. Drafts are never
+ * posted on their own, and one left unposted is cleared after a couple of days.
+ * Each session is tried at most once; "Recap session" is always there by hand.
+ */
+
+/** Sessions shorter than this aren't worth a draft of their own. */
+const AUTO_MIN_MINUTES = 20;
+/** Only sessions that ended within this long are drafted; older ones are left alone. */
+const AUTO_WITHIN_MS = AUTO_KEEP_MS;
+
+/** A person's ended sessions worth drafting a recap for, most recent first. */
+export async function listAutoRecapCandidates(userId: string, limit: number): Promise<string[]> {
+  if (!process.env.ANTHROPIC_API_KEY) return [];
+  const now = Date.now();
+  const rows = await db
+    .select({ id: calendarBlocks.id })
+    .from(calendarBlocks)
+    .leftJoin(goalTasks, eq(goalTasks.id, calendarBlocks.taskId))
+    .leftJoin(goalPosts, eq(goalPosts.blockId, calendarBlocks.id))
+    .where(
+      and(
+        eq(calendarBlocks.userId, userId),
+        isNull(calendarBlocks.autoRecap),
+        isNull(calendarBlocks.recap),
+        isNull(goalPosts.id),
+        // Its margin has passed, so work finished just after counts.
+        lte(calendarBlocks.endsAt, new Date(now - AFTER_MS)),
+        gte(calendarBlocks.endsAt, new Date(now - AUTO_WITHIN_MS)),
+        sql`${calendarBlocks.endsAt} - ${calendarBlocks.startsAt} >= make_interval(mins => ${AUTO_MIN_MINUTES})`,
+        // Something said what it was for. A task already checked off has said what happened.
+        or(
+          and(isNotNull(calendarBlocks.taskId), isNull(goalTasks.doneAt)),
+          isNotNull(calendarBlocks.agenda),
+          sql`btrim(coalesce(${calendarBlocks.description}, '')) <> ''`,
+        ),
+        // There are apps to read.
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(goalSources)
+            .where(and(eq(goalSources.goalId, calendarBlocks.goalId), eq(goalSources.enabled, true))),
+        ),
+      ),
+    )
+    .orderBy(desc(calendarBlocks.endsAt))
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Drafts one session's recap on its own, if nothing else has: claims the block,
+ * drafts, and keeps the draft only if the apps showed something from the session.
+ */
+export async function autoDraftRecap(userId: string, blockId: string): Promise<"drafted" | "nothing" | "skipped"> {
+  const mine = and(eq(calendarBlocks.id, blockId), eq(calendarBlocks.userId, userId));
+  const [claimed] = await db
+    .update(calendarBlocks)
+    .set({ autoRecap: "drafting" })
+    .where(and(mine, isNull(calendarBlocks.autoRecap), isNull(calendarBlocks.recap)))
+    .returning({ id: calendarBlocks.id });
+  if (!claimed) return "skipped";
+
+  let outcome: "drafted" | "nothing" = "nothing";
+  try {
+    const session = await loadSession(userId, blockId);
+    if (session && !session.recap) {
+      const apps = await openGoalApps(userId, session.goalId);
+      if (apps.usable.length > 0) {
+        const recap = await draft(userId, session, apps, "auto");
+        if (recap.found !== "none") {
+          // Unless the person drafted one by hand meanwhile.
+          const kept = await db
+            .update(calendarBlocks)
+            .set({ recap: { ...recap, auto: true } })
+            .where(and(mine, isNull(calendarBlocks.recap)))
+            .returning({ id: calendarBlocks.id });
+          if (kept.length > 0) outcome = "drafted";
+        }
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof RecapError)) console.error(`[recap] automatic draft for block ${blockId} failed`, error);
+    else console.warn(`[recap] automatic draft for block ${blockId} skipped: ${error.message}`);
+  } finally {
+    await db.update(calendarBlocks).set({ autoRecap: "done" }).where(mine);
+  }
+  return outcome;
+}
+
+/** Clears a person's automatic drafts that nobody posted in time. */
+export async function clearStaleAutoRecaps(userId: string) {
+  await db
+    .update(calendarBlocks)
+    .set({ recap: null })
+    .where(
+      and(
+        eq(calendarBlocks.userId, userId),
+        sql`(${calendarBlocks.recap} ->> 'auto')::boolean is true`,
+        lt(calendarBlocks.endsAt, new Date(Date.now() - AUTO_KEEP_MS)),
+      ),
+    );
+}
+
+/** Stop starting new drafts after this long, within the page's 300s limit. */
+const PAGE_BUDGET_MS = 200_000;
+
+/**
+ * After the calendar is sent: clears stale automatic drafts, then drafts the
+ * given sessions one by one. Pass the ids from `listAutoRecapCandidates`.
+ * Drafting happens only here, so sessions draft when the calendar is next opened.
+ */
+export function draftRecapsAfterResponse(userId: string, blockIds: string[]) {
+  after(async () => {
+    const started = Date.now();
+    await clearStaleAutoRecaps(userId);
+    for (const id of blockIds) {
+      if (Date.now() - started > PAGE_BUDGET_MS) break;
+      await autoDraftRecap(userId, id);
+    }
+  });
 }
