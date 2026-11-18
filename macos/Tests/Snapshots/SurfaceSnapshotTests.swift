@@ -104,6 +104,34 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testGoalsHome() {
+        assertAppearances(
+            GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18")
+                .background(Theme.background),
+            width: 1180, height: 900
+        )
+    }
+
+    func testGoalsHomeEmpty() {
+        assertAppearances(
+            GoalsHome(firstName: "Javier", goals: [], today: "2026-11-18").background(Theme.background),
+            width: 900, height: 760
+        )
+    }
+
+    func testGoalDialog() {
+        assertAppearances(
+            GoalDialog(
+                input: GoalInput(title: "Run a half marathon", description: "Finish under two hours.",
+                                 targetDate: "2027-04-12", icon: "Rocket01Icon", color: "sky"),
+                today: "2026-11-18"
+            )
+            .padding(24)
+            .background(Theme.shell),
+            width: 528, height: 688
+        )
+    }
+
     func testSignIn() {
         assertAppearances(SignInView(), width: 640, height: 360)
     }

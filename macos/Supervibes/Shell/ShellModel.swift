@@ -5,7 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class ShellModel {
-    var route: Route = .web
+    var route: Route = .goals
     var isAccountMenuOpen = false
     private(set) var account: RailAccount?
     let web: WebContentModel
@@ -22,6 +22,7 @@ final class ShellModel {
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
         web.onNativePath = { [weak self] path in
             switch path {
+            case "/": self?.open(.goals)
             case "/settings": self?.openSettings()
             case "/connections": self?.open(.connections)
             default: break
@@ -33,6 +34,7 @@ final class ShellModel {
     var activeRailItem: RailItem? {
         switch route {
         case .web: RailItem.matching(path: web.currentPath)
+        case .goals: .goals
         case .connections: .connections
         case .settings: nil
         }
@@ -42,15 +44,28 @@ final class ShellModel {
     func open(_ item: RailItem) {
         isAccountMenuOpen = false
         overlays.dismiss()
-        if item == .connections {
+        switch item {
+        case .goals:
+            route = .goals
+            return
+        case .connections:
             route = .connections
             return
+        default:
+            break
         }
         route = .web
         // Like the web rail's links: go to the section's page unless it's already showing.
         if web.currentPath != item.href {
             web.navigate(to: item.href)
         }
+    }
+
+    /// A goal's own page, still on the web.
+    func openGoal(_ id: String) {
+        overlays.dismiss()
+        route = .web
+        web.navigate(to: "/goals/\(id)")
     }
 
     func openSettings() {
@@ -63,10 +78,11 @@ final class ShellModel {
         guard auth.isSignedIn else {
             web.clear()
             account = nil
-            route = .web
+            route = .goals
             return
         }
-        web.signIn(showing: "/")
+        // Home is native, so the web view waits until a web page is wanted (navigate signs it in).
+        route = .goals
         await loadAccount()
     }
 

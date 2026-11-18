@@ -145,6 +145,229 @@
           "code"
         ]
       },
+      "Goals": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "description": "Today in `timeZone`; the trajectories end on it."
+          },
+          "max": {
+            "type": "integer",
+            "description": "How many goals someone can have."
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Goal"
+            }
+          }
+        },
+        "required": [
+          "today",
+          "max",
+          "goals"
+        ]
+      },
+      "Goal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "icon": {
+            "type": "string",
+            "description": "A Hugeicons name from lib/goal-icons.ts, e.g. Rocket01Icon."
+          },
+          "color": {
+            "type": "string",
+            "description": "A key from lib/goal-colors.ts, e.g. violet."
+          },
+          "trajectory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryDay"
+            },
+            "description": "The last 28 days, oldest first."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "targetDate",
+          "icon",
+          "color",
+          "trajectory"
+        ]
+      },
+      "TrajectoryDay": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "on_track",
+              "at_risk",
+              "off_track",
+              "unclear",
+              null
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "target",
+              "week",
+              "momentum",
+              null
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "carried": {
+            "type": "boolean",
+            "description": "No read that day: the status is the one before it."
+          }
+        },
+        "required": [
+          "day",
+          "status",
+          "basis",
+          "reason",
+          "carried"
+        ]
+      },
+      "GoalInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "YYYY-MM-DD, or null."
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "Rocket01Icon",
+              "Target02Icon",
+              "Flag02Icon",
+              "Award01Icon",
+              "CrownIcon",
+              "SparklesIcon",
+              "Idea01Icon",
+              "MountainIcon",
+              "Briefcase01Icon",
+              "Task01Icon",
+              "ChartIncreaseIcon",
+              "Presentation01Icon",
+              "Building03Icon",
+              "Agreement01Icon",
+              "LaptopIcon",
+              "CodeIcon",
+              "PaintBoardIcon",
+              "PenTool01Icon",
+              "Edit02Icon",
+              "Book02Icon",
+              "Camera01Icon",
+              "Video01Icon",
+              "MusicNote01Icon",
+              "MagicWand01Icon",
+              "Layers01Icon",
+              "Megaphone01Icon",
+              "VoteIcon",
+              "JusticeScale01Icon",
+              "Globe02Icon",
+              "UserGroupIcon",
+              "Message01Icon",
+              "Dumbbell01Icon",
+              "RunningShoesIcon",
+              "Bicycle01Icon",
+              "SwimmingIcon",
+              "YogaIcon",
+              "HeartCheckIcon",
+              "BrainIcon",
+              "Moon02Icon",
+              "Medicine01Icon",
+              "Leaf01Icon",
+              "Mortarboard01Icon",
+              "BookOpen01Icon",
+              "LanguageSkillIcon",
+              "PiggyBankIcon",
+              "Money03Icon",
+              "Wallet01Icon",
+              "Coins01Icon",
+              "ChartLineData01Icon",
+              "SaleTag01Icon",
+              "Home01Icon",
+              "FavouriteIcon",
+              "Baby01Icon",
+              "CatIcon",
+              "Plant01Icon",
+              "Sofa01Icon",
+              "Coffee01Icon",
+              "ChefHatIcon",
+              "GiftIcon",
+              "PartyIcon",
+              "Airplane01Icon",
+              "Compass01Icon",
+              "MapsLocation01Icon",
+              "Beach02Icon",
+              "TentIcon",
+              "Car01Icon"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "coral",
+              "amber",
+              "green",
+              "teal",
+              "sky",
+              "indigo",
+              "violet",
+              "pink",
+              "slate"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "targetDate",
+          "icon",
+          "color"
+        ]
+      },
       "Me": {
         "type": "object",
         "properties": {
@@ -647,6 +870,114 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals": {
+      "get": {
+        "operationId": "listGoals",
+        "summary": "Goals in order, each with its status over the last four weeks",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The device's time zone; defaults to the stored one."
+            },
+            "required": false,
+            "description": "The device's time zone; defaults to the stored one.",
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goals"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGoal",
+        "summary": "Add a goal",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
             "content": {
               "application/json": {
                 "schema": {

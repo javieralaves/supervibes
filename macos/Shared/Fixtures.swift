@@ -76,4 +76,34 @@ enum Fixtures {
                            configured: true, state: .notConnected),
         ]
     }
+
+    /// Six goals with statuses and trails, ending on Nov 18, 2026.
+    static var goals: [Goal] {
+        func trail(_ entries: [(Int, GoalStatus, StatusBasis)]) -> [TrajectoryDay] {
+            // Days 0...27, oldest first; a status from its day onward, carried between reads.
+            var current: (GoalStatus, StatusBasis)?
+            return (0..<28).map { index in
+                let day = CalendarDay.string(CalendarDay.date("2026-10-22")!.addingTimeInterval(Double(index) * 86_400))
+                if let read = entries.first(where: { $0.0 == index }) {
+                    current = (read.1, read.2)
+                    return TrajectoryDay(day: day, status: read.1, basis: read.2, reason: nil, carried: false)
+                }
+                return TrajectoryDay(day: day, status: current?.0, basis: current?.1, reason: nil, carried: current != nil)
+            }
+        }
+        return [
+            Goal(id: "1", title: "Build Supervibes as a fresh take on productivity", targetDate: "2026-12-18",
+                 icon: "Rocket01Icon", color: "sky", trajectory: trail([(14, .unclear, .target), (20, .onTrack, .target), (27, .onTrack, .target)])),
+            Goal(id: "2", title: "Build an app that helps Jacob find an apartment in Madrid", targetDate: "2026-11-30",
+                 icon: "Megaphone01Icon", color: "teal", trajectory: trail([(18, .onTrack, .target), (27, .atRisk, .target)])),
+            Goal(id: "3", title: "Deliver research-backed housing playbook for Madrid", targetDate: "2026-11-12",
+                 icon: "Target02Icon", color: "coral", trajectory: trail([(27, .offTrack, .target)])),
+            Goal(id: "4", title: "Carve time out for life more broadly", icon: "Plant01Icon", color: "pink",
+                 trajectory: trail([(27, .onTrack, .momentum)])),
+            Goal(id: "5", title: "Make time for movement & exercise", icon: "RunningShoesIcon", color: "green",
+                 trajectory: trail([])),
+            Goal(id: "6", title: "Stay engaged with Superfocus and the community", icon: "Briefcase01Icon", color: "indigo",
+                 trajectory: trail([(10, .atRisk, .momentum), (27, .onTrack, .momentum)])),
+        ]
+    }
 }

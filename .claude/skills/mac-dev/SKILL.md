@@ -25,7 +25,7 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 ## Design system
 
 - Native screens look like the web app, not like stock macOS. Use `Shared/DesignSystem/`: `Theme` colours (ported from `src/app/globals.css`, light and dark), `.appText(.sm, .medium, tracking:)` for Tailwind's type scale in Instrument Sans (bundled), `Icon` for the web's Hugeicons, and the components (`Card`, `CardHeader`, `SelectField`, `ToggleGroup`, `SaveStatusView`, `PageHeader`, `Backdrop`, `Avatar`). Each component names the Tailwind classes it matches; compare against the web source when building a screen.
-- Icons are generated: add the Hugeicons name and stroke width to `scripts/mac-icons.mjs`, run `node scripts/mac-icons.mjs`, and add a case to `Icon`.
+- Icons are generated: add the Hugeicons name and stroke width to `scripts/mac-icons.mjs`, run `node --no-warnings scripts/mac-icons.mjs`, and add a case to `Icon`. The same script exports every goal icon (`Goal-<name>` assets) and writes `GoalPalette.generated.swift` (icon groups, labels, keywords, goal colours) straight from `src/lib/goal-icons.ts` and `goal-colors.ts`; rerun it whenever those change. Goals draw with `GoalBadge`, `StatusText` and `TrajectoryStrip` (`GoalStyle.swift`).
 - Put shadows on a background shape, never on a view with text in it, or the text gets a halo.
 - If `globals.css` tokens change, change `Theme` to match.
 
@@ -35,7 +35,7 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 - To move a page: build it in `Shared/UI/` against plain models (`Shared/Models/`), with fixtures and a snapshot test (render it inside `Rail` + `AppWindowFrame` too); keep the API calls in an `@Observable` model in `Supervibes/`. Add a `Route` case, add its web path to `WebContentModel.nativePaths`, route it in `ShellModel`, and give it a rail item or menu entry. A page script catches in-app links to native paths before Next.js handles them, and full loads of them are cancelled.
 - Menus and confirm dialogs go through `OverlayCenter` (`@Environment(\.overlays)`), drawn above the window like the web's Radix portals: anchor a menu with `AnchorReader`, then `showMenu(anchor:)` with a `MenuPanel` of `MenuItem`s, or `showDialog` with a `ConfirmDialog`.
 - Dates the web formats in US English use `Date.webDay` / `webMonthDay` / `webMonthDayTime`, so they match whatever the Mac's locale.
-- Done so far: `/settings` → `SettingsPage` (also ⌘,), opened from the account menu; `/connections` → `ConnectionsPage`, the rail's Connections item. Connecting an app runs its consent page in the system sign-in sheet; see `src/lib/app-connect.ts` for why the code comes back to the app to finish.
+- Done so far: `/` → `GoalsHome` (the window opens on it; the web view isn't loaded until a web page is wanted), with the new goal `GoalDialog`; a goal's own page (`/goals/<id>`) is still web, via `ShellModel.openGoal`. `/settings` → `SettingsPage` (also ⌘,), opened from the account menu; `/connections` → `ConnectionsPage`, the rail's Connections item. Connecting an app runs its consent page in the system sign-in sheet; see `src/lib/app-connect.ts` for why the code comes back to the app to finish.
 
 ## Commands (run from `macos/`)
 

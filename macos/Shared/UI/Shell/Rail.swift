@@ -34,6 +34,11 @@ struct RailAccount: Hashable {
     let name: String
     let email: String
     let imageURL: URL?
+
+    /// "Javier" from "Javier Alaves", as the web greeting uses it.
+    var firstName: String {
+        name.split(separator: " ").first.map(String.init) ?? name
+    }
 }
 
 struct Rail: View {

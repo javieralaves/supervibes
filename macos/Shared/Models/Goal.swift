@@ -1,0 +1,149 @@
+import Foundation
+
+/// A goal as the home page shows it (src/lib/goals.ts plus its status trail).
+struct Goal: Identifiable, Hashable, Sendable {
+    let id: String
+    var title: String
+    var description: String?
+    /// A calendar day, "YYYY-MM-DD".
+    var targetDate: String?
+    /// A Hugeicons name from GoalPalette, e.g. "Rocket01Icon".
+    var icon: String
+    /// A key from GoalPalette, e.g. "violet".
+    var color: String
+    /// The last 28 days, oldest first.
+    var trajectory: [TrajectoryDay]
+    /// Saving; shown faded until the server has it.
+    var isPending = false
+
+    /// Its latest status: the last day's, which carries the most recent read.
+    var latest: TrajectoryDay? { trajectory.last }
+}
+
+/// What a goal's status was on one day (src/lib/status-schema.ts).
+struct TrajectoryDay: Hashable, Sendable {
+    /// "YYYY-MM-DD", in the person's own calendar.
+    let day: String
+    let status: GoalStatus?
+    let basis: StatusBasis?
+    let reason: String?
+    /// No read that day: the status shown is the one before it.
+    let carried: Bool
+}
+
+enum GoalStatus: String, Hashable, Sendable {
+    case onTrack = "on_track"
+    case atRisk = "at_risk"
+    case offTrack = "off_track"
+    case unclear
+}
+
+enum StatusBasis: String, Hashable, Sendable {
+    case target, week, momentum
+}
+
+/// "On track", or for a goal judged on momentum, "Moving".
+func statusLabel(_ status: GoalStatus, _ basis: StatusBasis) -> String {
+    switch (status, basis) {
+    case (.unclear, _): "Too early to tell"
+    case (.onTrack, .momentum): "Moving"
+    case (.atRisk, .momentum): "Slowing"
+    case (.offTrack, .momentum): "Stalled"
+    case (.onTrack, _): "On track"
+    case (.atRisk, _): "At risk"
+    case (.offTrack, _): "Off track"
+    }
+}
+
+/// What a new goal starts as, from the dialog (src/lib/goal-schema.ts).
+struct GoalInput: Hashable, Sendable {
+    var title = ""
+    var description = ""
+    /// "YYYY-MM-DD", or nil.
+    var targetDate: String?
+    var icon = GoalPalette.defaultIcon
+    var color = GoalPalette.defaultColor
+
+    static let maxTitle = 120
+    static let maxDescription = 1000
+
+    /// The web dialog's checks, so the same messages show before anything is sent.
+    var problem: String? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty { return "Give your goal a name." }
+        if title.count > Self.maxTitle { return "Keep it under \(Self.maxTitle) characters." }
+        if description.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxDescription {
+            return "Keep the description under \(Self.maxDescription) characters."
+        }
+        return nil
+    }
+}
+
+// MARK: - Calendar days
+
+/// Calendar days ("YYYY-MM-DD") with no time zone, as in src/lib/target-date.ts.
+enum CalendarDay {
+    private static var utc: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    static func date(_ day: String) -> Date? {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return utc.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
+    static func string(_ date: Date) -> String {
+        let c = utc.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// Today on this Mac, "YYYY-MM-DD".
+    static func today(_ now: Date = Date()) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: now)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// Whole days from `today` to `target`; negative once it has passed.
+    static func daysUntil(_ target: String, today: String) -> Int {
+        guard let a = date(today), let b = date(target) else { return 0 }
+        return Int((b.timeIntervalSince(a) / 86_400).rounded())
+    }
+
+    /// "Mar 31", or "Mar 31, 2027" when it isn't this year.
+    static func format(_ target: String, today: String) -> String {
+        guard let date = date(target) else { return target }
+        var style = Date.FormatStyle(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!)
+            .month(.abbreviated).day()
+        if target.prefix(4) != today.prefix(4) { style = style.year() }
+        return date.formatted(style)
+    }
+
+    private static func span(_ days: Int) -> String {
+        if days < 14 { return "\(days) day\(days == 1 ? "" : "s")" }
+        if days < 60 { return "\(Int((Double(days) / 7).rounded())) weeks" }
+        let months = Int((Double(days) / 30.44).rounded())
+        return months < 24 ? "\(months) months" : "\(Int((Double(days) / 365.25).rounded())) years"
+    }
+
+    /// "today", "tomorrow", "in 3 weeks", "2 days past".
+    static func relative(_ days: Int) -> String {
+        switch days {
+        case 0: "today"
+        case 1: "tomorrow"
+        case -1: "yesterday"
+        default: days > 0 ? "in \(span(days))" : "\(span(-days)) past"
+        }
+    }
+
+    /// "today", "tomorrow", "5 d", "4 wk", "3 mo", or "2 d past".
+    static func shortRelative(_ days: Int) -> String {
+        if days == 0 { return "today" }
+        if days == 1 { return "tomorrow" }
+        let n = abs(days)
+        let span = n < 14 ? "\(n) d" : n < 60 ? "\(Int((Double(n) / 7).rounded())) wk" : "\(Int((Double(n) / 30.44).rounded())) mo"
+        return days > 0 ? span : "\(span) past"
+    }
+}

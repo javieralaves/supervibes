@@ -5,6 +5,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { requireApiUser, type ApiEnv } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { connections } from "@/lib/api/routes/connections";
+import { goals } from "@/lib/api/routes/goals";
 import { me } from "@/lib/api/routes/me";
 import { settings } from "@/lib/api/routes/settings";
 import { today } from "@/lib/api/routes/today";
@@ -49,6 +50,7 @@ api.use("/*", async (c, next) => {
 });
 
 api.route("/", connections);
+api.route("/", goals);
 api.route("/", me);
 api.route("/", settings);
 api.route("/", today);

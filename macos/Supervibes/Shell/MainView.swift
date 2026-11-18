@@ -4,6 +4,7 @@ import SwiftUI
 enum Route: Hashable {
     /// A web page; the web view keeps its own path.
     case web
+    case goals
     case settings
     case connections
 }
@@ -54,6 +55,11 @@ struct MainView: View {
                     switch shell.route {
                     case .web:
                         EmptyView()
+                    case .goals:
+                        ZStack {
+                            Backdrop()
+                            GoalsScreen(auth: auth, shell: shell)
+                        }
                     case .settings:
                         ZStack {
                             Backdrop()
@@ -91,6 +97,61 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.14), value: shell.isAccountMenuOpen)
         .overlayHost(shell.overlays)
+    }
+}
+
+/// The home page with its goals, in the app's window. A goal's own page is still web.
+private struct GoalsScreen: View {
+    let shell: ShellModel
+    @State private var model: GoalsModel
+    @Environment(\.overlays) private var overlays
+
+    init(auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: GoalsModel(auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .idle, .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load your goals", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                GoalsHome(
+                    firstName: shell.account?.firstName ?? "there",
+                    goals: model.goals,
+                    today: model.today,
+                    max: model.max,
+                    error: model.error,
+                    onOpen: { shell.openGoal($0.id) },
+                    onNew: newGoal
+                )
+            }
+        }
+        .task { await model.refresh() }
+    }
+
+    private func newGoal(_ input: GoalInput) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            GoalDialog(
+                input: input,
+                today: model.today,
+                onCancel: { overlays.dismiss() },
+                onSave: { saved in
+                    overlays.dismiss()
+                    model.create(saved)
+                }
+            )
+        }
     }
 }
 

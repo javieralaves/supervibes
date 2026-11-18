@@ -11,6 +11,7 @@ import SwiftUI
 /// The main action: `h-10 rounded-xl bg-foreground px-4 text-sm font-semibold text-background`.
 struct PrimaryButton: View {
     let title: String
+    var icon: Icon?
     var isBusy = false
     let action: () -> Void
     @State private var isHovered = false
@@ -20,6 +21,8 @@ struct PrimaryButton: View {
             HStack(spacing: 8) {
                 if isBusy {
                     ProgressView().controlSize(.mini).tint(Theme.background)
+                } else if let icon {
+                    icon.image(size: 16)
                 }
                 Text(title).appText(.sm, .semibold)
             }
