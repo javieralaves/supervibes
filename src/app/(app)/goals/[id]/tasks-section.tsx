@@ -307,23 +307,25 @@ export function TasksSection({
     const rows = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-task-row]") ?? [])];
     const from = rows.findIndex((r) => r.dataset.taskRow === id);
     if (from < 0) return;
-    // Page coordinates, so scrolling the page mid-drag doesn't throw the positions off.
+    // Coordinates within the app's scrolling window, so scrolling it mid-drag doesn't throw the positions off.
+    const scroller = listRef.current?.closest<HTMLElement>("[data-shell-scroll]");
+    const scrollTop = () => scroller?.scrollTop ?? window.scrollY;
     const boxes = rows.map((r) => {
       const b = r.getBoundingClientRect();
-      return { top: b.top + window.scrollY, height: b.height };
+      return { top: b.top + scrollTop(), height: b.height };
     });
     const gap = boxes.length > 1 ? boxes[1].top - (boxes[0].top + boxes[0].height) : 0;
     const shift = boxes[from].height + gap;
     const center = boxes[from].top + boxes[from].height / 2;
     const ids = open.map((t) => t.id);
-    const startY = e.pageY;
+    const startY = e.clientY + scrollTop();
     const pointerId = e.pointerId;
     let started = false;
     let to = from;
 
     function onMove(ev: PointerEvent) {
       if (ev.pointerId !== pointerId) return;
-      const dy = ev.pageY - startY;
+      const dy = ev.clientY + scrollTop() - startY;
       if (!started) {
         if (Math.abs(dy) < DRAG_THRESHOLD) return;
         started = true;
