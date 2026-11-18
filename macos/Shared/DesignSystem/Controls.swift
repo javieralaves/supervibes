@@ -109,6 +109,29 @@ struct RoundIconButton: View {
     }
 }
 
+/// The compact "more" button: `h-6 w-6 rounded-full border bg-card text-foreground/70 shadow`.
+struct SmallMoreButton: View {
+    let isActive: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Icon.more.image(size: 14)
+                .foregroundStyle(isHovered || isActive ? Theme.foreground : Theme.foreground(0.7))
+                .frame(width: 24, height: 24)
+                .background {
+                    Circle().fill(Theme.card).shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.08)), radius: 1, y: 1)
+                }
+                .overlay(Circle().strokeBorder(isHovered || isActive ? Theme.lineStrong : Theme.cardBorder))
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("Options")
+    }
+}
+
 // MARK: - Banner
 
 /// A one-line notice above a list: neutral, or red for errors.

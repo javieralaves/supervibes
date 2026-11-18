@@ -30,6 +30,11 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     var recapWaiting: Bool { !hasRecapPost && (hasRecapDraft || recapDrafting) }
 }
 
+/// What a drag on a block changes: the whole block, or its top or bottom edge.
+enum BlockEdge: Sendable {
+    case move, start, end
+}
+
 struct CalendarGoal: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
@@ -69,6 +74,11 @@ struct CalendarData: Hashable, Sendable {
 
 enum CalendarDayMath {
     static let dayMinutes = 24 * 60
+    /// Blocks snap to quarter hours and are at least this long (BLOCK_STEP).
+    static let step = 15
+
+    static func snapDown(_ minutes: Int) -> Int { Int((Double(minutes) / Double(step)).rounded(.down)) * step }
+    static func snapUp(_ minutes: Int) -> Int { Int((Double(minutes) / Double(step)).rounded(.up)) * step }
 
     /// The parts of any day spent asleep, e.g. 00:00–08:00 and 23:30–24:00.
     static func sleepSpans(sleepStart: Int, wakeTime: Int) -> [ClosedRange<Int>] {

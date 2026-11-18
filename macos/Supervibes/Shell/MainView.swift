@@ -335,7 +335,16 @@ private struct CalendarScreen: View {
                     now: model.now,
                     error: model.error,
                     onStep: model.step,
-                    onToday: model.goToToday
+                    onToday: model.goToToday,
+                    actions: CalendarActions(
+                        create: model.create(day:start:end:goalId:title:),
+                        saveDetails: model.saveDetails(_:goalId:title:),
+                        move: model.move(_:edge:delta:),
+                        moveToTomorrow: model.moveToTomorrow,
+                        toggleDone: model.toggleDone,
+                        remove: model.remove,
+                        defaultGoalId: { model.defaultGoalId }
+                    )
                 )
                 .focusable()
                 .focusEffectDisabled()

@@ -29,6 +29,10 @@ struct DayView: View {
     var error: String?
     var onStep: (Int) -> Void = { _ in }
     var onToday: () -> Void = {}
+    /// Changing blocks; without it the day is read-only.
+    var actions: CalendarActions?
+    /// Opens with this block being named, for previews and snapshots.
+    var editing: BlockEditing?
 
     private var clock: Clock { data.clock ?? .device }
     private var isToday: Bool { offset == 0 }
@@ -56,7 +60,7 @@ struct DayView: View {
                 if !strip.isEmpty {
                     DayStrip(items: strip, goals: data.goals, today: CalendarDay.today(now))
                 }
-                TimelineScroll(data: data, offset: offset, now: now, clock: clock)
+                TimelineScroll(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing)
             }
             .background(Theme.card, in: .rect(cornerRadius: 16))
             .clipShape(.rect(cornerRadius: 16))
@@ -258,11 +262,13 @@ private struct TimelineScroll: View {
     let offset: Int
     let now: Date
     let clock: Clock
+    let actions: CalendarActions?
+    let editing: BlockEditing?
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                DayTimeline(data: data, offset: offset, now: now, clock: clock)
+                DayTimeline(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing, proxy: proxy)
             }
             .onAppear { scrollToNow(proxy) }
             .onChange(of: offset) { scrollToNow(proxy) }
@@ -276,12 +282,91 @@ private struct TimelineScroll: View {
     }
 }
 
-/// The timeline itself: hour lines, sleep, past time, blocks and the now line.
+/// What the calendar can change, handed down from its model.
+struct CalendarActions {
+    var create: (_ day: Int, _ start: Int, _ end: Int, _ goalId: String, _ title: String?) -> Void
+    var saveDetails: (_ blockId: String, _ goalId: String, _ title: String?) -> Void
+    var move: (_ blockId: String, _ edge: BlockEdge, _ delta: Int) -> Void
+    var moveToTomorrow: (_ blockId: String) -> Void
+    var toggleDone: (_ blockId: String) -> Void
+    var remove: (_ blockId: String) -> Void
+    /// The goal a new block starts with.
+    var defaultGoalId: () -> String?
+}
+
+/// A block being named or given a goal in the popover: one being drawn, or one already there.
+struct BlockEditing: Equatable {
+    enum Mode: Equatable {
+        case create
+        case edit(blockId: String, intention: Bool)
+    }
+
+    var mode: Mode
+    /// Days from today.
+    var day: Int
+    var start: Int
+    var end: Int
+    var goalId: String
+    var title: String?
+
+    var key: String {
+        switch mode {
+        case .create: "new-\(day)-\(start)"
+        case .edit(let id, _): id
+        }
+    }
+}
+
+/// The timeline itself: hour lines, sleep, past time, blocks and the now line. Drag on empty
+/// space to protect time; drag a block to move it, or its top or bottom edge to change its
+/// length; click a block to edit it.
 struct DayTimeline: View {
     let data: CalendarData
     let offset: Int
     let now: Date
     let clock: Clock
+    var actions: CalendarActions?
+    var proxy: ScrollViewProxy?
+
+    @State private var editing: BlockEditing?
+    @State private var drawing: Drawing?
+    @State private var dragging: BlockDrag?
+    @State private var width: CGFloat = 0
+    @Environment(\.overlays) private var overlays
+
+    init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil, editing: BlockEditing? = nil, proxy: ScrollViewProxy? = nil) {
+        self.data = data
+        self.offset = offset
+        self.now = now
+        self.clock = clock
+        self.actions = actions
+        self.proxy = proxy
+        _editing = State(initialValue: editing)
+    }
+
+    /// Time being drawn on empty space.
+    private struct Drawing {
+        var from: Int
+        var to: Int
+        var moved = false
+        /// The press only closed the popover.
+        var dismissing = false
+    }
+
+    /// A block being moved, or one of its edges.
+    private struct BlockDrag {
+        let blockId: String
+        let edge: BlockEdge
+        let start: Int
+        let end: Int
+        var delta = 0
+        var moved = false
+
+        /// Where its edges sit right now.
+        var at: (start: Int, end: Int) {
+            (start + (edge == .end ? 0 : delta), end + (edge == .start ? 0 : delta))
+        }
+    }
 
     var body: some View {
         let nowMinutes = CalendarDayMath.minutes(now)
@@ -304,6 +389,7 @@ struct DayTimeline: View {
                 }
                 .offset(y: DayGrid.y(hour * 60))
                 .id("hour-\(hour)")
+                .allowsHitTesting(false)
             }
 
             // Sleep
@@ -320,36 +406,322 @@ struct DayTimeline: View {
                     .frame(height: DayGrid.y(pastUntil) - DayGrid.pad)
                     .padding(.leading, DayGrid.gutter)
                     .offset(y: DayGrid.pad)
+                    .allowsHitTesting(false)
+            }
+
+            // Empty space: drag (or click) to protect time.
+            if actions != nil {
+                Color.clear
+                    .contentShape(.rect)
+                    .padding(.leading, DayGrid.gutter)
+                    .gesture(drawGesture)
             }
 
             // Intentions and protected time
             ForEach(segments) { segment in
                 if let block = data.blocks.first(where: { $0.id == segment.blockId }) {
-                    let from = CalendarDayMath.midnight(segment.day, from: now).addingTimeInterval(Double(segment.start) * 60)
-                    let to = CalendarDayMath.midnight(segment.day, from: now).addingTimeInterval(Double(segment.end) * 60)
+                    let moving = dragging.flatMap { $0.blockId == block.id && $0.moved ? $0.at : nil }
+                    let start = moving?.start ?? segment.start
+                    let end = moving?.end ?? segment.end
+                    let midnight = CalendarDayMath.midnight(segment.day, from: now)
+                    let from = midnight.addingTimeInterval(Double(start) * 60)
+                    let to = midnight.addingTimeInterval(Double(end) * 60)
                     let elapsed = to > from ? now.timeIntervalSince(from) / to.timeIntervalSince(from) : 0
-                    BlockCardView(
+                    TimelineBlock(
                         block: block,
                         goal: data.goal(block.goalId),
-                        start: segment.start,
-                        end: segment.end,
+                        start: start,
+                        end: end,
                         clock: clock,
-                        elapsed: min(max(elapsed, 0), 1)
+                        elapsed: min(max(elapsed, 0), 1),
+                        isInteractive: actions != nil && !block.isPending,
+                        isDragging: moving != nil,
+                        isMenuOpen: overlays?.presented?.owner == block.id,
+                        onDrag: { edge, dy in dragBlock(segment, edge: edge, dy: dy) },
+                        onDragEnd: { edge in endBlockDrag(block, segment, edge: edge) },
+                        onMenu: { anchor in showMenu(block, segment, anchor: anchor) }
                     )
-                    .frame(height: max(DayGrid.y(segment.end) - DayGrid.y(segment.start) - 2, 14))
+                    .frame(height: max(DayGrid.y(end) - DayGrid.y(start) - 2, 14))
                     .padding(.leading, DayGrid.gutter + 4)
                     .padding(.trailing, 8)
-                    .offset(y: DayGrid.y(segment.start) + 1)
+                    .offset(y: DayGrid.y(start) + 1)
+                    .zIndex(moving != nil ? 1 : 0)
                 }
+            }
+
+            // The block being drawn
+            if let draft {
+                DraftBlock(label: clock.formatRange(draft.start, draft.end))
+                    .frame(height: DayGrid.y(draft.end) - DayGrid.y(draft.start) - 2)
+                    .padding(.leading, DayGrid.gutter + 4)
+                    .padding(.trailing, 8)
+                    .offset(y: DayGrid.y(draft.start) + 1)
+                    .zIndex(2)
             }
 
             // Now
             if isToday {
                 NowLine(label: clock.format(minutes: nowMinutes)).offset(y: DayGrid.y(nowMinutes))
+                    .zIndex(3)
+            }
+
+            if let editing, editing.day == offset, isShown(editing) {
+                popover(editing)
+                    .zIndex(4)
             }
         }
         .frame(height: DayGrid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: offset) { editing = nil }
+    }
+
+    // MARK: Drawing
+
+    /// The draft while creating: live while dragging, then held while the popover is open.
+    private var draft: (start: Int, end: Int)? {
+        if let drawing, drawing.moved, !drawing.dismissing {
+            let start = CalendarDayMath.snapDown(min(drawing.from, drawing.to))
+            return (start, max(start + CalendarDayMath.step, CalendarDayMath.snapUp(max(drawing.from, drawing.to))))
+        }
+        if let editing, editing.mode == .create, editing.day == offset { return (editing.start, editing.end) }
+        return nil
+    }
+
+    private static func minutes(at y: CGFloat) -> Int {
+        let raw = Int(((y - DayGrid.pad) / DayGrid.hour * 60).rounded())
+        return min(max(raw, 0), CalendarDayMath.dayMinutes)
+    }
+
+    private var drawGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if drawing == nil {
+                    // A press elsewhere while the popover is open only closes it.
+                    if editing != nil {
+                        editing = nil
+                        drawing = Drawing(from: 0, to: 0, dismissing: true)
+                        return
+                    }
+                    let m = Self.minutes(at: value.startLocation.y)
+                    drawing = Drawing(from: m, to: m)
+                }
+                guard var current = drawing, !current.dismissing else { return }
+                current.to = Self.minutes(at: value.location.y)
+                current.moved = current.moved || abs(value.translation.height) > 4
+                drawing = current
+            }
+            .onEnded { _ in
+                guard let current = drawing else { return }
+                drawing = nil
+                guard !current.dismissing, let actions else { return }
+                let step = CalendarDayMath.step
+                var start: Int
+                var end: Int
+                if !current.moved {
+                    // A click: an hour from there.
+                    start = CalendarDayMath.snapDown(current.from)
+                    end = min(CalendarDayMath.dayMinutes, start + 60)
+                    if end - start < step { start = end - step }
+                } else {
+                    start = CalendarDayMath.snapDown(min(current.from, current.to))
+                    end = max(start + step, CalendarDayMath.snapUp(max(current.from, current.to)))
+                }
+                open(BlockEditing(mode: .create, day: offset, start: start, end: end, goalId: actions.defaultGoalId() ?? "", title: nil))
+            }
+    }
+
+    // MARK: Moving
+
+    private func dragBlock(_ segment: DaySegment, edge: BlockEdge, dy: CGFloat) {
+        if editing != nil, dragging == nil { editing = nil }
+        var current = dragging ?? BlockDrag(blockId: segment.blockId, edge: edge, start: segment.start, end: segment.end)
+        let step = CalendarDayMath.step
+        current.moved = current.moved || abs(dy) > 4
+        let raw = Int((dy / DayGrid.hour * 60 / CGFloat(step)).rounded()) * step
+        // Keep it within the day, and at least 15 minutes long when changing its length.
+        let bounds: (Int, Int) = switch edge {
+        case .start: (-current.start, current.end - step - current.start)
+        case .end: (current.start + step - current.end, CalendarDayMath.dayMinutes - current.end)
+        case .move: (-current.start, CalendarDayMath.dayMinutes - current.end)
+        }
+        current.delta = min(max(raw, bounds.0), bounds.1)
+        dragging = current
+    }
+
+    private func endBlockDrag(_ block: CalendarBlock, _ segment: DaySegment, edge: BlockEdge) {
+        guard let current = dragging else { return }
+        dragging = nil
+        if !current.moved {
+            // A click on the block: edit it.
+            if edge == .move { edit(block, segment) }
+            return
+        }
+        if current.delta != 0 { actions?.move(block.id, current.edge, current.delta) }
+    }
+
+    // MARK: Editing
+
+    private func edit(_ block: CalendarBlock, _ segment: DaySegment) {
+        open(BlockEditing(
+            mode: .edit(blockId: block.id, intention: block.isIntention),
+            day: segment.day,
+            start: segment.start,
+            end: segment.end,
+            goalId: block.goalId,
+            title: block.title
+        ))
+    }
+
+    private func open(_ value: BlockEditing) {
+        editing = value
+        // Bring it into view.
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.2)) { proxy?.scrollTo(Self.popoverID) }
+        }
+    }
+
+    private static let popoverID = "block-popover"
+
+    /// A block's popover shows while the block is there.
+    private func isShown(_ editing: BlockEditing) -> Bool {
+        if case .edit(let id, _) = editing.mode { return data.blocks.contains { $0.id == id } }
+        return true
+    }
+
+    private func showMenu(_ block: CalendarBlock, _ segment: DaySegment, anchor: CGRect) {
+        guard let overlays, let actions else { return }
+        editing = nil
+        overlays.showMenu(anchor: anchor, owner: block.id) {
+            MenuPanel {
+                MenuItem(icon: .edit, title: "Edit") {
+                    overlays.dismiss()
+                    edit(block, segment)
+                }
+                if block.taskId != nil {
+                    MenuItem(icon: block.taskDone ? .reopen : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
+                        overlays.dismiss()
+                        actions.toggleDone(block.id)
+                    }
+                }
+                MenuItem(icon: .arrowForward, title: "Move to tomorrow") {
+                    overlays.dismiss()
+                    actions.moveToTomorrow(block.id)
+                }
+                MenuItem(icon: .delete, title: "Remove", isDestructive: true) {
+                    overlays.dismiss()
+                    actions.remove(block.id)
+                }
+            }
+        }
+    }
+
+    /// Below the block, or above it near the end of the day.
+    @ViewBuilder private func popover(_ editing: BlockEditing) -> some View {
+        let intention = if case .edit(_, let intention) = editing.mode { intention } else { false }
+        let weekday = CalendarDayMath.midnight(editing.day, from: now)
+            .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
+        let above = DayGrid.y(editing.end) + 8 + BlockPopover.estimatedHeight > DayGrid.height
+        BlockPopover(
+            goals: data.goals,
+            goalId: editing.goalId,
+            title: editing.title ?? "",
+            intention: intention,
+            timeLabel: "\(weekday) · \(clock.formatRange(editing.start, editing.end))",
+            onSave: { goalId, title in save(editing, goalId: goalId, title: title) },
+            onCancel: { self.editing = nil }
+        )
+        .id(editing.key)
+        .frame(width: max(min(320, width - DayGrid.gutter - 24), 240))
+        .alignmentGuide(.top) { d in above ? d.height - (DayGrid.y(editing.start) - 8) : -(DayGrid.y(editing.end) + 8) }
+        .alignmentGuide(.leading) { _ in -(DayGrid.gutter + 12) }
+        .id(Self.popoverID)
+    }
+
+    private func save(_ value: BlockEditing, goalId: String, title: String?) {
+        editing = nil
+        switch value.mode {
+        case .create: actions?.create(value.day, value.start, value.end, goalId, title)
+        case .edit(let id, _): actions?.saveDetails(id, goalId, title)
+        }
+    }
+}
+
+/// A block on the timeline you can move, resize, click to edit, or open ⋯ on.
+private struct TimelineBlock: View {
+    let block: CalendarBlock
+    let goal: CalendarGoal?
+    let start: Int
+    let end: Int
+    let clock: Clock
+    let elapsed: Double
+    let isInteractive: Bool
+    let isDragging: Bool
+    let isMenuOpen: Bool
+    let onDrag: (BlockEdge, CGFloat) -> Void
+    let onDragEnd: (BlockEdge) -> Void
+    let onMenu: (CGRect) -> Void
+
+    @State private var isHovered = false
+    @State private var moreFrame: CGRect = .zero
+
+    var body: some View {
+        BlockCardView(block: block, goal: goal, start: start, end: end, clock: clock, elapsed: elapsed, isHovered: isHovered || isMenuOpen)
+            .overlay {
+                if isInteractive {
+                    VStack(spacing: 0) {
+                        // Drag the top or bottom edge to change the length.
+                        Color.clear.frame(height: 6).contentShape(.rect)
+                            .pointerStyle(.frameResize(position: .top))
+                            .gesture(drag(.start))
+                        Spacer(minLength: 0)
+                        Capsule().fill(Theme.foreground(0.2)).frame(width: 24, height: 4)
+                            .opacity(isHovered && !isDragging ? 1 : 0)
+                            .padding(.top, 2).padding(.bottom, 2)
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .frame(height: 8)
+                            .contentShape(.rect)
+                            .pointerStyle(.frameResize(position: .bottom))
+                            .gesture(drag(.end))
+                    }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isInteractive, !isDragging {
+                    SmallMoreButton(isActive: isMenuOpen) { onMenu(moreFrame) }
+                        .modifier(AnchorReader(frame: $moreFrame))
+                        .padding(6)
+                        .opacity(isHovered || isMenuOpen ? 1 : 0)
+                }
+            }
+            .shadow(color: isDragging ? Color(nsColor: .rgb(0x0f1114, alpha: 0.14)) : .clear, radius: 8, y: 4)
+            .contentShape(.rect(cornerRadius: 8))
+            .gesture(drag(.move), including: isInteractive ? .all : .subviews)
+            .pointerStyle(isDragging ? .grabActive : nil)
+            .onHover { isHovered = $0 }
+    }
+
+    /// Translation in the window's space, since the block itself moves as it's dragged.
+    private func drag(_ edge: BlockEdge) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onChanged { onDrag(edge, $0.translation.height) }
+            .onEnded { _ in onDragEnd(edge) }
+    }
+}
+
+/// The block being drawn: a dashed outline with its time.
+private struct DraftBlock: View {
+    let label: String
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Theme.foreground(0.04))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.foreground(0.4), style: StrokeStyle(lineWidth: 2, dash: [5, 4])))
+            .overlay(alignment: .topLeading) {
+                Text(label).font(.app(11, .medium)).monospacedDigit().foregroundStyle(Theme.muted)
+                    .padding(.leading, 12).padding(.top, 6)
+            }
+            .allowsHitTesting(false)
     }
 }
 
@@ -425,6 +797,8 @@ struct BlockCardView: View {
     let clock: Clock
     /// How much of it has happened, 0 to 1.
     let elapsed: Double
+    /// Hovered, or its menu is open: the ⋯ takes the recap dot's place.
+    var isHovered = false
 
     /// Height a block needs for its title and time on two lines; shorter ones get a single line.
     private static let twoLines: CGFloat = 48
@@ -460,7 +834,7 @@ struct BlockCardView: View {
 
                 if block.recapWaiting {
                     Circle().fill(GoalPalette.color(color)).frame(width: 6, height: 6)
-                        .opacity(block.hasRecapDraft ? 1 : 0.6)
+                        .opacity(isHovered ? 0 : block.hasRecapDraft ? 1 : 0.6)
                         .frame(maxWidth: .infinity, alignment: .topTrailing)
                         .padding(.top, 10)
                         .padding(.trailing, 10)

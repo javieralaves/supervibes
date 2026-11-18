@@ -212,6 +212,21 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testDayTimelinePopover() {
+        // Protecting 3–4 PM: the draft with the popover under it.
+        let top = DayGrid.y(14 * 60)
+        let editing = BlockEditing(mode: .create, day: 0, start: 15 * 60, end: 16 * 60, goalId: Fixtures.calendar.goals[0].id, title: nil)
+        assertAppearances(
+            DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour, editing: editing)
+                .frame(width: 736)
+                .offset(y: -top)
+                .frame(width: 736, height: DayGrid.y(18 * 60) - top, alignment: .topLeading)
+                .clipped()
+                .background(Theme.card),
+            width: 736, height: DayGrid.y(18 * 60) - top
+        )
+    }
+
     func testDayViewTop() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now).background(Theme.background),

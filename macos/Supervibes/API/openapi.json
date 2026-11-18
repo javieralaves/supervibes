@@ -13,6 +13,184 @@
       }
     },
     "schemas": {
+      "CalendarBlock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "null for protected time without a name."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "For protected time: what the session is for."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromSuggestion": {
+            "type": "string",
+            "nullable": true
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The task it schedules: an intention."
+          },
+          "taskDone": {
+            "type": "boolean"
+          },
+          "hasAgenda": {
+            "type": "boolean"
+          },
+          "hasRecapDraft": {
+            "type": "boolean",
+            "description": "A recap waiting to be read and posted."
+          },
+          "recapDrafting": {
+            "type": "boolean",
+            "description": "A recap is drafting itself in the background."
+          },
+          "hasRecapPost": {
+            "type": "boolean",
+            "description": "Its recap has been posted to the goal's activity."
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "title",
+          "description",
+          "startsAt",
+          "endsAt",
+          "fromSuggestion",
+          "taskId",
+          "taskDone",
+          "hasAgenda",
+          "hasRecapDraft",
+          "recapDrafting",
+          "hasRecapPost"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "not_found"
+              },
+              "message": {
+                "type": "string",
+                "example": "That block doesn't exist anymore."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "NewBlock": {
+        "type": "object",
+        "properties": {
+          "goalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "startsAt": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "goalId",
+          "title",
+          "startsAt",
+          "endsAt"
+        ]
+      },
+      "BlockDetails": {
+        "type": "object",
+        "properties": {
+          "goalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "goalId",
+          "title"
+        ]
+      },
+      "BlockTimes": {
+        "type": "object",
+        "properties": {
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "startsAt",
+          "endsAt"
+        ]
+      },
+      "BlockTaskDone": {
+        "type": "object",
+        "properties": {
+          "done": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "done"
+        ]
+      },
+      "PlanTask": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "unscheduleBlockId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "day"
+        ]
+      },
       "Calendar": {
         "type": "object",
         "properties": {
@@ -107,77 +285,6 @@
           "objectives"
         ]
       },
-      "CalendarBlock": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "goalId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string",
-            "nullable": true,
-            "description": "null for protected time without a name."
-          },
-          "description": {
-            "type": "string",
-            "nullable": true,
-            "description": "For protected time: what the session is for."
-          },
-          "startsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "endsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "fromSuggestion": {
-            "type": "string",
-            "nullable": true
-          },
-          "taskId": {
-            "type": "string",
-            "nullable": true,
-            "description": "The task it schedules: an intention."
-          },
-          "taskDone": {
-            "type": "boolean"
-          },
-          "hasAgenda": {
-            "type": "boolean"
-          },
-          "hasRecapDraft": {
-            "type": "boolean",
-            "description": "A recap waiting to be read and posted."
-          },
-          "recapDrafting": {
-            "type": "boolean",
-            "description": "A recap is drafting itself in the background."
-          },
-          "hasRecapPost": {
-            "type": "boolean",
-            "description": "Its recap has been posted to the goal's activity."
-          }
-        },
-        "required": [
-          "id",
-          "goalId",
-          "title",
-          "description",
-          "startsAt",
-          "endsAt",
-          "fromSuggestion",
-          "taskId",
-          "taskDone",
-          "hasAgenda",
-          "hasRecapDraft",
-          "recapDrafting",
-          "hasRecapPost"
-        ]
-      },
       "CalendarGoal": {
         "type": "object",
         "properties": {
@@ -234,31 +341,6 @@
           "minutes",
           "plannedFor",
           "dueOn"
-        ]
-      },
-      "Error": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "object",
-            "properties": {
-              "code": {
-                "type": "string",
-                "example": "not_found"
-              },
-              "message": {
-                "type": "string",
-                "example": "That block doesn't exist anymore."
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ]
-          }
-        },
-        "required": [
-          "error"
         ]
       },
       "Connections": {
@@ -1504,6 +1586,457 @@
     "parameters": {}
   },
   "paths": {
+    "/api/v1/blocks": {
+      "post": {
+        "operationId": "createBlock",
+        "summary": "Protect time for a goal, drawn on the calendar",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBlock"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}": {
+      "patch": {
+        "operationId": "updateBlock",
+        "summary": "Rename a block or move it to another goal",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockDetails"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteBlock",
+        "summary": "Remove a block",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/times": {
+      "put": {
+        "operationId": "moveBlock",
+        "summary": "Move or resize a block; an intention's task is planned for its new day",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockTimes"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Moved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/task-done": {
+      "put": {
+        "operationId": "setBlockTaskDone",
+        "summary": "Mark an intention's task done (it posts to the goal's activity) or reopen it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockTaskDone"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{taskId}/schedule": {
+      "post": {
+        "operationId": "scheduleTask",
+        "summary": "Give a task a time on the calendar: a new intention",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockTimes"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{taskId}/plan": {
+      "put": {
+        "operationId": "planTask",
+        "summary": "Plan a task for a day without a time, or take it off its day",
+        "description": "An empty `day` takes it off. With `unscheduleBlockId`, that block goes too, if it's the task's own and hasn't started.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanTask"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Planned"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calendar": {
       "get": {
         "operationId": "getCalendar",

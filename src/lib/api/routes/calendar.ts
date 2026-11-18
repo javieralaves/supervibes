@@ -24,7 +24,7 @@ import { listObjectivesBetween } from "@/lib/week-objectives";
 /** Sessions drafted per visit; any more wait for the next one. Same as the web page. */
 const AUTO_RECAPS_PER_VISIT = 3;
 
-const CalendarBlockSchema = z
+export const CalendarBlockSchema = z
   .object({
     id: z.string(),
     goalId: z.string(),
@@ -92,7 +92,7 @@ const getRoute = createRoute({
   },
 });
 
-function asBlock(block: BlockDTO, drafting: Set<string>): z.infer<typeof CalendarBlockSchema> {
+export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer<typeof CalendarBlockSchema> {
   return {
     id: block.id,
     goalId: block.goalId,
@@ -135,7 +135,7 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
       today,
       daysBack: CALENDAR_DAYS_BACK,
       daysAhead: CALENDAR_DAYS_AHEAD,
-      blocks: blocks.map((block) => asBlock(block, drafting)),
+      blocks: blocks.map((block) => asCalendarBlock(block, drafting)),
       goals: goals.map((goal) => ({
         id: goal.id,
         title: goal.title,
