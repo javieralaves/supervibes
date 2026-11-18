@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowLeft01Icon, ArrowRight01Icon, CheckListIcon, CircleIcon, Moon02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CheckListIcon,
+  CircleIcon,
+  Moon02Icon,
+  Target02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +27,7 @@ import { formatHour, formatRange, formatTime, useClock } from "@/lib/clock";
 import { goalColorStyle } from "@/lib/goal-colors";
 import { DAY_MINUTES, sleepSpans, type DaySegment } from "@/lib/day";
 import type { Settings } from "@/lib/settings-schema";
+import { daysUntil, formatWeek, weekStartOf } from "@/lib/target-date";
 
 import {
   createBlockAction,
@@ -34,6 +42,7 @@ import { BlockPanel } from "./block-panel";
 import { BlockPopover } from "./block-popover";
 import { BlockCard, DropPreview, type CalendarGoal } from "./calendar-items";
 import { DayStrip, type StripItem } from "./day-strip";
+import { WeekOverview, WeekView, weekTotals } from "./week-view";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
 import { TaskPanel, type PanelGroup, type PanelTask } from "./task-panel";
 
@@ -106,6 +115,32 @@ function subscribePrefs(onChange: () => void) {
 }
 const readTaskPanel = () => readPref(TASK_PANEL_KEY) === "on";
 const serverTaskPanel = () => false;
+
+/* The week's overview panel: open unless closed, remembered per browser. */
+const WEEK_PANEL_KEY = "sv-calendar-week-panel";
+const readWeekPanel = () => readPref(WEEK_PANEL_KEY) !== "off";
+const serverWeekPanel = () => true;
+function setWeekPanelPref(on: boolean) {
+  writePref(WEEK_PANEL_KEY, on ? "on" : "off");
+  prefListeners.forEach((l) => l());
+}
+
+/* Day or week, remembered per browser. The week needs a wide screen; below that it's always the day. */
+const VIEW_KEY = "sv-calendar-view";
+const readWeekView = () => readPref(VIEW_KEY) === "week";
+const serverWeekView = () => false;
+function setWeekView(on: boolean) {
+  writePref(VIEW_KEY, on ? "week" : "day");
+  prefListeners.forEach((l) => l());
+}
+const WIDE = "(min-width: 64rem)";
+function subscribeWide(onChange: () => void) {
+  const query = window.matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+const readWide = () => window.matchMedia(WIDE).matches;
+const serverWide = () => false;
 function setTaskPanel(on: boolean) {
   writePref(TASK_PANEL_KEY, on ? "on" : "off");
   prefListeners.forEach((l) => l());
@@ -217,15 +252,25 @@ export function DayCalendar({
   goals,
   blocks: savedBlocks,
   settings,
+  objectives,
 }: {
   /** Open tasks across goals, in each goal's order. */
   tasks: CalendarTask[];
   goals: CalendarGoal[];
   blocks: BlockView[];
   settings: Settings;
+  /** Every goal's weekly objectives across the weeks the calendar has loaded. */
+  objectives: { goalId: string; weekStart: string; objective: string }[];
 }) {
   const stamp = useSyncExternalStore(subscribeClock, minuteNow, noClock);
-  const taskPanel = useSyncExternalStore(subscribePrefs, readTaskPanel, serverTaskPanel);
+  const taskPanelPref = useSyncExternalStore(subscribePrefs, readTaskPanel, serverTaskPanel);
+  const weekPref = useSyncExternalStore(subscribePrefs, readWeekView, serverWeekView);
+  const wide = useSyncExternalStore(subscribeWide, readWide, serverWide);
+  /** Showing the week rather than one day. */
+  const week = weekPref && wide;
+  // Tasks are dragged onto a day, so the panel belongs to the day view; the week has its overview.
+  const taskPanel = taskPanelPref && !week;
+  const weekPanel = useSyncExternalStore(subscribePrefs, readWeekPanel, serverWeekPanel) && week;
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
   const [blocks, apply] = useOptimistic(savedBlocks, applyOp);
@@ -275,23 +320,47 @@ export function DayCalendar({
   }
   const asPanelTask = (t: CalendarTask): PanelTask => ({ ...t, block: nextBlock.get(t.id) ?? null });
 
-  // The day's strip: tasks meant for the shown day without a time on it, and tasks due then.
-  // On today, plans missed on earlier days and overdue tasks carry over.
-  const stripItems: StripItem[] = [];
-  if (base && shownISO && todayISO) {
+  /**
+   * A day's strip: tasks meant for that day without a time on it, and tasks due then.
+   * On today, plans missed on earlier days and overdue tasks carry over.
+   */
+  function stripFor(day: number): StripItem[] {
+    if (!base || !todayISO) return [];
+    const dayISO = localDay(base, day);
+    const onToday = day === 0;
     const timedHere = new Set(
-      blocks.filter((b) => b.taskId && dayOffset(new Date(b.startsAt), base) === offset).map((b) => b.taskId!),
+      blocks.filter((b) => b.taskId && dayOffset(new Date(b.startsAt), base) === day).map((b) => b.taskId!),
     );
+    const items: StripItem[] = [];
     for (const t of taskList) {
       if (timedHere.has(t.id)) continue;
-      const carriedFrom = isToday && t.plannedFor && t.plannedFor < todayISO ? t.plannedFor : null;
-      const planned = t.plannedFor === shownISO || carriedFrom !== null;
-      const due = t.dueOn === shownISO ? "due" : isToday && t.dueOn && t.dueOn < todayISO ? "overdue" : null;
-      if (planned || due) stripItems.push({ task: asPanelTask(t), planned, carriedFrom, due });
+      const carriedFrom = onToday && t.plannedFor && t.plannedFor < todayISO ? t.plannedFor : null;
+      const planned = t.plannedFor === dayISO || carriedFrom !== null;
+      const due = t.dueOn === dayISO ? "due" : onToday && t.dueOn && t.dueOn < todayISO ? "overdue" : null;
+      if (planned || due) items.push({ task: asPanelTask(t), planned, carriedFrom, due });
     }
     // What you meant to do first, then what's only due.
-    stripItems.sort((a, b) => Number(b.planned) - Number(a.planned));
+    return items.sort((a, b) => Number(b.planned) - Number(a.planned));
   }
+  const stripItems = stripFor(offset);
+
+  // The week the shown day falls in: its Monday, in days from today, and as a date.
+  const weekStart = shownISO ? weekStartOf(shownISO) : null;
+  const monday = weekStart && todayISO ? daysUntil(weekStart, todayISO) : 0;
+  const weekObjectives = new Map(
+    objectives.filter((o) => o.weekStart === weekStart).map((o) => [o.goalId, o.objective]),
+  );
+  const thisWeek = monday <= 0 && monday + 6 >= 0;
+  // Weeks from this one, by their Mondays.
+  const weeksAway = todayISO ? Math.round((monday - daysUntil(weekStartOf(todayISO), todayISO)) / 7) : 0;
+  const weekRelative =
+    weeksAway === 0 ? "This week" : weeksAway === 1 ? "Next week" : weeksAway === -1 ? "Last week" : null;
+  /** How far the arrows (and ← →) step: a day, or a week. */
+  const step = week ? 7 : 1;
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  });
 
   // The panel: each goal's open tasks in your order. Those planned for the shown day come
   // first, ready to drag in; those already on the calendar last.
@@ -312,7 +381,7 @@ export function DayCalendar({
     if (!ready || offset !== 0 || !scroller.current) return;
     const d = new Date();
     scroller.current.scrollTop = Math.max(0, y(d.getHours() * 60 + d.getMinutes()) - HOUR);
-  }, [ready, offset]);
+  }, [ready, offset, week]);
 
   // ← and → step between days while the pointer is over the calendar or focus is inside it.
   const card = useRef<HTMLDivElement>(null);
@@ -328,7 +397,7 @@ export function DayCalendar({
       if (!hovered.current && !focused) return;
       e.preventDefault();
       setPopover(null);
-      setOffset((o) => o + (e.key === "ArrowLeft" ? -1 : 1));
+      setOffset((o) => o + (e.key === "ArrowLeft" ? -1 : 1) * stepRef.current);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -357,10 +426,16 @@ export function DayCalendar({
     }
   }
 
-  /** Open the edit popover on a block, stepping to its day first if it's on another one. */
+  /**
+   * Open the edit popover on a block, stepping to its day first if it's on another one.
+   * Editing happens on the day's timeline, so from the week it steps into that day.
+   */
   function editBlock(block: BlockView) {
-    const seg = allSegments.find((s) => s.id === block.id && s.day === offset) ?? allSegments.find((s) => s.id === block.id);
+    const seg = week
+      ? allSegments.find((s) => s.id === block.id)
+      : (allSegments.find((s) => s.id === block.id && s.day === offset) ?? allSegments.find((s) => s.id === block.id));
     if (!seg) return;
+    if (week) setWeekView(false);
     if (seg.day !== offset) setOffset(seg.day);
     setPopover({
       mode: "edit",
@@ -701,32 +776,69 @@ export function DayCalendar({
       onPointerLeave={() => (hovered.current = false)}
       className="flex min-h-0 flex-1 flex-col"
     >
-      {/* Top bar, across the page: the task panel's toggle, then stepping between days and the date; Today on the right. */}
-      <header className="flex h-14 shrink-0 items-center gap-3 bg-background px-4 shadow-[inset_0_-1px_0_var(--card-border)] sm:px-6">
-        <button
-          type="button"
-          aria-label="Tasks"
-          aria-pressed={taskPanel}
-          onClick={() => setTaskPanel(!taskPanel)}
-          title={taskPanel ? "Hide tasks" : "Show tasks to drag onto the day"}
-          className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex ${toggleClass(taskPanel)}`}
-        >
-          <HugeiconsIcon icon={CheckListIcon} size={16} />
-        </button>
-        <div className="flex shrink-0 items-center gap-1">
-          <NavButton label="Previous day" icon={ArrowLeft01Icon} disabled={!ready} onClick={() => setOffset((o) => o - 1)} />
-          <NavButton label="Next day" icon={ArrowRight01Icon} disabled={!ready} onClick={() => setOffset((o) => o + 1)} />
+      {/* Top bar, across the page: Day or Week, the view's panel toggle, then the date; Today and the arrows on the right. */}
+      {/* No focus rings on its buttons: the arrow keys step days and weeks, and would otherwise light up whichever was clicked last. */}
+      <header className="flex h-14 shrink-0 items-center gap-3 bg-background px-4 shadow-[inset_0_-1px_0_var(--card-border)] [&_button]:outline-none">
+        {/* Day or week; the week needs a wide screen. */}
+        <div role="group" aria-label="View" className="hidden h-8 shrink-0 rounded-lg border border-card-border bg-card p-0.5 lg:flex">
+          {(["day", "week"] as const).map((v) => {
+            const on = (v === "week") === week;
+            return (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  setWeekView(v === "week");
+                  setPopover(null);
+                }}
+                className={`rounded-md px-2.5 text-sm font-medium transition-colors ${
+                  on ? "bg-foreground/[.07] text-foreground" : "text-muted hover:text-foreground"
+                }`}
+              >
+                {v === "day" ? "Day" : "Week"}
+              </button>
+            );
+          })}
         </div>
+        {/* The view's panel: tasks beside a day, the overview beside a week. */}
+        {week ? (
+          <button
+            type="button"
+            aria-label="This week's overview"
+            aria-pressed={weekPanel}
+            onClick={() => setWeekPanelPref(!weekPanel)}
+            title={weekPanel ? "Hide the week's overview" : "Show each goal's objective and time this week"}
+            className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex ${toggleClass(weekPanel)}`}
+          >
+            <HugeiconsIcon icon={Target02Icon} size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Tasks"
+            aria-pressed={taskPanel}
+            onClick={() => setTaskPanel(!taskPanel)}
+            title={taskPanel ? "Hide tasks" : "Show tasks to drag onto the day"}
+            className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex ${toggleClass(taskPanel)}`}
+          >
+            <HugeiconsIcon icon={CheckListIcon} size={16} />
+          </button>
+        )}
         <h2 aria-live="polite" className="flex min-w-0 items-baseline gap-2" suppressHydrationWarning>
           <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             {shownDay === null
               ? "Today"
-              : shownDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              : week && weekStart
+                ? formatWeek(weekStart)
+                : shownDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </span>
-          {shownDay !== null && relative && <span className="hidden shrink-0 text-sm text-muted sm:inline">{relative}</span>}
+          {shownDay !== null && (week ? weekRelative : relative) && (
+            <span className="hidden shrink-0 text-sm text-muted sm:inline">{week ? weekRelative : relative}</span>
+          )}
         </h2>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {!isToday && (
+          {(week ? !thisWeek : !isToday) && (
             <button
               type="button"
               onClick={() => setOffset(0)}
@@ -735,12 +847,29 @@ export function DayCalendar({
               Today
             </button>
           )}
+          <div className="flex shrink-0 items-center gap-1">
+            <NavButton
+              label={week ? "Previous week" : "Previous day"}
+              icon={ArrowLeft01Icon}
+              disabled={!ready}
+              onClick={() => setOffset((o) => o - step)}
+            />
+            <NavButton
+              label={week ? "Next week" : "Next day"}
+              icon={ArrowRight01Icon}
+              disabled={!ready}
+              onClick={() => setOffset((o) => o + step)}
+            />
+          </div>
         </div>
       </header>
 
       <div
-        className={`mx-auto flex min-h-0 w-full flex-1 flex-col px-4 py-4 sm:px-8 sm:py-6 ${
-          taskPanel && selected
+        // The same gap all round, matching the gap between the panels and the calendar.
+        className={`mx-auto flex min-h-0 w-full flex-1 flex-col p-4 ${
+          week
+            ? "max-w-[96rem]"
+            : taskPanel && selected
             ? "max-w-3xl lg:max-w-[88rem]"
             : taskPanel
               ? "max-w-3xl lg:max-w-[67rem]"
@@ -761,6 +890,34 @@ export function DayCalendar({
             />
           )}
 
+          {weekPanel && base && today && weekStart && (
+            <WeekOverview
+              goals={goals}
+              totals={weekTotals(allSegments, monday, base, today)}
+              objectives={weekObjectives}
+              weekStart={weekStart}
+            />
+          )}
+
+          {week && base && today && weekStart ? (
+            <WeekView
+              base={base}
+              monday={monday}
+              now={today}
+              segments={allSegments}
+              blocks={new Map(blocks.map((b) => [b.id, b]))}
+              goalById={goalById}
+              stripFor={stripFor}
+              settings={settings}
+              clock={clock}
+              selectedId={selected?.id ?? null}
+              onOpenBlock={openBlockPanel}
+              onOpenDay={(day) => {
+                setWeekView(false);
+                setOffset(day);
+              }}
+            />
+          ) : (
           <div
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-card-border bg-card"
           >
@@ -953,6 +1110,7 @@ export function DayCalendar({
               </div>
             </div>
           </div>
+          )}
 
           {selected && (
             <BlockPanel

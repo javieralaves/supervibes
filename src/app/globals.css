@@ -12,6 +12,8 @@
   --card-border: rgb(15 17 20 / 0.08);
   --line-strong: rgb(15 17 20 / 0.16);
   --wash: rgb(15 17 20 / 0.04);
+  /* Behind the app's window: the rail sits on it, a shade darker than the page. */
+  --shell: #eceef1;
   /* Chart series (Settings → Usage), in fixed order; validated against --card in each mode. */
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
@@ -27,6 +29,7 @@
     --card-border: rgb(255 255 255 / 0.07);
     --line-strong: rgb(255 255 255 / 0.16);
     --wash: rgb(255 255 255 / 0.04);
+    --shell: #060708;
     --viz-1: #3987e5;
     --viz-2: #d95926;
     --viz-3: #199e70;
@@ -41,6 +44,7 @@
   --color-card-border: var(--card-border);
   --color-line-strong: var(--line-strong);
   --color-wash: var(--wash);
+  --color-shell: var(--shell);
   --color-viz-1: var(--viz-1);
   --color-viz-2: var(--viz-2);
   --color-viz-3: var(--viz-3);
@@ -68,6 +72,11 @@ body {
 
 .goal-solid {
   background-color: var(--goal-light);
+}
+
+/* A light band of a goal's colour, e.g. time planned behind time done. */
+.goal-track {
+  background-color: color-mix(in oklab, var(--goal-light) 30%, transparent);
 }
 
 /* Same light tone as .goal-tint, mixed into the card colour so it's fully opaque. */
@@ -129,6 +138,9 @@ body {
   }
   .goal-solid {
     background-color: var(--goal-dark);
+  }
+  .goal-track {
+    background-color: color-mix(in oklab, var(--goal-dark) 30%, transparent);
   }
   .goal-tint.goal-tint-opaque {
     background-color: color-mix(in oklab, var(--goal) 12%, var(--card));

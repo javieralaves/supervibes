@@ -87,11 +87,15 @@ export async function listBlocks(userId: string, from: Date, to: Date): Promise<
   }));
 }
 
-/** Blocks from a week back to a few weeks ahead; the browser works out which day each is on. */
+/** How far back and ahead the calendar can step with what it has loaded, in days. */
+export const CALENDAR_DAYS_BACK = 36;
+export const CALENDAR_DAYS_AHEAD = 42;
+
+/** Blocks from about five weeks back to six ahead; the browser works out which day each is on. */
 export function listBlocksAroundNow(userId: string) {
   const day = 24 * 60 * 60 * 1000;
   const now = Date.now();
-  return listBlocks(userId, new Date(now - 8 * day), new Date(now + 40 * day));
+  return listBlocks(userId, new Date(now - CALENDAR_DAYS_BACK * day), new Date(now + CALENDAR_DAYS_AHEAD * day));
 }
 
 /** A goal's blocks that haven't ended yet, soonest first. */

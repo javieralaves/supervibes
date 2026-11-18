@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleIcon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon, CheckListIcon, CircleIcon, Flag02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { GoalBadge } from "@/components/goal-badge";
@@ -12,6 +12,7 @@ import { minutesLabel } from "@/lib/task-schema";
 import { daysUntil, relativeDayLabel } from "@/lib/target-date";
 
 import type { CalendarGoal } from "./calendar-items";
+import { GoalSplitBar, PanelFigure, PanelHeader } from "./panel-header";
 
 /** An open task as the panel lists it. */
 export type PanelTask = {
@@ -53,15 +54,62 @@ export function TaskPanel({
   draggingId: string | null;
   onTaskPointerDown: (e: React.PointerEvent<HTMLElement>, task: PanelTask) => void;
 }) {
-  const count = groups.reduce((n, g) => n + g.tasks.length, 0);
+  const all = groups.flatMap((g) => g.tasks);
+  const count = all.length;
+  // A task is planned once it has a day or a time.
+  const isPlanned = (t: PanelTask) => Boolean(t.plannedFor || t.block);
+  const plannedCount = all.filter(isPlanned).length;
+  const forToday = todayISO
+    ? all.filter((t) => t.plannedFor === todayISO || (t.block !== null && isToday(t.block.startsAt, today)))
+        .length
+    : 0;
+  const overdue = todayISO ? all.filter((t) => t.dueOn && t.dueOn < todayISO).length : 0;
+  const dueToday = todayISO ? all.filter((t) => t.dueOn === todayISO).length : 0;
+
   return (
     <aside
       data-task-panel
       aria-label="Open tasks"
       className="hidden w-72 shrink-0 flex-col overflow-hidden rounded-2xl border border-card-border bg-card lg:flex"
     >
+      <PanelHeader icon={CheckListIcon} title="Tasks">
+        <div className="flex items-end justify-between gap-3">
+          <PanelFigure value={String(count)} label={count === 1 ? "open task" : "open tasks"} />
+          <div className="flex shrink-0 items-center gap-1.5">
+            {forToday > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-foreground/[.06] px-2 py-0.5 text-[11px] font-medium text-foreground/80">
+                <HugeiconsIcon icon={Calendar03Icon} size={11} />
+                {forToday} today
+              </span>
+            )}
+            {(overdue > 0 || dueToday > 0) && (
+              <span
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  overdue > 0
+                    ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                    : "bg-foreground/[.06] text-foreground/80"
+                }`}
+              >
+                <HugeiconsIcon icon={Flag02Icon} size={11} />
+                {overdue > 0 ? `${overdue} overdue` : `${dueToday} due`}
+              </span>
+            )}
+          </div>
+        </div>
+        <GoalSplitBar
+          label={`${plannedCount} of ${count} open tasks planned`}
+          parts={groups.map(({ goal, tasks }) => ({
+            goalId: goal.id,
+            color: goal.color,
+            value: tasks.length,
+            filled: tasks.filter(isPlanned).length,
+          }))}
+        />
+        <p className="mt-1.5 text-[11px] text-muted">
+          {plannedCount === 0 ? "None planned yet" : `${plannedCount} of ${count} planned for a day or time`}
+        </p>
+      </PanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
-        <h2 className="px-2 pb-1 pt-1.5 text-[15px] font-semibold tracking-[-0.01em] text-foreground">Tasks</h2>
         {count === 0 ? (
           <p className="px-2 py-1.5 text-sm text-muted">No open tasks. Add tasks to a goal and they show up here.</p>
         ) : (
@@ -171,4 +219,11 @@ function scheduleLabel(iso: string, today: Date | null, clock: Clock) {
   const days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime() - today.getTime()) / 86_400_000);
   const day = days === 0 ? "Today" : days === 1 ? "Tomorrow" : at.toLocaleDateString(undefined, { weekday: "short" });
   return `${day} ${time}`;
+}
+
+/** Whether an ISO time falls on the local day starting at `today` (a local midnight). */
+function isToday(iso: string, today: Date | null) {
+  if (!today) return false;
+  const at = new Date(iso);
+  return at.getFullYear() === today.getFullYear() && at.getMonth() === today.getMonth() && at.getDate() === today.getDate();
 }
