@@ -2,6 +2,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
+import { bearer } from "better-auth/plugins/bearer";
+import { oneTimeToken } from "better-auth/plugins/one-time-token";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
@@ -47,8 +49,20 @@ export const auth = betterAuth({
       },
     },
   },
-  // Must stay last so cookies set in server actions reach the browser.
-  plugins: [nextCookies()],
+  // Long enough that the Mac app rarely asks to sign in again; each use pushes it out by a day.
+  session: {
+    expiresIn: 60 * 60 * 24 * 60,
+    updateAge: 60 * 60 * 24,
+  },
+  plugins: [
+    // The Mac app sends its session as `Authorization: Bearer <token>`.
+    bearer(),
+    // Short-lived, single-use tokens that hand a session from the browser to the Mac app
+    // (see /api/native/*). Stored hashed, so a database read can't replay one.
+    oneTimeToken({ storeToken: "hashed" }),
+    // Must stay last so cookies set in server actions reach the browser.
+    nextCookies(),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;

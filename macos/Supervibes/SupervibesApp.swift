@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct SupervibesApp: App {
     @State private var model = AppModel()
+    @State private var auth = AuthModel(baseURL: AppConfig.baseURL)
 
     init() {
         Log.app.info("Launched, talking to \(AppConfig.baseURL.absoluteString, privacy: .public)")
@@ -11,10 +12,19 @@ struct SupervibesApp: App {
     var body: some Scene {
         // The main window. For now it hosts the web app; screens move to SwiftUI one at a time.
         Window("Supervibes", id: "main") {
-            WebShellView()
+            WebShellView(auth: auth)
                 .frame(minWidth: 900, minHeight: 600)
-        }
+                .task { await auth.restore() }        }
         .defaultSize(width: 1280, height: 820)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                if auth.isSignedIn {
+                    Button("Sign Out") {
+                        Task { await auth.signOut() }
+                    }
+                }
+            }
+        }
 
         MenuBarExtra {
             MenuBarRoot(model: model)

@@ -13,7 +13,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except auth endpoints, the sign-in page, health check and static assets.
-    "/((?!api/auth|api/health|api/cron|sign-in|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Everything except auth endpoints (including the Mac app's sign-in), the sign-in page,
+    // health check and static assets.
+    "/((?!api/auth|api/native|api/health|api/cron|sign-in|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

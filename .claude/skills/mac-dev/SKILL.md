@@ -41,5 +41,6 @@ Debug builds load the local Next.js server. Start it with the preview tool's `de
 - Fixtures stand in for real data until the API exists. `Fixtures.referenceNow` is fixed so snapshots are deterministic. Never use `Date()` in a snapshot test.
 - Times are formatted in the Mac's locale and time zone (Europe/Madrid), so the references assume that.
 - Ad-hoc signing turns hardened runtime off and means Screen Recording and Accessibility permissions won't survive rebuilds. Set up `Signing.local.xcconfig` before any work on screen context.
-- Google sign-in can't run inside a WKWebView. The shell stops it and shows a native message until native sign-in exists.
+- Sign-in goes through the system sign-in sheet (`Supervibes/Auth/AuthModel.swift`, server side in `src/lib/native-auth.ts` and `src/app/api/native/*`). The app keeps a bearer token and gives the web view the same session through `/api/native/handoff`. Google sign-in can't run inside the WKWebView, and the web app's `/sign-in` page is replaced by native sign-in.
+- Completing a sign-in needs the user to pick their Google account in the sheet. Don't try to drive it. Debug builds keep the token in `~/Library/Application Support/Supervibes/dev-session-<host>` (Release builds use the Keychain), so delete that file to test signing in again.
 - After adding a target, entitlement or Info.plist key, edit `project.yml`. Generated plists and entitlements are gitignored.

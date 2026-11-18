@@ -20,6 +20,17 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now), width: 300)
     }
 
+    func testSignIn() {
+        assertAppearances(SignInView(), width: 640, height: 360)
+    }
+
+    func testSignInWithMessage() {
+        assertAppearances(
+            SignInView(message: "This Google account isn't on the access list."),
+            width: 640, height: 360
+        )
+    }
+
     func testWidgetSmall() {
         assertAppearances(
             CurrentBlockWidgetPreview(block: Fixtures.current(at: now), now: now),
