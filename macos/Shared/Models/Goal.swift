@@ -190,6 +190,9 @@ struct GoalDetail: Hashable, Sendable {
     var suggestions: [TaskSuggestion] = []
     /// The person's clock; nil follows this Mac.
     var clock: Clock? = nil
+    /// The activity, newest first.
+    var notes: [NoteItem] = []
+    var author = NoteAuthor(name: "", imageURL: nil)
 }
 
 extension CalendarDay {
@@ -281,4 +284,64 @@ struct TaskSuggestion: Hashable, Sendable {
     let title: String
     let why: String
     let minutes: Int
+}
+
+// MARK: - Activity
+
+/// An entry in a goal's activity (src/lib/posts.ts): a note, a recap, or a finished task or suggestion.
+struct NoteItem: Identifiable, Hashable, Sendable {
+    struct Session: Hashable, Sendable {
+        let title: String
+        let startsAt: Date
+        let endsAt: Date
+        /// What the person wanted out of the session, if they said.
+        let aim: String?
+    }
+
+    struct Breadcrumb: Hashable, Sendable {
+        let provider: ConnectionItem.Provider
+        let title: String
+        let url: URL
+    }
+
+    let id: String
+    var body: String
+    /// Posted by finishing a suggestion: its title.
+    var completedSuggestion: String?
+    /// Posted by checking a task off: its title.
+    var completedTask: String?
+    /// That task, while it still exists, so it can be reopened from here.
+    var taskId: String?
+    var taskDescription: String?
+    /// The calendar session it recaps, on recaps.
+    var session: Session?
+    var breadcrumbs: [Breadcrumb] = []
+    let createdAt: Date
+    var updatedAt: Date
+    /// Posting; shown faded until the server has it.
+    var isPending = false
+
+    static let maxBody = 2000
+
+    /// Changed more than a second after it was posted.
+    var isEdited: Bool { updatedAt.timeIntervalSince(createdAt) > 1 }
+}
+
+/// Who the activity is by.
+struct NoteAuthor: Hashable, Sendable {
+    let name: String
+    let imageURL: URL?
+}
+
+extension Clock {
+    /// "14:30–15:30", "2:30–3:30 PM" or "11:30 AM–12:30 PM", like the web's formatRange.
+    func formatRange(_ start: Int, _ end: Int) -> String {
+        guard self == .twelveHour else { return "\(format(minutes: start))–\(format(minutes: end))" }
+        let samePeriod = (start % 1440 < 720) == (end % 1440 < 720)
+        if samePeriod {
+            let h = (start % 1440) / 60, m = start % 60
+            return "\(h % 12 == 0 ? 12 : h % 12):\(String(format: "%02d", m))–\(format(minutes: end))"
+        }
+        return "\(format(minutes: start))–\(format(minutes: end))"
+    }
 }

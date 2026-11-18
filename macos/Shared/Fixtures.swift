@@ -145,4 +145,29 @@ enum Fixtures {
                        why: "The calendar is the biggest screen left, and nothing’s been planned for it yet.", minutes: 60),
         TaskSuggestion(title: "Ask two people to try the Mac app", why: "", minutes: 30),
     ]
+
+    static let author = NoteAuthor(name: "Javier Alaves", imageURL: nil)
+
+    /// One of each kind of activity entry, newest first.
+    static var notes: [NoteItem] {
+        let hour: TimeInterval = 3600
+        let start = referenceNow.addingTimeInterval(-26 * hour)
+        return [
+            NoteItem(id: "n1", body: "Decided to keep the web app running until the calendar is native, then retire it.",
+                     createdAt: referenceNow.addingTimeInterval(-2 * hour), updatedAt: referenceNow.addingTimeInterval(-1 * hour)),
+            NoteItem(id: "n2", body: "", completedTask: "Rebuild the goal page’s tasks natively", taskId: "t1",
+                     taskDescription: "Drag to reorder, day pills, suggestions.",
+                     createdAt: referenceNow.addingTimeInterval(-5 * hour), updatedAt: referenceNow.addingTimeInterval(-5 * hour)),
+            NoteItem(id: "n3", body: "Got the progress card and this week’s objective working; the hover card needed a second pass.",
+                     session: .init(title: "Native goal page", startsAt: start, endsAt: start.addingTimeInterval(80 * 60),
+                                    aim: "Ship part 1 of the goal page."),
+                     breadcrumbs: [
+                        .init(provider: .github, title: "Build part 1 of the native goal page", url: URL(string: "https://github.com/x/y/commit/1")!),
+                        .init(provider: .linear, title: "SUP-42 Native goal page", url: URL(string: "https://linear.app/x/issue/SUP-42")!),
+                     ],
+                     createdAt: referenceNow.addingTimeInterval(-24 * hour), updatedAt: referenceNow.addingTimeInterval(-24 * hour)),
+            NoteItem(id: "n4", body: "Wrote it up in the README.", completedSuggestion: "Write down what the Mac app should do first",
+                     createdAt: referenceNow.addingTimeInterval(-3 * 24 * hour), updatedAt: referenceNow.addingTimeInterval(-3 * 24 * hour)),
+        ]
+    }
 }

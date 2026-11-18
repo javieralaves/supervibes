@@ -19,6 +19,7 @@ final class GoalPageModel {
     private(set) var headerError: String?
     private(set) var weekState: WeekObjectiveState = .idle
     private(set) var taskError: String?
+    private(set) var noteError: String?
     /// Bumped when the page is clicked outside the tasks, to close an open one.
     private(set) var closeSignal = 0
 
@@ -337,6 +338,131 @@ final class GoalPageModel {
         detail?.tasks[index] = task
     }
 
+    // MARK: Activity
+
+    /// What the Activity section can do, wired to this model.
+    var noteActions: NoteActions {
+        NoteActions(
+            post: { [weak self] in self?.postNote($0) },
+            edit: { [weak self] in self?.editNote($0, $1) },
+            delete: { [weak self] in self?.deleteNote($0) },
+            reopenTask: { [weak self] in self?.reopenTask($0) }
+        )
+    }
+
+    private func postNote(_ body: String) {
+        noteError = nil
+        let pending = NoteItem(id: "pending-\(UUID().uuidString)", body: body, createdAt: Date(), updatedAt: Date(), isPending: true)
+        detail?.notes.insert(pending, at: 0)
+        Task {
+            do {
+                switch try await client.postNote(path: .init(id: id), body: .json(.init(body: body))) {
+                case .created(let created):
+                    replaceNote(pending.id, with: NoteItem(api: try created.body.json))
+                    // Posting a note starts a read on the server; show it and check until it lands.
+                    await refresh()
+                case .badRequest(let bad):
+                    failNote(pending.id, (try? bad.body.json.error.message) ?? "Couldn’t post that note.")
+                case .notFound:
+                    load = .gone
+                case .unauthorized:
+                    detail?.notes.removeAll { $0.id == pending.id }
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    failNote(pending.id, "Couldn’t post that note (the server answered \(status)).")
+                }
+            } catch {
+                failNote(pending.id, "Couldn’t post that note. Check your connection.")
+            }
+        }
+    }
+
+    private func editNote(_ note: NoteItem, _ body: String) {
+        noteError = nil
+        replaceNote(note.id, with: { var edited = note; edited.body = body; edited.updatedAt = Date(); return edited }())
+        Task {
+            do {
+                switch try await client.editNote(path: .init(noteId: note.id), body: .json(.init(body: body))) {
+                case .ok(let ok):
+                    replaceNote(note.id, with: NoteItem(api: try ok.body.json))
+                case .badRequest(let bad):
+                    replaceNote(note.id, with: note)
+                    noteError = (try? bad.body.json.error.message) ?? "Couldn’t save that."
+                case .notFound(let gone):
+                    detail?.notes.removeAll { $0.id == note.id }
+                    noteError = (try? gone.body.json.error.message) ?? "That note doesn’t exist anymore."
+                case .unauthorized:
+                    replaceNote(note.id, with: note)
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    replaceNote(note.id, with: note)
+                    noteError = "Couldn’t save that (the server answered \(status))."
+                }
+            } catch {
+                replaceNote(note.id, with: note)
+                noteError = "Couldn’t save that. Check your connection."
+            }
+        }
+    }
+
+    private func deleteNote(_ note: NoteItem) {
+        noteError = nil
+        guard let index = detail?.notes.firstIndex(where: { $0.id == note.id }) else { return }
+        detail?.notes.remove(at: index)
+        Task {
+            do {
+                switch try await client.deleteNote(path: .init(noteId: note.id)) {
+                case .noContent, .notFound:
+                    break
+                case .unauthorized:
+                    detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                    noteError = "Couldn’t delete that (the server answered \(status))."
+                }
+            } catch {
+                detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                noteError = "Couldn’t delete that. Check your connection."
+            }
+        }
+    }
+
+    /// "Reopen task" on a finished task's entry: the task comes back and the entry goes.
+    private func reopenTask(_ note: NoteItem) {
+        guard let taskId = note.taskId, let index = detail?.notes.firstIndex(where: { $0.id == note.id }) else { return }
+        noteError = nil
+        detail?.notes.remove(at: index)
+        Task {
+            do {
+                switch try await client.setTaskDone(path: .init(taskId: taskId), body: .json(.init(done: false))) {
+                case .ok:
+                    // Back in the task list, in its place.
+                    await refresh()
+                case .unauthorized:
+                    detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                    await auth.sessionEnded()
+                case .badRequest, .notFound, .undocumented:
+                    detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                    noteError = "Couldn’t reopen that task."
+                }
+            } catch {
+                detail?.notes.insert(note, at: min(index, detail?.notes.count ?? 0))
+                noteError = "Couldn’t reopen that task. Check your connection."
+            }
+        }
+    }
+
+    private func replaceNote(_ id: String, with note: NoteItem) {
+        guard let index = detail?.notes.firstIndex(where: { $0.id == id }) else { return }
+        detail?.notes[index] = note
+    }
+
+    private func failNote(_ pendingID: String, _ message: String) {
+        detail?.notes.removeAll { $0.id == pendingID }
+        noteError = message
+    }
+
     func saveWeek(_ objective: String) {
         guard let week = detail?.week else { return }
         weekState = .saving
@@ -385,7 +511,31 @@ extension GoalDetail {
             week: Week(start: body.week.start, objective: body.week.objective, lastWeek: body.week.lastWeek),
             tasks: body.tasks.map { TaskItem(api: $0) },
             suggestions: body.suggestions.map { TaskSuggestion(title: $0.title, why: $0.why, minutes: $0.minutes) },
-            clock: body.clock.flatMap { Clock(rawValue: $0.rawValue) }
+            clock: body.clock.flatMap { Clock(rawValue: $0.rawValue) },
+            notes: body.notes.map { NoteItem(api: $0) },
+            author: NoteAuthor(name: body.author.name, imageURL: body.author.image.flatMap(URL.init(string:)))
+        )
+    }
+}
+
+extension NoteItem {
+    init(api note: Components.Schemas.Note) {
+        self.init(
+            id: note.id,
+            body: note.body,
+            completedSuggestion: note.completedSuggestion,
+            completedTask: note.completedTask,
+            taskId: note.taskId,
+            taskDescription: note.taskDescription,
+            session: note.session.map { Session(title: $0.title, startsAt: $0.startsAt, endsAt: $0.endsAt, aim: $0.aim) },
+            breadcrumbs: note.breadcrumbs.compactMap { crumb in
+                guard let provider = ConnectionItem.Provider(rawValue: crumb.provider.rawValue), let url = URL(string: crumb.url) else {
+                    return nil
+                }
+                return Breadcrumb(provider: provider, title: crumb.title, url: url)
+            },
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt
         )
     }
 }

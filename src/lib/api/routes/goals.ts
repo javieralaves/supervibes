@@ -4,6 +4,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
+import { asNote, NoteSchema } from "@/lib/api/routes/notes";
 import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
 import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
@@ -136,6 +137,8 @@ const GoalDetailSchema = z
     tasks: z.array(TaskSchema).openapi({ description: "Open tasks in their order (checked-off ones move to the activity)." }),
     suggestions: z.array(SuggestionSchema).openapi({ description: "The latest read's suggestions still to handle." }),
     clock: z.enum(CLOCKS).nullable().openapi({ description: "The person's clock; null follows the device." }),
+    notes: z.array(NoteSchema).openapi({ description: "The activity, newest first." }),
+    author: z.object({ name: z.string(), image: z.string().nullable() }).openapi({ description: "Who the activity is by." }),
   })
   .openapi("GoalDetail");
 
@@ -270,7 +273,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       getWeekObjectives(userId, id, [weekStart, lastWeekStart]),
       listSources(userId, id),
       listTasks(userId, id),
-      listPosts(userId, id, 1),
+      listPosts(userId, id),
       listTaskSchedules(userId, id),
       getSettings(userId),
     ]);
@@ -299,6 +302,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
         tasks: tasks.filter((task) => !task.doneAt).map((task) => asTask(task, schedules.get(task.id) ?? null)),
         suggestions: read?.suggestions ?? [],
         clock: settings.clock,
+        notes: posts.map(asNote),
+        author: { name: c.var.user.name, image: c.var.user.image ?? null },
       },
       200,
     );

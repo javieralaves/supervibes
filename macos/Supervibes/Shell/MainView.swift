@@ -228,6 +228,13 @@ private struct GoalScreen: View {
                             closeSignal: model.closeSignal,
                             actions: model.taskActions
                         )
+                        NotesSection(
+                            notes: detail.notes,
+                            author: detail.author,
+                            clock: detail.clock ?? .device,
+                            error: model.noteError,
+                            actions: model.noteActions
+                        )
                     }
                 }
             }

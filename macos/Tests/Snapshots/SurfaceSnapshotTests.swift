@@ -165,6 +165,16 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testNotesSection() {
+        assertAppearances(
+            NotesSection(notes: Fixtures.notes, author: Fixtures.author, clock: .twelveHour, now: now)
+                .padding(.horizontal, 32)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Theme.background),
+            width: 832, height: 1040
+        )
+    }
+
     func testTrajectoryHoverCard() {
         let days = Fixtures.goals[1].trajectory
         assertAppearances(

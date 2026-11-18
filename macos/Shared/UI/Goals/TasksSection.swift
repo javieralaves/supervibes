@@ -315,7 +315,7 @@ private struct TaskRow: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .disabled(task.isPending)
+                .inactive(task.isPending)
                 .padding(.top, 6)
                 .accessibilityLabel("Open “\(task.title)”")
 
@@ -510,7 +510,7 @@ private struct Checkbox: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .inactive(isDisabled)
         .onHover { isHovered = $0 }
         .accessibilityLabel("Mark as done")
     }
@@ -574,6 +574,7 @@ private struct SuggestionsList: View {
                         SuggestedRow(suggestion: suggestion, disabled: reading, actions: actions)
                     }
                 }
+                .compositingGroup()
                 .opacity(reading ? 0.5 : 1)
             }
         }
@@ -641,11 +642,12 @@ private struct SmallButton: View {
                     .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.05)), radius: 1, y: 1)
             }
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .compositingGroup()
             .opacity(isDisabled ? 0.5 : 1)
             .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .inactive(isDisabled)
         .onHover { isHovered = $0 }
     }
 }
@@ -663,11 +665,12 @@ private struct IconOnlyButton: View {
                 .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
                 .frame(width: 28, height: 28)
                 .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+                .compositingGroup()
                 .opacity(isDisabled ? 0.5 : 1)
                 .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .inactive(isDisabled)
         .onHover { isHovered = $0 }
     }
 }
@@ -692,11 +695,12 @@ private struct RefreshSuggestionsButton: View {
                     .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.05)), radius: 1, y: 1)
             }
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .compositingGroup()
             .opacity(reading ? 0.5 : 1)
             .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(reading)
+        .inactive(reading)
         .onHover { isHovered = $0 }
     }
 }

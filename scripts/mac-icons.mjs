@@ -18,7 +18,7 @@ const ICONS = {
   Logout01Icon: [1.5],
   Moon02Icon: [1.5],
   Sun03Icon: [1.5],
-  Tick02Icon: [1.5, 2.5],
+  Tick02Icon: [1.5, 2.5, 3],
   ArrowDown01Icon: [1.5],
   MoreHorizontalIcon: [1.5],
   Refresh01Icon: [1.5],
@@ -38,6 +38,7 @@ const ICONS = {
   DragDropVerticalIcon: [1.5],
   ViewIcon: [1.5],
   Flag02Icon: [1.5],
+  ArrowTurnBackwardIcon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

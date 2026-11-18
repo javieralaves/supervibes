@@ -34,7 +34,7 @@ struct PrimaryButton: View {
             .contentShape(.rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(isBusy)
+        .inactive(isBusy)
         .onHover { isHovered = $0 }
     }
 }
@@ -73,11 +73,12 @@ struct DangerButton: View {
                 .padding(.horizontal, 16)
                 .frame(height: 40)
                 .background(Color(nsColor: .rgb(isHovered ? 0xb91c1c : 0xdc2626)), in: .rect(cornerRadius: 12))
+                .compositingGroup()
                 .opacity(isBusy ? 0.6 : 1)
                 .contentShape(.rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(isBusy)
+        .inactive(isBusy)
         .onHover { isHovered = $0 }
     }
 }
@@ -156,11 +157,12 @@ struct MenuItem: View {
             .padding(.horizontal, 10)
             .frame(height: 36)
             .background(isHovered && !isDisabled ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .compositingGroup()
             .opacity(isDisabled ? 0.5 : 1)
             .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .inactive(isDisabled)
         .onHover { isHovered = $0 }
     }
 }
@@ -203,7 +205,7 @@ struct ConfirmDialog: View {
                 .padding(.top, 8)
             HStack(spacing: 8) {
                 Spacer()
-                GhostButton(title: "Cancel", action: onCancel).disabled(isBusy)
+                GhostButton(title: "Cancel", action: onCancel).inactive(isBusy)
                 DangerButton(title: isBusy ? (busyTitle ?? confirmTitle) : confirmTitle, isBusy: isBusy, action: onConfirm)
             }
             .padding(.top, 24)
@@ -330,5 +332,17 @@ extension View {
                 Text(text).font(font).foregroundStyle(color).allowsHitTesting(false)
             }
         }
+    }
+}
+
+// MARK: - Inactive controls
+
+extension View {
+    /// Stops a control responding without SwiftUI's own disabled look, which dims a button's text
+    /// on top of the fade the design already gives it. Pair it with that fade, applied to the whole
+    /// control as one (`compositingGroup()` then `opacity`), like the web's `disabled:opacity-*`.
+    func inactive(_ isInactive: Bool) -> some View {
+        allowsHitTesting(!isInactive)
+            .accessibilityAddTraits(isInactive ? .isStaticText : [])
     }
 }

@@ -307,6 +307,7 @@ private struct ProgressCard: View {
                 .foregroundStyle(Theme.muted)
                 .padding(.top, 8)
         }
+        .compositingGroup()
         .opacity(reading ? 0.5 : 1)
 
         if detail.status != nil {
@@ -357,11 +358,12 @@ private struct UpdateButton: View {
             .padding(.horizontal, 12)
             .frame(height: 36)
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .compositingGroup()
             .opacity(reading ? 0.6 : 1)
             .contentShape(.rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(reading)
+        .inactive(reading)
         .onHover { isHovered = $0 }
     }
 }

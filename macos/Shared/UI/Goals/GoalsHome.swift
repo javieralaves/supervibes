@@ -149,7 +149,7 @@ private struct GoalCard: View {
             .contentShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(.plain)
-        .disabled(goal.isPending)
+        .inactive(goal.isPending)
         .opacity(goal.isPending ? 0.6 : 1)
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
