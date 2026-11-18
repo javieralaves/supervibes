@@ -123,7 +123,7 @@ export function BlockCard({
       onPointerDown={pending ? undefined : onPointerDown}
       aria-label={`${what}: ${title}, ${time}${recapWaiting ? (block.recap ? ", recap to review" : ", drafting recap") : ""}`}
       className={`goal-tint ${kind} block-time group absolute z-10 touch-none select-none overflow-hidden rounded-lg ${
-        pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-grab"
+        pending ? "opacity-60" : dragging ? "z-30 cursor-grabbing" : "cursor-pointer"
       } ${selected ? "ring-2 ring-[var(--goal)]/60" : ""}`}
     >
       <span aria-hidden="true" className="block-bar absolute inset-y-0 left-0 w-[3px]" />
