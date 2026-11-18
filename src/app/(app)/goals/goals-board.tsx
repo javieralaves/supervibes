@@ -13,6 +13,7 @@ import type { GoalDTO } from "@/lib/goals";
 
 import { createGoalAction, deleteGoalAction, updateGoalAction, type GoalActionResult } from "./actions";
 import { GoalDialog } from "./goal-dialog";
+import { TargetDateLabel } from "./target-date-label";
 
 type Op =
   | { type: "create"; goal: GoalDTO }
@@ -35,11 +36,11 @@ type DialogState =
   | { mode: "create"; initial: GoalInput }
   | { mode: "edit"; goal: GoalDTO };
 
-const BLANK: GoalInput = { title: "", icon: DEFAULT_GOAL_ICON, color: DEFAULT_GOAL_COLOR };
+const BLANK: GoalInput = { title: "", description: null, targetDate: null, icon: DEFAULT_GOAL_ICON, color: DEFAULT_GOAL_COLOR };
 
 const SUGGESTIONS: GoalInput[] = [
-  { title: "Turn Supervibes into a world-class experience", icon: "SparklesIcon", color: "violet" },
-  { title: "Create political program as side project", icon: "Megaphone01Icon", color: "coral" },
+  { title: "Turn Supervibes into a world-class experience", icon: "SparklesIcon", color: "violet", description: null, targetDate: null },
+  { title: "Create political program as side project", icon: "Megaphone01Icon", color: "coral", description: null, targetDate: null },
 ];
 
 const PENDING_PREFIX = "pending-";
@@ -48,6 +49,8 @@ const PENDING_PREFIX = "pending-";
 function toInput(goal: GoalDTO): GoalInput {
   return {
     title: goal.title,
+    description: goal.description,
+    targetDate: goal.targetDate,
     icon: isGoalIcon(goal.icon) ? goal.icon : DEFAULT_GOAL_ICON,
     color: isGoalColor(goal.color) ? goal.color : DEFAULT_GOAL_COLOR,
   };
@@ -128,8 +131,11 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
             const content = (
               <>
                 <GoalBadge icon={goal.icon} color={goal.color} />
-                <span className="min-w-0 flex-1 pt-0.5 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
-                  {goal.title}
+                <span className="min-w-0 flex-1 pt-0.5">
+                  <span className="block text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
+                    {goal.title}
+                  </span>
+                  {goal.targetDate && <TargetDateLabel date={goal.targetDate} className="mt-1.5 text-xs" />}
                 </span>
                 <span
                   aria-hidden="true"

@@ -12,6 +12,7 @@ import { listPosts } from "@/lib/posts";
 import { minutesLabel } from "@/lib/task-schema";
 import { listTasksForRead } from "@/lib/tasks";
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
+import { targetDateForPrompt } from "@/lib/target-date";
 
 const MODEL = "claude-sonnet-5-5";
 /** How far back each read looks. A rolling window keeps the read about recent momentum. */
@@ -26,6 +27,8 @@ export const TASKS_MARKER = "tasks";
 const SYSTEM = `You give a person one honest, high-level read on whether they're making progress toward a goal, using the apps they've connected and the notes they've written.
 
 How to work:
+- If the person has said what done looks like, that is the finish line: judge progress by how much closer they are to it, not by how busy they've been. Without it, infer the finish line from the goal's title and context.
+- If there's a target date, weigh pace against the time left: say plainly if they're on track, behind, or past it. Without one, don't invent a deadline.
 - The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
@@ -41,6 +44,7 @@ What to return:
   - why: one short sentence tying it to what you saw in their sources or notes.
   - minutes: 30, 60 or 120. Aim for a spread, such as one of each.
   - Ground each one in something specific you saw. Never invent details.
+  - Prefer steps that close the gap between where things stand and what done looks like.
   - Make them different from each other: for example, one that moves the goal forward, one that removes a blocker or closes a feedback loop, and one quick win.
   - Never suggest something already on their open task list, even reworded. A suggestion can be a distinct, concrete step that starts, unblocks or finishes one of those tasks.
   - Skip anything already done, anything already planned on their calendar, anything their notes say to ignore or pause, and anything they've passed on before.
@@ -131,7 +135,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
   if (!process.env.ANTHROPIC_API_KEY) throw new ProgressError("Reading progress needs an Anthropic API key.");
 
   const [goal] = await db
-    .select({ id: goals.id, title: goals.title })
+    .select({ id: goals.id, title: goals.title, description: goals.description, targetDate: goals.targetDate })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) throw new ProgressError("That goal doesn't exist anymore.");
@@ -185,6 +189,8 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
   const serverName = (connectionId: string) => `${servers.get(connectionId)!.provider}-${connectionId.slice(0, 8)}`;
   const prompt = [
     `Goal: ${goal.title}`,
+    ...(goal.description ? [`What done looks like, in the person's words: ${goal.description.replace(/\s+/g, " ").trim()}`] : []),
+    ...(goal.targetDate ? [`Target date: ${targetDateForPrompt(goal.targetDate)}`] : []),
     `Time window: ${since.toISOString()} to ${now.toISOString()}`,
     "",
     ...(usable.length > 0

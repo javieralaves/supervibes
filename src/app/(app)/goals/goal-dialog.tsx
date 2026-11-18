@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Calendar03Icon,
   Cancel01Icon,
   Delete02Icon,
   Search01Icon,
@@ -8,12 +9,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
 import { GOAL_COLORS, GOAL_COLOR_KEYS, goalColorStyle, type GoalColor } from "@/lib/goal-colors";
 import { GOAL_ICON_GROUPS, type GoalIconDef, type GoalIconName } from "@/lib/goal-icons";
-import { goalInputSchema, MAX_GOAL_TITLE, type GoalInput } from "@/lib/goal-schema";
+import { goalInputSchema, MAX_GOAL_DESCRIPTION, MAX_GOAL_TITLE, type GoalInput } from "@/lib/goal-schema";
+import { formatTargetDate, relativeTarget, daysUntil } from "@/lib/target-date";
 
 type Props = {
   open: boolean;
@@ -26,6 +28,8 @@ type Props = {
 
 export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete }: Props) {
   const [title, setTitle] = useState(initial.title);
+  const [description, setDescription] = useState(initial.description ?? "");
+  const [targetDate, setTargetDate] = useState(initial.targetDate ?? "");
   const [icon, setIcon] = useState<GoalIconName>(initial.icon);
   const [color, setColor] = useState<GoalColor>(initial.color);
   const [query, setQuery] = useState("");
@@ -48,7 +52,7 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const parsed = goalInputSchema.safeParse({ title, icon, color });
+    const parsed = goalInputSchema.safeParse({ title, icon, color, description, targetDate });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Check the form.");
       return;
@@ -77,31 +81,61 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
               </Dialog.Close>
             </div>
 
-            {/* Live preview + title */}
-            <div className="flex items-center gap-4 px-6 pb-5 pt-4">
+            {/* Live preview + title, then what done looks like and when */}
+            <div className="flex items-start gap-4 px-6 pb-5 pt-4">
               <GoalBadge icon={icon} color={color} size="lg" />
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">Title</span>
-                {/* Grows with the text; Enter saves instead of adding a new line. */}
-                <textarea
-                  autoFocus
-                  rows={1}
-                  value={title}
-                  maxLength={MAX_GOAL_TITLE}
-                  onChange={(e) => {
-                    setTitle(e.target.value.replace(/\n/g, " "));
+              <div className="min-w-0 flex-1">
+                <label className="block">
+                  <span className="sr-only">Title</span>
+                  {/* Grows with the text; Enter saves instead of adding a new line. */}
+                  <textarea
+                    autoFocus
+                    rows={1}
+                    value={title}
+                    maxLength={MAX_GOAL_TITLE}
+                    onChange={(e) => {
+                      setTitle(e.target.value.replace(/\n/g, " "));
+                      setError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    placeholder="What are you working toward?"
+                    className="block max-h-32 w-full resize-none bg-transparent pt-3 text-xl font-semibold leading-snug tracking-[-0.02em] text-foreground outline-none [field-sizing:content] placeholder:text-muted/70"
+                  />
+                </label>
+                <label className="mt-1.5 block">
+                  <span className="sr-only">Description</span>
+                  {/* New lines are allowed here; ⌘/Ctrl+Enter saves. */}
+                  <textarea
+                    rows={1}
+                    value={description}
+                    maxLength={MAX_GOAL_DESCRIPTION}
+                    onChange={(e) => {
+                      setDescription(e.target.value);
+                      setError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    placeholder="What does done look like?"
+                    className="block max-h-40 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-relaxed text-foreground/80 outline-none [field-sizing:content] placeholder:text-muted/70"
+                  />
+                </label>
+                <TargetDateField
+                  value={targetDate}
+                  onChange={(next) => {
+                    setTargetDate(next);
                     setError(null);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  placeholder="What are you working toward?"
-                  className="block max-h-32 w-full resize-none bg-transparent text-xl font-semibold leading-snug tracking-[-0.02em] text-foreground outline-none [field-sizing:content] placeholder:text-muted/70"
                 />
-              </label>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto border-t border-card-border px-6 py-5">
@@ -241,5 +275,60 @@ export function GoalDialog({ open, onOpenChange, mode, initial, onSave, onDelete
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** A pill that opens the browser's date picker; the native input stays hidden behind it. */
+function TargetDateField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+
+  function open() {
+    const el = input.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+    }
+  }
+
+  const days = value ? daysUntil(value) : null;
+  return (
+    <div className="relative mt-3 flex items-center gap-1">
+      <button
+        type="button"
+        onClick={open}
+        className="flex h-8 items-center gap-1.5 rounded-full border border-card-border px-3 text-xs font-medium text-muted transition-colors hover:border-foreground/20 hover:text-foreground"
+      >
+        <HugeiconsIcon icon={Calendar03Icon} size={14} />
+        {value ? (
+          <span className="text-foreground">
+            Target {formatTargetDate(value)}
+            <span className="text-muted"> · {relativeTarget(days!)}</span>
+          </span>
+        ) : (
+          "Add target date"
+        )}
+      </button>
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear target date"
+          onClick={() => onChange("")}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-foreground/[.06] hover:text-foreground"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={14} />
+        </button>
+      )}
+      <input
+        ref={input}
+        type="date"
+        tabIndex={-1}
+        aria-label="Target date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+      />
+    </div>
   );
 }

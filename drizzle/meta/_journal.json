@@ -134,6 +134,13 @@
       "when": 1794953812606,
       "tag": "0018_drop_fits_keep_open",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794983105848,
+      "tag": "0019_goal_description_target_date",
+      "breakpoints": true
     }
   ]
 }

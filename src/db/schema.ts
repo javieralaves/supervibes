@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -29,6 +30,10 @@ export const goals = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     title: text().notNull(),
+    /** Optional, in the person's words: what done looks like. Shapes progress reads and agendas. */
+    description: text(),
+    /** Optional calendar day the person wants this done by, as "YYYY-MM-DD" (no time zone). */
+    targetDate: date({ mode: "string" }),
     /** Name of a Hugeicons icon from src/lib/goal-icons.ts, e.g. "Rocket01Icon". */
     icon: text().notNull(),
     /** Palette key from src/lib/goal-colors.ts, e.g. "violet". Not a hex value. */

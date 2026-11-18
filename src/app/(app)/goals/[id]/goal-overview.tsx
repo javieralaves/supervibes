@@ -11,7 +11,7 @@ import { ProgressCard, type ReadView } from "./progress-card";
 import { TasksSection, type SuggestionView, type TaskView } from "./tasks-section";
 
 type Props = {
-  goal: { id: string; title: string; icon: string; color: string };
+  goal: { id: string; title: string; description: string | null; targetDate: string | null; icon: string; color: string };
   read: (ReadView & { suggestions: SuggestionView[] }) | null;
   notes: NoteView[];
   author: NoteAuthor;

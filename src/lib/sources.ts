@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { connections, goals, goalSources } from "@/db/schema";
+import { goalColumns } from "@/lib/goals";
 import { isProvider, type ProviderKey } from "@/lib/providers";
 import type { SourceInput } from "@/lib/source-schema";
 
@@ -14,7 +15,7 @@ import type { SourceInput } from "@/lib/source-schema";
 
 export async function getGoal(userId: string, goalId: string) {
   const [goal] = await db
-    .select({ id: goals.id, title: goals.title, icon: goals.icon, color: goals.color, position: goals.position })
+    .select(goalColumns)
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   return goal ?? null;

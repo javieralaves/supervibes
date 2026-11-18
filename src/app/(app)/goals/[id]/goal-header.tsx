@@ -13,8 +13,16 @@ import type { GoalInput } from "@/lib/goal-schema";
 
 import { deleteGoalAction, updateGoalAction } from "../actions";
 import { GoalDialog } from "../goal-dialog";
+import { TargetDateLabel } from "../target-date-label";
 
-type Goal = { id: string; title: string; icon: string; color: string };
+type Goal = {
+  id: string;
+  title: string;
+  description: string | null;
+  targetDate: string | null;
+  icon: string;
+  color: string;
+};
 
 type Props = {
   goal: Goal;
@@ -34,6 +42,8 @@ export function GoalHeader({ goal, canUpdate, reading, onUpdate }: Props) {
 
   const initial: GoalInput = {
     title: goal.title,
+    description: goal.description,
+    targetDate: goal.targetDate,
     icon: isGoalIcon(goal.icon) ? goal.icon : DEFAULT_GOAL_ICON,
     color: isGoalColor(goal.color) ? goal.color : DEFAULT_GOAL_COLOR,
   };
@@ -64,6 +74,12 @@ export function GoalHeader({ goal, canUpdate, reading, onUpdate }: Props) {
       <h1 className="mt-5 text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground [text-wrap:balance] sm:text-3xl">
         {goal.title}
       </h1>
+      {goal.targetDate && <TargetDateLabel date={goal.targetDate} className="mt-2 text-sm" />}
+      {goal.description && (
+        <p className="mt-3 max-w-2xl whitespace-pre-line text-[0.95rem] leading-relaxed text-foreground/75">
+          {goal.description}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
           {error}

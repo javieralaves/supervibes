@@ -13,11 +13,13 @@ import { MAX_GOALS, type GoalInput } from "@/lib/goal-schema";
  * from the client.
  */
 
-export type GoalDTO = Pick<Goal, "id" | "title" | "icon" | "color" | "position">;
+export type GoalDTO = Pick<Goal, "id" | "title" | "description" | "targetDate" | "icon" | "color" | "position">;
 
-const columns = {
+export const goalColumns = {
   id: goals.id,
   title: goals.title,
+  description: goals.description,
+  targetDate: goals.targetDate,
   icon: goals.icon,
   color: goals.color,
   position: goals.position,
@@ -25,7 +27,7 @@ const columns = {
 
 export async function listGoals(userId: string): Promise<GoalDTO[]> {
   return db
-    .select(columns)
+    .select(goalColumns)
     .from(goals)
     .where(eq(goals.userId, userId))
     .orderBy(asc(goals.position), asc(goals.createdAt));
@@ -44,7 +46,7 @@ export async function createGoal(userId: string, input: GoalInput): Promise<Goal
   const [goal] = await db
     .insert(goals)
     .values({ ...input, userId, position: (last ?? -1) + 1 })
-    .returning(columns);
+    .returning(goalColumns);
   return goal;
 }
 
@@ -58,7 +60,7 @@ export async function updateGoal(
     .update(goals)
     .set(input)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)))
-    .returning(columns);
+    .returning(goalColumns);
   return goal ?? null;
 }
 
