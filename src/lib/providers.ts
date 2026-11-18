@@ -1,6 +1,11 @@
 /**
  * Apps Supervibes can read context from, via their hosted MCP servers.
  * Client-safe: no secrets here.
+ *
+ * `readingTools` is what progress reads and recaps may call in each app: the
+ * read-only tools that show activity. Every tool offered is sent with every
+ * request as a schema, so each one costs input tokens whether it's used or not;
+ * the apps' admin, settings and lookup tools are left out on purpose.
  */
 export const PROVIDERS = {
   linear: {
@@ -12,6 +17,20 @@ export const PROVIDERS = {
     registration: "dynamic",
     relationHint:
       "e.g. The Supervibes project. Shipped issues are direct progress; feedback from user calls shapes where it’s going. Ignore routine bug triage.",
+    readingTools: [
+      "list_issues",
+      "get_issue",
+      "list_comments",
+      "list_projects",
+      "get_project",
+      "list_milestones",
+      "get_milestone",
+      "list_cycles",
+      "list_documents",
+      "get_document",
+      "get_status_updates",
+      "list_teams",
+    ],
   },
   github: {
     label: "GitHub",
@@ -23,6 +42,17 @@ export const PROVIDERS = {
     registration: "static",
     relationHint:
       "e.g. The javieralaves/supervibes repo. Merged PRs are progress; open PRs show what I’m in the middle of.",
+    readingTools: [
+      "list_commits",
+      "get_commit",
+      "search_commits",
+      "list_pull_requests",
+      "pull_request_read",
+      "search_pull_requests",
+      "list_issues",
+      "issue_read",
+      "list_releases",
+    ],
   },
   granola: {
     label: "Granola",
@@ -32,6 +62,14 @@ export const PROVIDERS = {
     registration: "dynamic",
     relationHint:
       "e.g. Meetings with Pablo about design. Decisions made there shape the direction; skip routine check-ins.",
+    readingTools: [
+      "list_meetings",
+      "search_meetings",
+      "get_meetings",
+      "get_meeting_transcript",
+      "search_transcripts",
+      "list_meeting_folders",
+    ],
   },
 } as const;
 

@@ -59,11 +59,29 @@ export async function openGoalApps(userId: string, goalId: string): Promise<Goal
       provider: connection.provider,
       serverUrl: connection.serverUrl,
       token: connection.accessToken,
-      readTools: connection.readTools,
+      readTools: readingTools(connection.provider, connection.readTools),
     });
     usable.push(source);
   }
   return { sources, usable, servers };
+}
+
+/**
+ * The app's read-only tools that reads and recaps use (see PROVIDERS). If the app
+ * has renamed them all, falls back to every read-only tool rather than none.
+ */
+function readingTools(provider: ProviderKey, readTools: string[]): string[] {
+  const wanted = new Set<string>(PROVIDERS[provider].readingTools);
+  const kept = readTools.filter((name) => wanted.has(name));
+  if (kept.length === 0) {
+    console.warn(`[goal-apps] none of ${provider}'s reading tools are offered; using all ${readTools.length} read-only tools`);
+    return readTools;
+  }
+  if (kept.length < wanted.size) {
+    const missing = [...wanted].filter((name) => !readTools.includes(name));
+    console.warn(`[goal-apps] ${provider} no longer offers: ${missing.join(", ")}`);
+  }
+  return kept;
 }
 
 function serverName(apps: GoalApps, connectionId: string) {
