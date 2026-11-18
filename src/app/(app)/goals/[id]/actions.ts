@@ -12,6 +12,8 @@ import { completeSuggestion, getLatestRead, passOnSuggestion } from "@/lib/progr
 import { requireUser } from "@/lib/session";
 import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
 import { createTask, deleteTask, markTaskDone, reorderTasks, updateTask } from "@/lib/tasks";
+import { weekObjectiveSchema, weekStartSchema } from "@/lib/week-objective-schema";
+import { setWeekObjective } from "@/lib/week-objectives";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -194,6 +196,22 @@ export async function deleteTaskAction(taskId: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const id = idSchema.safeParse(taskId);
   if (!id.success || !(await deleteTask(user.id, id.data))) return { ok: false, error: TASK_GONE };
+  refresh();
+  return { ok: true };
+}
+
+/** "This week" on a goal: what the week should move for it. Empty clears it. */
+export async function setWeekObjectiveAction(goalId: unknown, weekStart: unknown, objective: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const week = weekStartSchema.safeParse(weekStart);
+  const parsed = weekObjectiveSchema.safeParse(objective);
+  if (!goal.success) return { ok: false, error: "That goal doesn't exist anymore." };
+  if (!week.success) return { ok: false, error: week.error.issues[0]?.message ?? "Pick a valid week." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the objective." };
+  if (!(await setWeekObjective(user.id, goal.data, week.data, parsed.data))) {
+    return { ok: false, error: "That goal doesn't exist anymore." };
+  }
   refresh();
   return { ok: true };
 }

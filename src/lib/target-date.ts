@@ -119,3 +119,20 @@ export function taskDaysForPrompt(
   }
   return parts.join("; ");
 }
+
+/** The Monday that starts the week `day` falls in, "YYYY-MM-DD". Weeks run Monday to Sunday. */
+export function weekStartOf(day: string): string {
+  // getUTCDay: 0 is Sunday; step back to Monday.
+  const weekday = new Date(utcDay(day)).getUTCDay();
+  return addDays(day, -((weekday + 6) % 7));
+}
+
+/** "Nov 16–22", or "Nov 30 – Dec 6" across months, for the week starting `weekStart`. */
+export function formatWeek(weekStart: string): string {
+  const end = addDays(weekStart, 6);
+  const month = (d: string) => new Date(utcDay(d)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const day = (d: string) => Number(d.slice(8, 10));
+  return month(weekStart) === month(end)
+    ? `${month(weekStart)} ${day(weekStart)}–${day(end)}`
+    : `${month(weekStart)} ${day(weekStart)} – ${month(end)} ${day(end)}`;
+}

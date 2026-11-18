@@ -183,6 +183,13 @@
       "when": 1795004785445,
       "tag": "0025_task_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795006976697,
+      "tag": "0026_goal_weeks",
+      "breakpoints": true
     }
   ]
 }

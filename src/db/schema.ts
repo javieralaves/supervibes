@@ -263,6 +263,33 @@ export const calendarBlocks = pgTable(
   (t) => [index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt)],
 );
 
+/**
+ * What a week should move for a goal, in the person's words: optional, one row per
+ * goal per week. Kept week by week, so later reads can see what was meant and whether
+ * it happened. Weeks start on Monday in the person's own calendar.
+ */
+export const goalWeeks = pgTable(
+  "goal_weeks",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    /** The Monday the week starts on, "YYYY-MM-DD". */
+    weekStart: date({ mode: "string" }).notNull(),
+    objective: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("goal_weeks_goal_week_idx").on(t.goalId, t.weekStart)],
+);
+
 /** Things the person has decided to do for a goal. Open until `doneAt` is set. */
 export const goalTasks = pgTable(
   "goal_tasks",

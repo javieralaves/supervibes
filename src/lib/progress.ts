@@ -12,7 +12,8 @@ import { listPosts } from "@/lib/posts";
 import { getTimeZone } from "@/lib/settings";
 import { minutesLabel } from "@/lib/task-schema";
 import { listTasksForRead } from "@/lib/tasks";
-import { targetDateForPrompt, taskDaysForPrompt, todayIn } from "@/lib/target-date";
+import { addDays, formatWeek, targetDateForPrompt, taskDaysForPrompt, todayIn, weekStartOf } from "@/lib/target-date";
+import { listWeekObjectives } from "@/lib/week-objectives";
 
 /** How far back each read looks. A rolling window keeps the read about recent momentum. */
 const WINDOW_DAYS = 30;
@@ -28,6 +29,7 @@ const SYSTEM = `You give a person one honest, high-level read on whether they're
 How to work:
 - If the person has said what done looks like, that is the finish line: judge progress by how much closer they are to it, not by how busy they've been. Without it, infer the finish line from the goal's title and context.
 - If there's a target date, weigh pace against the time left: say plainly if they're on track, behind, or past it. Without one, don't invent a deadline.
+- The person may have set an objective for this week: what the week should move, as a step toward the goal. When they have, judge the week against it too (on track for the week, behind, or already there) and let it shape the suggestions. Objectives from earlier weeks show what they meant to do then; say whether those landed when it matters. Never invent an objective for a week that has none.
 - The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
 - An open task may have a day the person planned to do it and a due date they set: their own commitments, not yours to invent. Overdue tasks and plans that slipped are worth naming when they matter for the goal; a due date coming up shapes what matters most right now. A task's due date is not the goal's target date.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
@@ -157,6 +159,11 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   const now = new Date();
   // The person's own day, so "today", "overdue" and "in 3 days" match what they see.
   const today = todayIn(await getTimeZone(userId), now);
+  const weekStart = weekStartOf(today);
+  // This week's objective and the few before it, newest first.
+  const objectives = await listWeekObjectives(userId, goalId, weekStart, 4);
+  const thisWeek = objectives.find((o) => o.weekStart === weekStart);
+  const earlier = objectives.filter((o) => o.weekStart !== weekStart);
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const previous = await getLatestRead(userId, goalId);
   const planned = await listUpcomingBlocks(userId, goalId);
@@ -166,6 +173,15 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
     ...(goal.description ? [`What done looks like, in the person's words: ${goal.description.replace(/\s+/g, " ").trim()}`] : []),
     ...(goal.targetDate ? [`Target date: ${targetDateForPrompt(goal.targetDate, today)}`] : []),
     `Today, in the person's time zone: ${today}`,
+    thisWeek
+      ? `This week's objective (${formatWeek(weekStart)}, ${weekStart} to ${addDays(weekStart, 6)}), in the person's words: ${thisWeek.objective.replace(/\s+/g, " ").trim()}`
+      : `No objective set for this week (${formatWeek(weekStart)}).`,
+    ...(earlier.length > 0
+      ? [
+          "Objectives from earlier weeks, newest first:",
+          ...earlier.map((o) => `- Week of ${o.weekStart}: ${o.objective.replace(/\s+/g, " ").trim()}`),
+        ]
+      : []),
     `Time window: ${since.toISOString()} to ${now.toISOString()}`,
     "",
     ...(apps.usable.length > 0

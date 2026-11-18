@@ -14,7 +14,8 @@ import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
 import { getSettings, getTimeZone } from "@/lib/settings";
-import { todayIn } from "@/lib/target-date";
+import { addDays, todayIn, weekStartOf } from "@/lib/target-date";
+import { getWeekObjectives } from "@/lib/week-objectives";
 import { listTasks, listTaskSchedules } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
@@ -43,6 +44,12 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     getSettings(user.id),
     getTimeZone(user.id),
   ]);
+
+  // Weeks run Monday to Sunday in the person's own calendar.
+  const today = todayIn(timeZone);
+  const weekStart = weekStartOf(today);
+  const lastWeekStart = addDays(weekStart, -7);
+  const objectives = await getWeekObjectives(user.id, id, [weekStart, lastWeekStart]);
 
   return (
     <GoalOverview
@@ -75,7 +82,12 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
       }))}
       clock={settings.clock}
       // The person's own today, so the server and their browser agree on "Today" and "Overdue".
-      today={todayIn(timeZone)}
+      today={today}
+      week={{
+        start: weekStart,
+        objective: objectives.get(weekStart) ?? null,
+        lastWeek: objectives.get(lastWeekStart) ?? null,
+      }}
       sources={sources}
       connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
     />

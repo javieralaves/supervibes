@@ -12,6 +12,7 @@ import { ProgressCard, type ReadView } from "./progress-card";
 import type { ConnectionOption } from "./source-dialog";
 import { SourcesSection, type SourceView } from "./sources-section";
 import { TasksSection, type SuggestionView, type TaskView } from "./tasks-section";
+import { WeekObjective } from "./week-objective";
 
 type Props = {
   goal: { id: string; title: string; description: string | null; targetDate: string | null; icon: string; color: string };
@@ -27,6 +28,8 @@ type Props = {
   clock: Clock | null;
   /** The person's today, "YYYY-MM-DD". */
   today: string;
+  /** This week's objective for the goal, and last week's, by the Monday each starts on. */
+  week: { start: string; objective: string | null; lastWeek: string | null };
   sources: SourceView[];
   /** Connected apps a new source can read from. */
   connections: ConnectionOption[];
@@ -46,6 +49,7 @@ export function GoalOverview({
   tasks,
   clock,
   today,
+  week,
   sources,
   connections,
 }: Props) {
@@ -73,6 +77,14 @@ export function GoalOverview({
   return (
     <>
       <GoalHeader goal={goal} canUpdate={canRead} reading={reading} onUpdate={update} />
+      {/* Keyed by week, so a new week starts with an empty field. */}
+      <WeekObjective
+        key={week.start}
+        goalId={goal.id}
+        weekStart={week.start}
+        saved={week.objective}
+        lastWeek={week.lastWeek}
+      />
       <ProgressCard read={read} canRead={canRead} reading={reading} error={error ?? readError} onUpdate={update} />
       {/* Tasks, with the read's suggestions underneath as candidates to add. */}
       <TasksSection
