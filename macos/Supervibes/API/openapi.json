@@ -66,6 +66,32 @@
           "hasRecapPost": {
             "type": "boolean",
             "description": "Its recap has been posted to the goal's activity."
+          },
+          "agenda": {
+            "$ref": "#/components/schemas/BlockAgenda"
+          },
+          "recap": {
+            "$ref": "#/components/schemas/BlockRecap"
+          },
+          "recapPost": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "breadcrumbs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Breadcrumb"
+                }
+              }
+            },
+            "required": [
+              "body",
+              "breadcrumbs"
+            ],
+            "description": "The recap as posted to the goal's activity."
           }
         },
         "required": [
@@ -81,7 +107,143 @@
           "hasAgenda",
           "hasRecapDraft",
           "recapDrafting",
-          "hasRecapPost"
+          "hasRecapPost",
+          "agenda",
+          "recap",
+          "recapPost"
+        ]
+      },
+      "BlockAgenda": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "minutes": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "minutes"
+              ]
+            },
+            "description": "The tasks it draws on, as they were when it was prepared."
+          },
+          "preparedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "keptTitle": {
+            "type": "boolean",
+            "description": "Whether it kept the title it was prepared with (older agendas didn't)."
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "The block's title when this was prepared."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "The block's aim when this was prepared."
+          }
+        },
+        "required": [
+          "text",
+          "tasks",
+          "preparedAt",
+          "keptTitle",
+          "title",
+          "description"
+        ]
+      },
+      "BlockRecap": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "planned": {
+            "type": "string",
+            "nullable": true,
+            "description": "What the session was meant to be about, if anything said so."
+          },
+          "happened": {
+            "type": "string",
+            "description": "What looks to have happened; empty when there was nothing to go on."
+          },
+          "breadcrumbs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Breadcrumb"
+            }
+          },
+          "found": {
+            "type": "string",
+            "enum": [
+              "clear",
+              "partial",
+              "none",
+              "no-sources"
+            ]
+          },
+          "taskLooksDone": {
+            "type": "boolean"
+          },
+          "preparedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "auto": {
+            "type": "boolean",
+            "description": "Drafted on its own once the session ended."
+          }
+        },
+        "required": [
+          "planned",
+          "happened",
+          "breadcrumbs",
+          "found",
+          "taskLooksDone",
+          "preparedAt",
+          "auto"
+        ],
+        "description": "A draft recap, waiting to be posted or discarded."
+      },
+      "Breadcrumb": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "github",
+              "granola"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "title",
+          "url"
         ]
       },
       "Error": {
@@ -189,6 +351,51 @@
         },
         "required": [
           "day"
+        ]
+      },
+      "BlockDescription": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ]
+      },
+      "PrepareAgenda": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "string",
+            "description": "How the block reads in the viewer's time zone."
+          }
+        },
+        "required": [
+          "when"
+        ]
+      },
+      "PostRecap": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "keep": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "markTaskDone": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "body",
+          "keep",
+          "markTaskDone"
         ]
       },
       "Calendar": {
@@ -1067,30 +1274,6 @@
           "breadcrumbs",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "Breadcrumb": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "enum": [
-              "linear",
-              "github",
-              "granola"
-            ]
-          },
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "title",
-          "url"
         ]
       },
       "Source": {
@@ -2003,6 +2186,343 @@
         "responses": {
           "204": {
             "description": "Planned"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/description": {
+      "put": {
+        "operationId": "setBlockDescription",
+        "summary": "Say what you want out of a session of protected time; empty clears it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockDescription"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/agenda": {
+      "post": {
+        "operationId": "prepareAgenda",
+        "summary": "Prepare an agenda for a session, from the goal's tasks, notes and latest read",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareAgenda"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockAgenda"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Couldn't prepare it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/recap": {
+      "post": {
+        "operationId": "prepareRecap",
+        "summary": "Draft a recap of a session that's ended, from the goal's connected apps",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Drafted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockRecap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Couldn't draft it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "discardRecap",
+        "summary": "Discard a draft recap",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Discarded"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/recap/post": {
+      "post": {
+        "operationId": "postRecap",
+        "summary": "Post a recap to the goal's activity, keeping the draft's links named in `keep`",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostRecap"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Posted"
           },
           "400": {
             "description": "The request didn't make sense.",

@@ -4,6 +4,9 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { errorResponses } from "@/lib/api/errors";
+import { BreadcrumbSchema } from "@/lib/api/routes/notes";
+import type { BlockAgenda } from "@/lib/block-schema";
+import type { BlockRecap } from "@/lib/recap-schema";
 import { CALENDAR_DAYS_AHEAD, CALENDAR_DAYS_BACK, listBlocksAroundNow, type BlockDTO } from "@/lib/blocks";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
 import { listGoals } from "@/lib/goals";
@@ -24,6 +27,31 @@ import { listObjectivesBetween } from "@/lib/week-objectives";
 /** Sessions drafted per visit; any more wait for the next one. Same as the web page. */
 const AUTO_RECAPS_PER_VISIT = 3;
 
+export const BlockAgendaSchema = z
+  .object({
+    text: z.string(),
+    tasks: z
+      .array(z.object({ id: z.string(), title: z.string(), minutes: z.int() }))
+      .openapi({ description: "The tasks it draws on, as they were when it was prepared." }),
+    preparedAt: z.iso.datetime(),
+    keptTitle: z.boolean().openapi({ description: "Whether it kept the title it was prepared with (older agendas didn't)." }),
+    title: z.string().nullable().openapi({ description: "The block's title when this was prepared." }),
+    description: z.string().nullable().openapi({ description: "The block's aim when this was prepared." }),
+  })
+  .openapi("BlockAgenda");
+
+export const BlockRecapSchema = z
+  .object({
+    planned: z.string().nullable().openapi({ description: "What the session was meant to be about, if anything said so." }),
+    happened: z.string().openapi({ description: "What looks to have happened; empty when there was nothing to go on." }),
+    breadcrumbs: z.array(BreadcrumbSchema),
+    found: z.enum(["clear", "partial", "none", "no-sources"]),
+    taskLooksDone: z.boolean(),
+    preparedAt: z.iso.datetime(),
+    auto: z.boolean().openapi({ description: "Drafted on its own once the session ended." }),
+  })
+  .openapi("BlockRecap");
+
 export const CalendarBlockSchema = z
   .object({
     id: z.string(),
@@ -39,8 +67,29 @@ export const CalendarBlockSchema = z
     hasRecapDraft: z.boolean().openapi({ description: "A recap waiting to be read and posted." }),
     recapDrafting: z.boolean().openapi({ description: "A recap is drafting itself in the background." }),
     hasRecapPost: z.boolean().openapi({ description: "Its recap has been posted to the goal's activity." }),
+    agenda: BlockAgendaSchema.nullable(),
+    recap: BlockRecapSchema.nullable().openapi({ description: "A draft recap, waiting to be posted or discarded." }),
+    recapPost: z
+      .object({ body: z.string(), breadcrumbs: z.array(BreadcrumbSchema) })
+      .nullable()
+      .openapi({ description: "The recap as posted to the goal's activity." }),
   })
   .openapi("CalendarBlock");
+
+export function asAgenda(agenda: BlockAgenda): z.infer<typeof BlockAgendaSchema> {
+  return {
+    text: agenda.text,
+    tasks: agenda.tasks,
+    preparedAt: new Date(agenda.preparedAt).toISOString(),
+    keptTitle: agenda.title !== undefined,
+    title: agenda.title ?? null,
+    description: agenda.description ?? null,
+  };
+}
+
+export function asRecap(recap: BlockRecap): z.infer<typeof BlockRecapSchema> {
+  return { ...recap, preparedAt: new Date(recap.preparedAt).toISOString(), auto: recap.auto ?? false };
+}
 
 const CalendarGoalSchema = z
   .object({
@@ -107,6 +156,9 @@ export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer
     hasRecapDraft: block.recap !== null,
     recapDrafting: drafting.has(block.id) || (block.recapDrafting ?? false),
     hasRecapPost: Boolean(block.recapPost),
+    agenda: block.agenda && asAgenda(block.agenda),
+    recap: block.recap && asRecap(block.recap),
+    recapPost: block.recapPost ?? null,
   };
 }
 

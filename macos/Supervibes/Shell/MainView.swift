@@ -88,7 +88,7 @@ struct MainView: View {
                             ConnectionsScreen(auth: auth)
                         }
                     case .calendar:
-                        CalendarScreen(auth: auth)
+                        CalendarScreen(auth: auth, shell: shell)
                     }
                 }
             }
@@ -312,8 +312,11 @@ private struct CalendarScreen: View {
     @State private var model: CalendarModel
     /// The task panel beside the day: closed unless opened, remembered.
     @AppStorage("sv-calendar-task-panel") private var showsTasks = false
+    @State private var selectedId: String?
+    let shell: ShellModel
 
-    init(auth: AuthModel) {
+    init(auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
         _model = State(initialValue: CalendarModel(auth: auth))
     }
 
@@ -350,10 +353,27 @@ private struct CalendarScreen: View {
                         defaultGoalId: { model.defaultGoalId }
                     ),
                     showsTasks: showsTasks,
-                    onToggleTasks: { showsTasks.toggle() }
+                    onToggleTasks: { showsTasks.toggle() },
+                    selectedId: $selectedId,
+                    panel: BlockPanelActions(
+                        setDescription: model.setDescription,
+                        prepareAgenda: model.prepareAgenda(_:when:),
+                        prepareRecap: model.prepareRecap,
+                        postRecap: model.postRecap(_:body:keep:markTaskDone:),
+                        discardRecap: model.discardRecap,
+                        setTaskDone: model.setTaskDone,
+                        toggleDone: model.toggleDone,
+                        openGoal: { shell.openGoal($0) }
+                    )
                 )
                 .focusable()
                 .focusEffectDisabled()
+                .onKeyPress(.escape) {
+                    // Esc closes the block panel.
+                    guard selectedId != nil else { return .ignored }
+                    selectedId = nil
+                    return .handled
+                }
                 .onKeyPress(.leftArrow) { model.step(-1); return .handled }
                 .onKeyPress(.rightArrow) { model.step(1); return .handled }
             }

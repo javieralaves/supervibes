@@ -15,6 +15,10 @@ import { PROVIDER_KEYS } from "@/lib/providers";
  * Reopening a task from its entry is PUT /tasks/{taskId}/done with done: false.
  */
 
+export const BreadcrumbSchema = z
+  .object({ provider: z.enum(PROVIDER_KEYS), title: z.string(), url: z.string() })
+  .openapi("Breadcrumb");
+
 export const NoteSchema = z
   .object({
     id: z.string(),
@@ -33,7 +37,7 @@ export const NoteSchema = z
       .nullable()
       .openapi({ description: "The calendar session this recaps, on recaps." }),
     breadcrumbs: z
-      .array(z.object({ provider: z.enum(PROVIDER_KEYS), title: z.string(), url: z.string() }).openapi("Breadcrumb"))
+      .array(BreadcrumbSchema)
       .openapi({ description: "Things in connected apps a recap drew on; empty when none." }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),

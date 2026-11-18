@@ -356,13 +356,23 @@ private struct SessionLine: View {
     }
 }
 
-/// Things in connected apps a recap drew on: one line each, opening in the browser.
-private struct BreadcrumbList: View {
+/// Things in connected apps a recap drew on: one line each, opening in the browser. With
+/// `onRemove`, each can be taken out (while drafting).
+struct BreadcrumbList: View {
     let items: [NoteItem.Breadcrumb]
+    var onRemove: ((NoteItem.Breadcrumb) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(items, id: \.url) { BreadcrumbRow(item: $0) }
+            ForEach(items, id: \.url) { item in
+                HStack(spacing: 4) {
+                    BreadcrumbRow(item: item)
+                    if let onRemove {
+                        RemoveButton { onRemove(item) }
+                            .accessibilityLabel("Remove “\(item.title)”")
+                    }
+                }
+            }
         }
         .padding(.horizontal, -8)
     }
@@ -388,6 +398,23 @@ private struct BreadcrumbList: View {
             .buttonStyle(.plain)
             .onHover { isHovered = $0 }
             .help("Open in \(item.provider.rawValue.capitalized)")
+        }
+    }
+
+    private struct RemoveButton: View {
+        let action: () -> Void
+        @State private var isHovered = false
+
+        var body: some View {
+            Button(action: action) {
+                Icon.close.image(size: 13)
+                    .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+                    .frame(width: 28, height: 28)
+                    .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+                    .contentShape(.rect(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
         }
     }
 }

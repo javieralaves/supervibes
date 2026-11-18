@@ -185,6 +185,40 @@ enum Fixtures {
                    relation: "The supervibes repo. Merged PRs are progress.", lastError: "The token expired."),
     ]
 
+    /// The block panel's three states: ahead with an aim and agenda, ended with a draft recap, recapped.
+    static var panelBlocks: [CalendarBlock] {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        let github = NoteItem.Breadcrumb(provider: .github, title: "Native calendar: day view (#212)", url: URL(string: "https://github.com/example/supervibes/pull/212")!)
+        let granola = NoteItem.Breadcrumb(provider: .granola, title: "Calendar sync with design", url: URL(string: "https://notes.granola.ai/d/example")!)
+        return [
+            CalendarBlock(
+                id: "p1", goalId: "g1", title: "Week view sketch", description: "Get the week view's layout settled so part 4 can start.",
+                startsAt: at(15), endsAt: at(16, 30), hasAgenda: true,
+                agenda: BlockAgenda(
+                    text: "Aim to leave with the week view's layout decided: seven columns, how blocks shrink, and where the overview panel sits. Start from the web version and note what has to change natively, then sketch the two trickiest bits.",
+                    tasks: [.init(id: "t5", title: "Sketch the week view", minutes: 45), .init(id: "t7", title: "List what the week view needs from the API", minutes: 30)],
+                    preparedAt: referenceNow.addingTimeInterval(-25 * 60), keptTitle: true, title: "Week view sketch", description: "Get the week view's layout settled."
+                )
+            ),
+            CalendarBlock(
+                id: "p2", goalId: "g1", title: "Rebuild the calendar natively", startsAt: at(8), endsAt: at(9, 30), taskId: "t9", hasRecapDraft: true,
+                recap: RecapDraft(
+                    planned: "Build the day view's reading parts.",
+                    happened: "Finished the day view: hour grid, sleep shading, blocks filling in as time passes, and the now line. Snapshot tests cover light and dark.",
+                    breadcrumbs: [github], found: .clear, taskLooksDone: true, preparedAt: referenceNow.addingTimeInterval(-40 * 60), auto: true
+                )
+            ),
+            CalendarBlock(
+                id: "p3", goalId: "g3", title: nil, description: "Hear how people plan their week.", startsAt: at(7), endsAt: at(8), hasRecapPost: true,
+                recapPost: PostedRecap(
+                    body: "Talked to three people about weekly planning. Two plan on Sunday evening, one on Monday morning. All three want to see last week before planning the next, which argues for the week overview showing what got done, not only what's planned. One wants objectives to carry over when unfinished.",
+                    breadcrumbs: [granola]
+                )
+            ),
+        ]
+    }
+
     /// A calendar day around `referenceNow` (10:18): sessions behind, one under way, more ahead.
     static var calendar: CalendarData {
         let day = Calendar.current.startOfDay(for: referenceNow)

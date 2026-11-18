@@ -31,14 +31,43 @@ struct DayView: View {
     var onToday: () -> Void = {}
     /// Changing blocks; without it the day is read-only.
     var actions: CalendarActions?
-    /// Opens with this block being named, for previews and snapshots.
-    var editing: BlockEditing?
     /// The task panel beside the day.
     var showsTasks = false
     /// Shows or hides it; without it there's no toggle.
     var onToggleTasks: (() -> Void)?
+    /// The block whose panel is open on the right.
+    var selectedId: Binding<String?> = .constant(nil)
+    /// What the block panel can do; without it, clicking a block edits it in place.
+    var panel: BlockPanelActions?
 
     @State private var drag = TaskDragState()
+    /// The block being named or given a goal in the popover.
+    @State private var editing: BlockEditing?
+    @State private var width: CGFloat = 0
+
+    init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
+         onToday: @escaping () -> Void = {}, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
+         showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
+         panel: BlockPanelActions? = nil) {
+        self.data = data
+        self.offset = offset
+        self.now = now
+        self.error = error
+        self.onStep = onStep
+        self.onToday = onToday
+        self.actions = actions
+        self.showsTasks = showsTasks
+        self.onToggleTasks = onToggleTasks
+        self.selectedId = selectedId
+        self.panel = panel
+        _editing = State(initialValue: editing)
+    }
+
+    /// The selected block, while it's there and saved; below the width the panel needs, none.
+    private var selected: CalendarBlock? {
+        guard panel != nil, width >= 1024, let id = selectedId.wrappedValue else { return nil }
+        return data.blocks.first { $0.id == id && !$0.isPending }
+    }
 
     private var clock: Clock { data.clock ?? .device }
     private var isToday: Bool { offset == 0 }
@@ -63,12 +92,16 @@ struct DayView: View {
                         .frame(width: 288)
                 }
                 day
+                if let selected {
+                    blockPanel(selected).frame(width: 320)
+                }
             }
-            .frame(maxWidth: showsTasks ? 1072 : 768)
+            .frame(maxWidth: showsTasks && selected != nil ? 1408 : showsTasks ? 1072 : selected != nil ? 1104 : 768)
             .padding(16)
             .frame(maxWidth: .infinity)
         }
         .coordinateSpace(.calendar)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .overlay(alignment: .topLeading) {
             // The task under the pointer, until it's over the timeline and the preview takes over.
             if let placing = drag.placing, placing.moved {
@@ -111,11 +144,51 @@ struct DayView: View {
                     onUnplan: actions.map { actions in { actions.plan($0, nil) } }
                 )
             }
-            TimelineScroll(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing)
+            TimelineScroll(
+                data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
+                selectedId: selected?.id,
+                onSelect: panel != nil && width >= 1024 ? { selectedId.wrappedValue = $0 } : nil
+            )
         }
         .background(Theme.card, in: .rect(cornerRadius: 16))
         .clipShape(.rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+    }
+
+    private func blockPanel(_ block: CalendarBlock) -> some View {
+        let start = CalendarDayMath.minutes(block.startsAt)
+        let day = CalendarDayMath.dayOffset(block.startsAt, from: now)
+        let end = CalendarDayMath.dayOffset(block.endsAt, from: now) > day ? CalendarDayMath.dayMinutes : CalendarDayMath.minutes(block.endsAt)
+        let range = clock.formatRange(start, end)
+        let relative = Self.dayLabel(day)
+        let en = Locale(identifier: "en_US")
+        let label = "\(relative ?? block.startsAt.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(en))) · \(range)"
+        let date = block.startsAt.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(en))
+        let when = "\(date)\(relative.map { " (\($0.lowercased()))" } ?? ""), \(range)"
+        return BlockPanel(
+            block: block,
+            goal: data.goal(block.goalId),
+            timeLabel: label,
+            when: when,
+            openTaskIds: Set(data.tasks.map(\.id)),
+            ended: block.endsAt <= now,
+            now: now,
+            actions: panel,
+            onEdit: { edit(block) },
+            onClose: { selectedId.wrappedValue = nil }
+        )
+        .id(block.id)
+    }
+
+    /// Edit a block in the popover on its day's timeline, stepping to that day first.
+    private func edit(_ block: CalendarBlock) {
+        guard let segment = DaySegment.of(block, today: now).first(where: { $0.day == offset }) ?? DaySegment.of(block, today: now).first else { return }
+        if segment.day != offset { onStep(segment.day - offset) }
+        editing = BlockEditing(
+            mode: .edit(blockId: block.id, intention: block.isIntention),
+            day: segment.day, start: segment.start, end: segment.end,
+            goalId: block.goalId, title: block.title
+        )
     }
 
     /// "Today", "Tomorrow" or "Yesterday"; nil further away.
@@ -420,7 +493,9 @@ private struct TimelineScroll: View {
     let now: Date
     let clock: Clock
     let actions: CalendarActions?
-    let editing: BlockEditing?
+    @Binding var editing: BlockEditing?
+    let selectedId: String?
+    let onSelect: ((String) -> Void)?
     @Environment(\.taskDrag) private var drag
     @State private var position = ScrollPosition()
     @State private var scrollY: CGFloat = 0
@@ -432,7 +507,10 @@ private struct TimelineScroll: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                DayTimeline(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing, proxy: proxy)
+                DayTimeline(
+                    data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
+                    selectedId: selectedId, onSelect: onSelect, proxy: proxy
+                )
             }
             .scrollPosition($position)
             .onScrollGeometryChange(for: [CGFloat].self) {
@@ -526,23 +604,31 @@ struct DayTimeline: View {
     let now: Date
     let clock: Clock
     var actions: CalendarActions?
+    @Binding var editing: BlockEditing?
+    /// The block whose panel is open, ringed in its goal's colour.
+    var selectedId: String?
+    /// Clicking a block opens its panel; without it, the click edits it in place.
+    var onSelect: ((String) -> Void)?
     var proxy: ScrollViewProxy?
 
-    @State private var editing: BlockEditing?
     @State private var drawing: Drawing?
     @State private var dragging: BlockDrag?
     @State private var width: CGFloat = 0
     @Environment(\.overlays) private var overlays
     @Environment(\.taskDrag) private var drag
 
-    init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil, editing: BlockEditing? = nil, proxy: ScrollViewProxy? = nil) {
+    init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil,
+         editing: Binding<BlockEditing?> = .constant(nil), selectedId: String? = nil, onSelect: ((String) -> Void)? = nil,
+         proxy: ScrollViewProxy? = nil) {
         self.data = data
         self.offset = offset
         self.now = now
         self.clock = clock
         self.actions = actions
+        _editing = editing
+        self.selectedId = selectedId
+        self.onSelect = onSelect
         self.proxy = proxy
-        _editing = State(initialValue: editing)
     }
 
     /// Time being drawn on empty space.
@@ -638,6 +724,7 @@ struct DayTimeline: View {
                         isInteractive: actions != nil && !block.isPending,
                         isDragging: moving != nil,
                         isMenuOpen: overlays?.presented?.owner == block.id,
+                        isSelected: block.id == selectedId,
                         onDrag: { edge, dy in dragBlock(segment, edge: edge, dy: dy) },
                         onDragEnd: { edge in endBlockDrag(block, segment, edge: edge) },
                         onMenu: { anchor in showMenu(block, segment, anchor: anchor) }
@@ -686,7 +773,8 @@ struct DayTimeline: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.timelineFrame = $0 }
-        .onChange(of: offset) { editing = nil }
+        .onChange(of: offset) { if editing?.day != offset { editing = nil } }
+        .onChange(of: editing) { if editing != nil { scrollToPopover() } }
     }
 
     // MARK: Drawing
@@ -766,8 +854,10 @@ struct DayTimeline: View {
         guard let current = dragging else { return }
         dragging = nil
         if !current.moved {
-            // A click on the block: edit it.
-            if edge == .move { edit(block, segment) }
+            // A click on the block: open its panel, or edit it in place.
+            if edge == .move {
+                if let onSelect { onSelect(block.id) } else { edit(block, segment) }
+            }
             return
         }
         if current.delta != 0 { actions?.move(block.id, current.edge, current.delta) }
@@ -788,7 +878,10 @@ struct DayTimeline: View {
 
     private func open(_ value: BlockEditing) {
         editing = value
-        // Bring it into view.
+    }
+
+    /// Bring the popover into view.
+    private func scrollToPopover() {
         Task { @MainActor in
             withAnimation(.easeOut(duration: 0.2)) { proxy?.scrollTo(Self.popoverID) }
         }
@@ -871,6 +964,7 @@ private struct TimelineBlock: View {
     let isInteractive: Bool
     let isDragging: Bool
     let isMenuOpen: Bool
+    var isSelected = false
     let onDrag: (BlockEdge, CGFloat) -> Void
     let onDragEnd: (BlockEdge) -> Void
     let onMenu: (CGRect) -> Void
@@ -905,6 +999,14 @@ private struct TimelineBlock: View {
                         .modifier(AnchorReader(frame: $moreFrame))
                         .padding(6)
                         .opacity(isHovered || isMenuOpen ? 1 : 0)
+                }
+            }
+            .overlay {
+                // Its panel is open: a ring in its goal's colour.
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 10).strokeBorder(GoalPalette.color(goal?.color ?? "slate").opacity(0.6), lineWidth: 2)
+                        .padding(-2)
+                        .allowsHitTesting(false)
                 }
             }
             .shadow(color: isDragging ? Color(nsColor: .rgb(0x0f1114, alpha: 0.14)) : .clear, radius: 8, y: 4)

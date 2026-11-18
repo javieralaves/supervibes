@@ -22,6 +22,12 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     var hasRecapDraft = false
     var recapDrafting = false
     var hasRecapPost = false
+    /// A plan for the session, once one has been prepared.
+    var agenda: BlockAgenda?
+    /// A draft recap, waiting to be posted or discarded.
+    var recap: RecapDraft?
+    /// The recap as posted to the goal's activity.
+    var recapPost: PostedRecap?
     var isPending = false
 
     var isIntention: Bool { fromSuggestion != nil || taskId != nil }
@@ -33,6 +39,48 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
 /// What a drag on a block changes: the whole block, or its top or bottom edge.
 enum BlockEdge: Sendable {
     case move, start, end
+}
+
+/// A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made.
+struct BlockAgenda: Hashable, Sendable {
+    struct Task: Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let minutes: Int
+    }
+
+    let text: String
+    let tasks: [Task]
+    let preparedAt: Date
+    /// The block's title and aim when it was prepared; older agendas didn't keep the title.
+    let keptTitle: Bool
+    let title: String?
+    let description: String?
+
+    /// Whether the title or aim has changed since it was prepared (agendaIsStale).
+    func isStale(title current: String?, description currentDescription: String?) -> Bool {
+        (keptTitle && title != current) || description != currentDescription
+    }
+}
+
+/// A draft recap: what was meant to happen, what did, and the links it found.
+struct RecapDraft: Hashable, Sendable {
+    enum Found: String, Sendable { case clear, partial, none, noSources = "no-sources" }
+
+    let planned: String?
+    let happened: String
+    let breadcrumbs: [NoteItem.Breadcrumb]
+    let found: Found
+    /// For an intention: whether its task looks finished.
+    let taskLooksDone: Bool
+    let preparedAt: Date
+    /// Drafted on its own once the session ended.
+    let auto: Bool
+}
+
+struct PostedRecap: Hashable, Sendable {
+    let body: String
+    let breadcrumbs: [NoteItem.Breadcrumb]
 }
 
 struct CalendarGoal: Identifiable, Hashable, Sendable {

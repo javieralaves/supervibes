@@ -217,7 +217,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         let top = DayGrid.y(14 * 60)
         let editing = BlockEditing(mode: .create, day: 0, start: 15 * 60, end: 16 * 60, goalId: Fixtures.calendar.goals[0].id, title: nil)
         assertAppearances(
-            DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour, editing: editing)
+            DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour, editing: .constant(editing))
                 .frame(width: 736)
                 .offset(y: -top)
                 .frame(width: 736, height: DayGrid.y(18 * 60) - top, alignment: .topLeading)
@@ -231,6 +231,26 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, showsTasks: true, onToggleTasks: {}).background(Theme.background),
             width: 1180, height: 560
+        )
+    }
+
+    func testBlockPanels() {
+        let data = Fixtures.calendar
+        let now = now
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(Fixtures.panelBlocks) { block in
+                    BlockPanel(
+                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
+                        when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: ["t5"],
+                        ended: block.endsAt <= now, now: now, actions: nil
+                    )
+                    .frame(width: 320, height: 640)
+                }
+            }
+            .padding(16)
+            .background(Theme.background),
+            width: 1024, height: 672
         )
     }
 

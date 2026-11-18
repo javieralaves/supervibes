@@ -277,6 +277,125 @@ final class CalendarModel {
         }
     }
 
+    // MARK: - The block panel
+
+    /// Save what the person wants out of a session. Returns an error to show, or nil.
+    func setDescription(_ blockId: String, _ text: String) async -> String? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let before = block(blockId), value != (before.description ?? "") else { return nil }
+        update(blockId) { $0.description = value.isEmpty ? nil : value }
+        let error = await call { client in
+            switch try await client.setBlockDescription(path: .init(blockId: blockId), body: .json(.init(description: value))) {
+            case .noContent: nil
+            case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t save that."
+            case .notFound(let gone): (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .unauthorized: Self.signedOut
+            case .undocumented(let status, _): "Couldn’t save that (the server answered \(status))."
+            }
+        }
+        if error != nil { update(blockId) { $0.description = before.description } }
+        return error
+    }
+
+    /// Prepare (or prepare again) a session's agenda. `when` is how the block reads here.
+    func prepareAgenda(_ blockId: String, when: String) async -> String? {
+        await call { client in
+            switch try await client.prepareAgenda(path: .init(blockId: blockId), body: .json(.init(when: when))) {
+            case .ok(let ok):
+                let agenda = BlockAgenda(api: try ok.body.json)
+                self.update(blockId) { $0.agenda = agenda; $0.hasAgenda = true }
+                return nil
+            case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Couldn’t prepare an agenda."
+            case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .badGateway(let failed): return (try? failed.body.json.error.message) ?? "Couldn’t prepare an agenda right now. Try again."
+            case .unauthorized: return Self.signedOut
+            case .undocumented(let status, _): return "Couldn’t prepare an agenda (the server answered \(status))."
+            }
+        }
+    }
+
+    /// Draft a recap of a session that's ended.
+    func prepareRecap(_ blockId: String) async -> String? {
+        await call { client in
+            switch try await client.prepareRecap(path: .init(blockId: blockId)) {
+            case .ok(let ok):
+                let recap = RecapDraft(api: try ok.body.json)
+                self.update(blockId) { $0.recap = recap; $0.hasRecapDraft = true; $0.recapDrafting = false }
+                return nil
+            case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Couldn’t recap this session."
+            case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .badGateway(let failed): return (try? failed.body.json.error.message) ?? "Couldn’t recap this session right now. Try again."
+            case .unauthorized: return Self.signedOut
+            case .undocumented(let status, _): return "Couldn’t recap this session (the server answered \(status))."
+            }
+        }
+    }
+
+    /// Post a recap to the goal's activity, with the draft's links in `keep`.
+    func postRecap(_ blockId: String, body: String, keep: [NoteItem.Breadcrumb], markTaskDone: Bool) async -> String? {
+        let error = await call { client in
+            let input = Components.Schemas.PostRecap(body: body, keep: keep.map(\.url.absoluteString), markTaskDone: markTaskDone)
+            switch try await client.postRecap(path: .init(blockId: blockId), body: .json(input)) {
+            case .noContent: return nil
+            case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Couldn’t post that recap."
+            case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .unauthorized: return Self.signedOut
+            case .undocumented(let status, _): return "Couldn’t post that recap (the server answered \(status))."
+            }
+        }
+        guard error == nil else { return error }
+        update(blockId) { block in
+            block.recapPost = PostedRecap(body: body.trimmingCharacters(in: .whitespacesAndNewlines), breadcrumbs: keep)
+            block.hasRecapPost = true
+            block.recap = nil
+            block.hasRecapDraft = false
+            if markTaskDone { block.taskDone = true }
+        }
+        await refresh()
+        return nil
+    }
+
+    func discardRecap(_ blockId: String) async -> String? {
+        let error = await call { client in
+            switch try await client.discardRecap(path: .init(blockId: blockId)) {
+            case .noContent: nil
+            case .notFound(let gone): (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .unauthorized: Self.signedOut
+            case .undocumented(let status, _): "Couldn’t discard that (the server answered \(status))."
+            }
+        }
+        if error == nil { update(blockId) { $0.recap = nil; $0.hasRecapDraft = false; $0.recapDrafting = false } }
+        return error
+    }
+
+    /// Check off or reopen one of an agenda's tasks.
+    func setTaskDone(_ taskId: String, _ done: Bool) async -> String? {
+        let error = await call { client in
+            switch try await client.setTaskDone(path: .init(taskId: taskId), body: .json(.init(done: done))) {
+            case .ok: nil
+            case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t save that."
+            case .notFound: "That task doesn’t exist anymore."
+            case .unauthorized: Self.signedOut
+            case .undocumented(let status, _): "Couldn’t save that (the server answered \(status))."
+            }
+        }
+        if error == nil { await refresh() }
+        return error
+    }
+
+    private static let signedOut = "Your session ended. Sign in again."
+
+    /// A panel request: returns an error to show, or nil once done.
+    private func call(_ request: (Client) async throws -> String?) async -> String? {
+        do {
+            let error = try await request(client)
+            if error == Self.signedOut { await auth.sessionEnded() }
+            return error
+        } catch {
+            return "Couldn’t reach Supervibes. Check your connection."
+        }
+    }
+
     // MARK: - Saving
 
     private enum Outcome {
@@ -373,7 +492,44 @@ extension CalendarBlock {
             hasAgenda: block.hasAgenda,
             hasRecapDraft: block.hasRecapDraft,
             recapDrafting: block.recapDrafting,
-            hasRecapPost: block.hasRecapPost
+            hasRecapPost: block.hasRecapPost,
+            agenda: block.agenda.map(BlockAgenda.init(api:)),
+            recap: block.recap.map(RecapDraft.init(api:)),
+            recapPost: block.recapPost.map { PostedRecap(body: $0.body, breadcrumbs: $0.breadcrumbs.compactMap(NoteItem.Breadcrumb.init(api:))) }
         )
+    }
+}
+
+extension BlockAgenda {
+    init(api agenda: Components.Schemas.BlockAgenda) {
+        self.init(
+            text: agenda.text,
+            tasks: agenda.tasks.map { Task(id: $0.id, title: $0.title, minutes: $0.minutes) },
+            preparedAt: agenda.preparedAt,
+            keptTitle: agenda.keptTitle,
+            title: agenda.title,
+            description: agenda.description
+        )
+    }
+}
+
+extension RecapDraft {
+    init(api recap: Components.Schemas.BlockRecap) {
+        self.init(
+            planned: recap.planned,
+            happened: recap.happened,
+            breadcrumbs: recap.breadcrumbs.compactMap(NoteItem.Breadcrumb.init(api:)),
+            found: Found(rawValue: recap.found.rawValue) ?? .none,
+            taskLooksDone: recap.taskLooksDone,
+            preparedAt: recap.preparedAt,
+            auto: recap.auto
+        )
+    }
+}
+
+extension NoteItem.Breadcrumb {
+    init?(api crumb: Components.Schemas.Breadcrumb) {
+        guard let provider = ConnectionItem.Provider(rawValue: crumb.provider.rawValue), let url = URL(string: crumb.url) else { return nil }
+        self.init(provider: provider, title: crumb.title, url: url)
     }
 }
