@@ -5,7 +5,7 @@ import { after } from "next/server";
 
 import { db } from "@/db";
 import type { AiTrigger } from "@/lib/ai-usage";
-import { goals } from "@/db/schema";
+import { goalReads, goals, goalSources } from "@/db/schema";
 import { assessGoal, ProgressError } from "@/lib/progress";
 
 /*
@@ -75,4 +75,45 @@ export async function getReadStatus(
     return { pending: false, error: "The last update didn't finish. Try again." };
   }
   return { pending: goal.requestedAt !== null, error: goal.error };
+}
+
+/**
+ * How recent a read has to be for the daily cron to skip the goal. Under 24 hours,
+ * so the cron's own read from yesterday doesn't count and a goal nobody touched
+ * still gets one read a day; any read since (after a note, a recap, "Update
+ * status") does. Leaves room for the cron running a little early or late.
+ */
+export const DAILY_SKIP_MS = 22 * 60 * 60_000;
+
+/**
+ * Goals the daily cron should read: those with an enabled source, minus any read
+ * in the last 22 hours and any with a read already underway.
+ */
+export async function listGoalsDueForDailyRead(): Promise<{
+  due: { goalId: string; userId: string }[];
+  recent: number;
+  pending: number;
+}> {
+  const rows = await db
+    .selectDistinct({
+      goalId: goalSources.goalId,
+      userId: goalSources.userId,
+      readAt: goalReads.createdAt,
+      requestedAt: goals.readRequestedAt,
+    })
+    .from(goalSources)
+    .innerJoin(goals, eq(goals.id, goalSources.goalId))
+    .leftJoin(goalReads, eq(goalReads.goalId, goalSources.goalId))
+    .where(eq(goalSources.enabled, true));
+
+  const now = Date.now();
+  const due: { goalId: string; userId: string }[] = [];
+  let recent = 0;
+  let pending = 0;
+  for (const row of rows) {
+    if (row.requestedAt && now - row.requestedAt.getTime() < STALE_MS) pending++;
+    else if (row.readAt && now - row.readAt.getTime() < DAILY_SKIP_MS) recent++;
+    else due.push({ goalId: row.goalId, userId: row.userId });
+  }
+  return { due, recent, pending };
 }

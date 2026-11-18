@@ -1,7 +1,4 @@
-import { eq } from "drizzle-orm";
-
-import { db } from "@/db";
-import { goalSources } from "@/db/schema";
+import { listGoalsDueForDailyRead } from "@/lib/background-read";
 import { assessGoal } from "@/lib/progress";
 
 export const maxDuration = 300;
@@ -10,8 +7,10 @@ export const maxDuration = 300;
 const BUDGET_MS = 220_000;
 
 /**
- * Daily progress read for every goal that has at least one enabled source.
- * Called by Vercel Cron, which sends `Authorization: Bearer $CRON_SECRET`.
+ * Daily progress read for every goal that has at least one enabled source,
+ * except goals read in the last 22 hours (after a note, a recap or "Update
+ * status") and goals with a read underway. Called by Vercel Cron, which sends
+ * `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -20,10 +19,7 @@ export async function GET(request: Request) {
   }
 
   const started = Date.now();
-  const goals = await db
-    .selectDistinct({ goalId: goalSources.goalId, userId: goalSources.userId })
-    .from(goalSources)
-    .where(eq(goalSources.enabled, true));
+  const { due: goals, recent, pending } = await listGoalsDueForDailyRead();
 
   let read = 0;
   let failed = 0;
@@ -42,5 +38,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return Response.json({ read, failed, skipped });
+  return Response.json({ read, failed, skipped, recent, pending });
 }
