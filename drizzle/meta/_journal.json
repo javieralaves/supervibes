@@ -190,6 +190,13 @@
       "when": 1795006976697,
       "tag": "0026_goal_weeks",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795010707655,
+      "tag": "0027_goal_statuses",
+      "breakpoints": true
     }
   ]
 }

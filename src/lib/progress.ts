@@ -9,6 +9,8 @@ import type { AiTrigger } from "@/lib/ai-usage";
 import { listUpcomingBlocks } from "@/lib/blocks";
 import { answerText, askWithApps, clearSourceErrors, openGoalApps, reachedProviders, sourceLines } from "@/lib/goal-apps";
 import { listPosts } from "@/lib/posts";
+import { listStatuses, recordStatus } from "@/lib/goal-statuses";
+import { CONFIDENCES, STATUSES, type Outlook, type StatusBasis } from "@/lib/status-schema";
 import { getTimeZone } from "@/lib/settings";
 import { minutesLabel } from "@/lib/task-schema";
 import { listTasksForRead } from "@/lib/tasks";
@@ -51,16 +53,43 @@ What to return:
   - Never suggest something already on their open task list, even reworded. A suggestion can be a distinct, concrete step that starts, unblocks or finishes one of those tasks.
   - Skip anything already done, anything already planned on their calendar, anything their notes say to ignore or pause, and anything they've passed on before.
   - Don't suggest meetings or waiting on others unless the context clearly calls for it.
+- status: where the goal stands, measured as the "Status basis" line says:
+  - target (it has a target date): "on_track" if at the current pace it will be done by the target date; "at_risk" if that's still possible but something needs to change (the pace is slipping, something is blocking it, or recent work has stalled); "off_track" if at this pace it won't be, so the scope or the date needs to change.
+  - week (no target date, but an objective for this week): the same three, for this week's objective.
+  - momentum (neither): "on_track" if it's moving steadily toward what done looks like, "at_risk" if it's slowing, "off_track" if it has stalled.
+  - "unclear" when there's too little to go on, such as a new goal with nothing to read yet.
+  Keep it steady: your earlier statuses are listed. Change it only when there's new evidence, and when you do, say what changed in the reason.
+- statusReason: one plain line, at most 14 words, on why. No ids, no links.
+- outlook: only when the basis is target, otherwise outlookStatus "none", empty dates and confidence "none".
+  - outlookStatus: the status the goal is heading for on its target date if things go on as they are now.
+  - finishFrom, finishTo: the range of days it's likely to be done, as YYYY-MM-DD. Either may fall after the target date.
+  - confidence: "low", "medium" or "high". Be honest: a wide range with low confidence beats false precision.
 If there's a previous read, use it for continuity, but describe where things stand now.
 Be honest. Don't inflate thin activity into progress, and don't pad.`;
 
 const OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["headline", "summary", "suggestions"],
+  required: [
+    "headline",
+    "summary",
+    "status",
+    "statusReason",
+    "outlookStatus",
+    "finishFrom",
+    "finishTo",
+    "confidence",
+    "suggestions",
+  ],
   properties: {
     headline: { type: "string" },
     summary: { type: "string" },
+    status: { type: "string", enum: STATUSES },
+    statusReason: { type: "string" },
+    outlookStatus: { type: "string", enum: ["on_track", "at_risk", "off_track", "none"] },
+    finishFrom: { type: "string" },
+    finishTo: { type: "string" },
+    confidence: { type: "string", enum: [...CONFIDENCES, "none"] },
     suggestions: {
       type: "array",
       items: {
@@ -83,9 +112,21 @@ const suggestionSchema = z.object({
   minutes: z.union([z.literal(30), z.literal(60), z.literal(120)]),
 });
 
+/** A day the model gave as YYYY-MM-DD, or null for anything else. */
+const isoDayOrNull = z
+  .string()
+  .trim()
+  .transform((d) => (z.iso.date().safeParse(d).success ? d : null));
+
 const readSchema = z.object({
   headline: z.string().trim().min(1).max(200),
   summary: z.string().trim().min(1).max(1500),
+  status: z.enum(STATUSES),
+  statusReason: z.string().trim().transform((r) => r.slice(0, 200)),
+  outlookStatus: z.enum(["on_track", "at_risk", "off_track", "none"]),
+  finishFrom: isoDayOrNull,
+  finishTo: isoDayOrNull,
+  confidence: z.enum([...CONFIDENCES, "none"]),
   suggestions: z.array(suggestionSchema).transform((list) => list.slice(0, 3)),
 });
 
@@ -164,6 +205,9 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   const objectives = await listWeekObjectives(userId, goalId, weekStart, 4);
   const thisWeek = objectives.find((o) => o.weekStart === weekStart);
   const earlier = objectives.filter((o) => o.weekStart !== weekStart);
+  // What the status is measured against: the target date, else this week's objective, else momentum.
+  const basis: StatusBasis = goal.targetDate ? "target" : thisWeek ? "week" : "momentum";
+  const pastStatuses = await listStatuses(userId, goalId, 5);
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const previous = await getLatestRead(userId, goalId);
   const planned = await listUpcomingBlocks(userId, goalId);
@@ -242,6 +286,14 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
           "",
         ]
       : []),
+    `Status basis: ${basis}`,
+    pastStatuses.length > 0
+      ? [
+          "Your earlier statuses for this goal, newest first:",
+          ...pastStatuses.map((p) => `- ${p.at.slice(0, 10)} (${p.basis}): ${p.status}. ${p.reason}`),
+        ].join("\n")
+      : "No earlier statuses for this goal.",
+    "",
     previous
       ? `Previous read (${previous.createdAt.toISOString()}): ${previous.headline} ${previous.summary}`
       : "There is no previous read.",
@@ -278,13 +330,21 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   const basedOn: string[] = reachedProviders(apps);
   if (notes.length > 0) basedOn.push(NOTES_MARKER);
   if (hasTasks) basedOn.push(TASKS_MARKER);
+  const { status, statusReason, outlookStatus, finishFrom, finishTo, confidence, ...read } = parsed;
   // Replaces headline, summary and suggestions; keeps the list of passed-on suggestions.
-  const values = { ...parsed, basedOn, createdAt: new Date() };
+  const values = { ...read, basedOn, createdAt: new Date() };
   const [saved] = await db
     .insert(goalReads)
     .values({ userId, goalId, ...values })
     .onConflictDoUpdate({ target: goalReads.goalId, set: values })
     .returning(readColumns);
+
+  // The status joins the goal's history; an outlook only means something against a target date.
+  const outlook: Outlook | null =
+    basis === "target" && outlookStatus !== "none" && confidence !== "none"
+      ? { status: outlookStatus, finishFrom, finishTo, confidence }
+      : null;
+  await recordStatus(userId, goalId, { status, basis, reason: statusReason, outlook }, trigger);
 
   await clearSourceErrors(apps);
   return saved;

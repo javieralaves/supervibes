@@ -4,6 +4,8 @@ import { CheckListIcon, Note01Icon, Refresh01Icon } from "@hugeicons/core-free-i
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ProviderMark } from "@/components/provider-mark";
+import { StatusPill } from "@/components/status-pill";
+import type { StatusView } from "@/lib/status-schema";
 import { PROVIDERS, toProvider, type ProviderKey } from "@/lib/providers";
 import { shortAgo } from "@/lib/time";
 
@@ -16,6 +18,8 @@ export type ReadView = {
 
 type Props = {
   read: ReadView | null;
+  /** Where the goal stands, from the latest read that judged it. */
+  status: StatusView | null;
   /** There's something to read: at least one source or note. */
   canRead: boolean;
   /** A read is in progress (started here or from the goal's menu). */
@@ -25,7 +29,7 @@ type Props = {
 };
 
 /** The single high-level read of progress on a goal, above its sources. */
-export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props) {
+export function ProgressCard({ read, status, canRead, reading, error, onUpdate }: Props) {
   const note = reading ? "Reading your sources. This can take a minute." : error;
   const noteEl = note && (
     <p role="status" className={`text-xs ${error && !reading ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
@@ -76,6 +80,13 @@ export function ProgressCard({ read, canRead, reading, error, onUpdate }: Props)
       className="mt-10 rounded-2xl border border-card-border bg-card p-5 sm:p-6"
     >
       <div className={`transition-opacity ${reading ? "opacity-50" : ""}`}>
+        {/* Where it stands, above the read. The status's one-line reason is kept for its history, not shown here:
+            the read below already says why. */}
+        {status && (
+          <p className="mb-3">
+            <StatusPill status={status.status} basis={status.basis} />
+          </p>
+        )}
         <h2
           id="progress-heading"
           className="text-xl font-semibold leading-snug tracking-[-0.02em] text-foreground [text-wrap:balance]"

@@ -14,6 +14,7 @@ import {
 
 import type { BlockAgenda } from "../lib/block-schema";
 import type { BlockRecap, Breadcrumb, RecapSession } from "../lib/recap-schema";
+import type { GoalStatus, Outlook, StatusBasis } from "../lib/status-schema";
 
 import { user } from "./auth-schema";
 
@@ -261,6 +262,36 @@ export const calendarBlocks = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt)],
+);
+
+/**
+ * A goal's status as each progress read judged it, kept read by read so its
+ * trajectory can be drawn and later reads stay consistent. goal_reads keeps only
+ * the latest read; this keeps every status.
+ */
+export const goalStatuses = pgTable(
+  "goal_statuses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    /** "on_track" | "at_risk" | "off_track" | "unclear". */
+    status: text().$type<GoalStatus>().notNull(),
+    /** What it was measured against: "target" | "week" | "momentum". */
+    basis: text().$type<StatusBasis>().notNull(),
+    /** One line on why, from the read. */
+    reason: text().notNull(),
+    /** Where a goal with a target date is heading by then; null otherwise. */
+    outlook: jsonb().$type<Outlook>(),
+    /** What started the read: "manual" | "note" | "recap" | "cron". */
+    trigger: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("goal_statuses_goal_created_idx").on(t.goalId, t.createdAt)],
 );
 
 /**

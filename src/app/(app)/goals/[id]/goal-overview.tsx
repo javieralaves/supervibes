@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import type { Clock } from "@/lib/settings-schema";
+import type { StatusView } from "@/lib/status-schema";
 
 import { refreshProgressAction } from "./actions";
 import { GoalHeader } from "./goal-header";
@@ -17,6 +18,8 @@ import { WeekObjective } from "./week-objective";
 type Props = {
   goal: { id: string; title: string; description: string | null; targetDate: string | null; icon: string; color: string };
   read: (ReadView & { suggestions: SuggestionView[] }) | null;
+  /** Where the goal stands, from the latest read that judged it. */
+  status: StatusView | null;
   /** Whether a progress read is running in the background. */
   readPending: boolean;
   /** Why the last background read failed, if it did. */
@@ -42,6 +45,7 @@ const POLL_MS = 4_000;
 export function GoalOverview({
   goal,
   read,
+  status,
   readPending,
   readError,
   notes,
@@ -85,7 +89,14 @@ export function GoalOverview({
         saved={week.objective}
         lastWeek={week.lastWeek}
       />
-      <ProgressCard read={read} canRead={canRead} reading={reading} error={error ?? readError} onUpdate={update} />
+      <ProgressCard
+        read={read}
+        status={status}
+        canRead={canRead}
+        reading={reading}
+        error={error ?? readError}
+        onUpdate={update}
+      />
       {/* Tasks, with the read's suggestions underneath as candidates to add. */}
       <TasksSection
         goalId={goal.id}

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/skeleton";
 import { listConnections } from "@/lib/connections";
 import { requireUser } from "@/lib/session";
 import { getReadStatus } from "@/lib/background-read";
+import { getLatestStatus } from "@/lib/goal-statuses";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
@@ -33,7 +34,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, readStatus, connections, posts, tasks, schedules, settings, timeZone] = await Promise.all([
+  const [sources, read, readStatus, connections, posts, tasks, schedules, settings, timeZone, status] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
     getReadStatus(user.id, id),
@@ -43,6 +44,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     listTaskSchedules(user.id, id),
     getSettings(user.id),
     getTimeZone(user.id),
+    getLatestStatus(user.id, id),
   ]);
 
   // Weeks run Monday to Sunday in the person's own calendar.
@@ -55,6 +57,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     <GoalOverview
       goal={goal}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
+      status={status}
       readPending={readStatus.pending}
       readError={readStatus.error}
       notes={posts.map((p) => ({
