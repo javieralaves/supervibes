@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ne } from "drizzle-orm";
 import * as z from "zod";
 
 import { db } from "@/db";
@@ -20,7 +20,8 @@ import { targetDateForPrompt } from "@/lib/target-date";
 
 /** How far around the session to look, so prep just before and pushes just after count. */
 const BEFORE_MS = 30 * 60_000;
-const AFTER_MS = 2 * 60 * 60_000;
+// Short, and cut off at the next block: a longer margin let back-to-back sessions claim each other's work.
+const AFTER_MS = 30 * 60_000;
 
 /** Hosts each app's links live on. A breadcrumb whose link isn't on its app's host is dropped. */
 const LINK_HOSTS: Record<ProviderKey, string[]> = {
@@ -34,7 +35,7 @@ export class RecapError extends Error {}
 const SYSTEM = `You write a short recap of one work session a person spent on one of their goals, using the apps they've connected, so they don't have to write it up themselves.
 
 How to work:
-- Look only at activity inside the session's time window. Work from before or after it belongs to other sessions.
+- What happened is what happened during the session itself. You also get a short margin either side; activity there counts only when it plainly belongs to this session, like getting ready for it just before, or finishing its work right after (a commit pushed or a pull request merged minutes after it ended). Anything else in the margin belongs to other sessions: leave it out. Work outside the margin never counts.
 - Compare what the session was meant to be about with what actually happened. If nothing said what it was for, describe what happened for the goal.
 - For each source, use the person's own description of where to look and what counts. Skip anything they said to ignore.
 - Only use the tools you have. They are read-only; never try to create, change or send anything.
@@ -45,7 +46,7 @@ What to return:
 - happened: two or three plain sentences, under 70 words, addressed to the person as "you". Say what got done or decided, concretely. If it differs from the plan, say how. No times of day, no ids, no links. If you found nothing relevant to this session, return an empty string; never guess.
 - found: "clear" if the apps clearly show what happened, "partial" if they show some of it, "none" if they show nothing relevant.
 - taskLooksDone: true only if the session schedules a task and the apps clearly show that task finished.
-- breadcrumbs: up to ${MAX_BREADCRUMBS} specific things from the apps that this session produced or worked on: a meeting, a commit, a pull request, an issue. Most relevant first.
+- breadcrumbs: up to ${MAX_BREADCRUMBS} specific things from the apps that this session produced or worked on, by the same rule: a meeting, a commit, a pull request, an issue. Most relevant first.
   - source: the app's key: ${PROVIDER_KEYS.map((k) => `"${k}"`).join(", ")}.
   - title: a one-line summary, at most 80 characters, of what that thing is or what changed in it.
   - url: its link, copied exactly as it appears in a tool result. Never build or guess a link; leave the thing out if you don't have one.
@@ -190,8 +191,23 @@ function blank(session: Session): BlockRecap {
 async function draft(userId: string, session: Session, apps: GoalApps, trigger: AiTrigger): Promise<BlockRecap> {
   if (!process.env.ANTHROPIC_API_KEY) throw new RecapError("Recapping a session needs an Anthropic API key.");
 
-  const from = new Date(session.startsAt.getTime() - BEFORE_MS);
-  const to = new Date(Math.min(session.endsAt.getTime() + AFTER_MS, Date.now()));
+  // The margin stops at the neighbouring blocks on the calendar, which are other sessions.
+  const [previous] = await db
+    .select({ endsAt: calendarBlocks.endsAt })
+    .from(calendarBlocks)
+    .where(and(eq(calendarBlocks.userId, userId), lte(calendarBlocks.endsAt, session.startsAt), ne(calendarBlocks.id, session.id)))
+    .orderBy(desc(calendarBlocks.endsAt))
+    .limit(1);
+  const [next] = await db
+    .select({ startsAt: calendarBlocks.startsAt })
+    .from(calendarBlocks)
+    .where(and(eq(calendarBlocks.userId, userId), gte(calendarBlocks.startsAt, session.endsAt), ne(calendarBlocks.id, session.id)))
+    .orderBy(asc(calendarBlocks.startsAt))
+    .limit(1);
+  const from = new Date(Math.max(session.startsAt.getTime() - BEFORE_MS, previous?.endsAt.getTime() ?? 0));
+  const to = new Date(
+    Math.min(session.endsAt.getTime() + AFTER_MS, next?.startsAt.getTime() ?? Infinity, Date.now()),
+  );
   const finished = await db
     .select({ title: goalTasks.title, doneAt: goalTasks.doneAt })
     .from(goalTasks)
@@ -212,7 +228,7 @@ async function draft(userId: string, session: Session, apps: GoalApps, trigger: 
     ...(session.goalTargetDate ? [`Target date: ${targetDateForPrompt(session.goalTargetDate)}`] : []),
     "",
     `Session: ${session.startsAt.toISOString()} to ${session.endsAt.toISOString()} (${minutes} min)`,
-    `Look at activity from ${from.toISOString()} to ${to.toISOString()}.`,
+    `Margin: you may look from ${from.toISOString()} to ${to.toISOString()}, but count margin activity only as described.`,
     "",
     intention
       ? [
