@@ -5,6 +5,9 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { asNote, NoteSchema } from "@/lib/api/routes/notes";
+import { asSource, SourceSchema } from "@/lib/api/routes/sources";
+import { listConnections } from "@/lib/connections";
+import { PROVIDER_KEYS, PROVIDERS } from "@/lib/providers";
 import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
 import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
@@ -139,6 +142,19 @@ const GoalDetailSchema = z
     clock: z.enum(CLOCKS).nullable().openapi({ description: "The person's clock; null follows the device." }),
     notes: z.array(NoteSchema).openapi({ description: "The activity, newest first." }),
     author: z.object({ name: z.string(), image: z.string().nullable() }).openapi({ description: "Who the activity is by." }),
+    sources: z.array(SourceSchema),
+    connectionOptions: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            provider: z.enum(PROVIDER_KEYS),
+            label: z.string(),
+            relationHint: z.string().openapi({ description: "An example relation, for the dialog's placeholder." }),
+          })
+          .openapi("ConnectionOption"),
+      )
+      .openapi({ description: "Connected apps a new source can read from." }),
   })
   .openapi("GoalDetail");
 
@@ -265,7 +281,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const today = todayIn(timeZone);
     const weekStart = weekStartOf(today);
     const lastWeekStart = addDays(weekStart, -7);
-    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings] = await Promise.all([
+    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
       getReadStatus(userId, id),
@@ -276,6 +292,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listPosts(userId, id),
       listTaskSchedules(userId, id),
       getSettings(userId),
+      listConnections(userId),
     ]);
     const trajectory = trajectories.get(id);
 
@@ -304,6 +321,15 @@ export const goals = new OpenAPIHono<ApiEnv>()
         clock: settings.clock,
         notes: posts.map(asNote),
         author: { name: c.var.user.name, image: c.var.user.image ?? null },
+        sources: sources.map(asSource),
+        connectionOptions: connections
+          .filter((connection) => connection.status === "connected")
+          .map((connection) => ({
+            id: connection.id,
+            provider: connection.provider,
+            label: PROVIDERS[connection.provider].label,
+            relationHint: PROVIDERS[connection.provider].relationHint,
+          })),
       },
       200,
     );

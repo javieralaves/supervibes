@@ -175,6 +175,29 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testSourcesSection() {
+        assertAppearances(
+            VStack(spacing: 0) {
+                SourcesSection(sources: Fixtures.sources, options: Fixtures.connectionOptions, goal: Fixtures.goals[0])
+                SourcesSection(sources: [], options: Fixtures.connectionOptions, goal: Fixtures.goals[0])
+                SourcesSection(sources: [], options: [], goal: Fixtures.goals[0])
+            }
+            .padding(.horizontal, 32)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Theme.background),
+            width: 832, height: 760
+        )
+    }
+
+    func testSourceDialog() {
+        assertAppearances(
+            SourceDialog(goal: Fixtures.goals[0], connection: Fixtures.connectionOptions[0], relation: "", isEditing: false)
+                .padding(24)
+                .background(Theme.shell),
+            width: 528, height: 600
+        )
+    }
+
     func testTrajectoryHoverCard() {
         let days = Fixtures.goals[1].trajectory
         assertAppearances(

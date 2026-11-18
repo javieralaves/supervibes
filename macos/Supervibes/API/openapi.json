@@ -470,6 +470,19 @@
               "image"
             ],
             "description": "Who the activity is by."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "connectionOptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionOption"
+            },
+            "description": "Connected apps a new source can read from."
           }
         },
         "required": [
@@ -486,7 +499,9 @@
           "suggestions",
           "clock",
           "notes",
-          "author"
+          "author",
+          "sources",
+          "connectionOptions"
         ]
       },
       "GoalRead": {
@@ -773,6 +788,74 @@
           "url"
         ]
       },
+      "Source": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "github",
+              "granola"
+            ]
+          },
+          "relation": {
+            "type": "string",
+            "description": "Where to look, what counts and what to ignore."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set when the last read couldn't use it."
+          }
+        },
+        "required": [
+          "id",
+          "connectionId",
+          "provider",
+          "relation",
+          "enabled",
+          "lastError"
+        ]
+      },
+      "ConnectionOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "github",
+              "granola"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "relationHint": {
+            "type": "string",
+            "description": "An example relation, for the dialog's placeholder."
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "label",
+          "relationHint"
+        ]
+      },
       "WeekObjectiveInput": {
         "type": "object",
         "properties": {
@@ -888,6 +971,21 @@
           "sleepStart",
           "wakeTime",
           "clock"
+        ]
+      },
+      "SourceInput": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connectionId",
+          "relation"
         ]
       },
       "NewTask": {
@@ -2069,6 +2167,199 @@
           },
           "401": {
             "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/sources": {
+      "post": {
+        "operationId": "addSource",
+        "summary": "Add a connected app as a source for the goal",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}": {
+      "patch": {
+        "operationId": "editSource",
+        "summary": "Change how a source relates to its goal",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "sourceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSource",
+        "summary": "Remove a source; the app itself stays connected",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "sourceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
             "content": {
               "application/json": {
                 "schema": {

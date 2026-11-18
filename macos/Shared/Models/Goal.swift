@@ -193,6 +193,9 @@ struct GoalDetail: Hashable, Sendable {
     /// The activity, newest first.
     var notes: [NoteItem] = []
     var author = NoteAuthor(name: "", imageURL: nil)
+    var sources: [SourceItem] = []
+    /// Connected apps a new source can read from.
+    var connectionOptions: [ConnectionOption] = []
 }
 
 extension CalendarDay {
@@ -344,4 +347,35 @@ extension Clock {
         }
         return "\(format(minutes: start))–\(format(minutes: end))"
     }
+}
+
+// MARK: - Sources
+
+/// A connected app a goal's reads look at, and how it relates in the person's words.
+struct SourceItem: Identifiable, Hashable, Sendable {
+    let id: String
+    let connectionId: String
+    let provider: ConnectionItem.Provider
+    var relation: String
+    var lastError: String?
+
+    static let minRelation = 10
+    static let maxRelation = 1500
+
+    /// The web's checks, so the same message shows before anything is sent.
+    static func problem(_ relation: String) -> String? {
+        let trimmed = relation.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count < minRelation { return "Say where to look and how it relates to this goal." }
+        if trimmed.count > maxRelation { return "Keep it under 1,500 characters." }
+        return nil
+    }
+}
+
+/// A connected app a new source can read from.
+struct ConnectionOption: Identifiable, Hashable, Sendable {
+    let id: String
+    let provider: ConnectionItem.Provider
+    let label: String
+    /// An example relation, for the dialog's placeholder.
+    let relationHint: String
 }

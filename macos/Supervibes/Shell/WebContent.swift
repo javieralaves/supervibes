@@ -44,6 +44,19 @@ final class WebContentModel: NSObject {
 
     /// Web pages that have a native screen. Links to them open that instead.
     static let nativePaths: Set<String> = ["/", "/settings", "/connections"]
+    /// Web page prefixes that have a native screen: a goal's own page.
+    static let nativePrefixes = ["/goals/"]
+
+    static func isNative(_ path: String) -> Bool {
+        nativePaths.contains(path) || nativePrefixes.contains { path.hasPrefix($0) }
+    }
+
+    /// The goal's id in "/goals/<id>", if that's what `path` is.
+    static func goalID(in path: String) -> String? {
+        guard path.hasPrefix("/goals/") else { return nil }
+        let id = path.dropFirst("/goals/".count).split(separator: "/").first.map(String.init)
+        return id?.isEmpty == false ? id : nil
+    }
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private var urlObservation: NSKeyValueObservation?
@@ -148,9 +161,12 @@ final class WebContentModel: NSObject {
 
     private static var nativeLinksScript: String {
         let paths = nativePaths.map { "\"\($0)\"" }.joined(separator: ",")
+        let prefixes = nativePrefixes.map { "\"\($0)\"" }.joined(separator: ",")
         return """
         (() => {
-          const native = new Set([\(paths)]);
+          const nativeExact = new Set([\(paths)]);
+          const nativePrefixes = [\(prefixes)];
+          const native = { has: (p) => nativeExact.has(p) || nativePrefixes.some((x) => p.startsWith(x)) };
           document.addEventListener("click", (event) => {
             if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
             const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
@@ -166,7 +182,7 @@ final class WebContentModel: NSObject {
     }
 
     fileprivate func openNative(path: String) {
-        guard Self.nativePaths.contains(path) else { return }
+        guard Self.isNative(path) else { return }
         Log.web.info("Opening native screen for \(path, privacy: .public)")
         onNativePath(path)
     }
@@ -198,7 +214,7 @@ extension WebContentModel: WKNavigationDelegate, WKUIDelegate {
             return .cancel
         }
         // A full page load of a screen that's native now (typed URL, reload): open it natively.
-        if isOurs(url), Self.nativePaths.contains(url.path()), navigationAction.targetFrame?.isMainFrame == true {
+        if isOurs(url), Self.isNative(url.path()), navigationAction.targetFrame?.isMainFrame == true {
             openNative(path: url.path())
             return .cancel
         }

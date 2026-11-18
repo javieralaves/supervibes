@@ -6,7 +6,7 @@ enum Route: Hashable {
     /// A web page; the web view keeps its own path.
     case web
     case goals
-    /// A goal's own page. Native goal pages are being built; cards still open the web one.
+    /// A goal's own page.
     case goal(String)
     case settings
     case connections
@@ -140,13 +140,7 @@ private struct GoalsScreen: View {
                     today: model.today,
                     max: model.max,
                     error: model.error,
-                    onOpen: { goal in
-                        #if DEBUG
-                        // Option-click previews the native goal page while it's being built.
-                        if NSEvent.modifierFlags.contains(.option) { return shell.openNativeGoal(goal.id) }
-                        #endif
-                        shell.openGoal(goal.id)
-                    },
+                    onOpen: { shell.openGoal($0.id) },
                     onNew: newGoal
                 )
             }
@@ -227,6 +221,16 @@ private struct GoalScreen: View {
                             error: model.taskError,
                             closeSignal: model.closeSignal,
                             actions: model.taskActions
+                        )
+                        SourcesSection(
+                            sources: detail.sources,
+                            options: detail.connectionOptions,
+                            goal: detail.goal,
+                            actions: SourceActions(
+                                save: { await model.saveSource($0, $1, $2) },
+                                delete: { model.deleteSource($0) },
+                                openConnections: { shell.open(.connections) }
+                            )
                         )
                         NotesSection(
                             notes: detail.notes,

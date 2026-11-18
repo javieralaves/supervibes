@@ -170,4 +170,18 @@ enum Fixtures {
                      createdAt: referenceNow.addingTimeInterval(-3 * 24 * hour), updatedAt: referenceNow.addingTimeInterval(-3 * 24 * hour)),
         ]
     }
+
+    static let connectionOptions: [ConnectionOption] = [
+        ConnectionOption(id: "c1", provider: .linear, label: "Linear",
+                         relationHint: "e.g. The Supervibes project. Shipped issues are direct progress; feedback from user calls shapes where it’s going."),
+        ConnectionOption(id: "c2", provider: .github, label: "GitHub",
+                         relationHint: "e.g. The javieralaves/supervibes repo. Merged PRs are progress; open PRs show what I’m in the middle of."),
+    ]
+
+    static let sources: [SourceItem] = [
+        SourceItem(id: "s1", connectionId: "c1", provider: .linear,
+                   relation: "The Supervibes project. Shipped issues are direct progress; ignore routine bug triage."),
+        SourceItem(id: "s2", connectionId: "c2", provider: .github,
+                   relation: "The supervibes repo. Merged PRs are progress.", lastError: "The token expired."),
+    ]
 }

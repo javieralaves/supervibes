@@ -21,6 +21,10 @@ final class ShellModel {
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
         web.onNativePath = { [weak self] path in
+            if let id = WebContentModel.goalID(in: path) {
+                self?.openGoal(id)
+                return
+            }
             switch path {
             case "/": self?.open(.goals)
             case "/settings": self?.openSettings()
@@ -61,17 +65,10 @@ final class ShellModel {
         }
     }
 
-    /// A goal's native page; reachable by Option-clicking a card in Debug builds until it's complete.
-    func openNativeGoal(_ id: String) {
-        overlays.dismiss()
-        route = .goal(id)
-    }
-
-    /// A goal's own page, still on the web.
+    /// A goal's own page.
     func openGoal(_ id: String) {
         overlays.dismiss()
-        route = .web
-        web.navigate(to: "/goals/\(id)")
+        route = .goal(id)
     }
 
     func openSettings() {

@@ -463,6 +463,67 @@ final class GoalPageModel {
         noteError = message
     }
 
+    // MARK: Sources
+
+    func saveSource(_ connection: ConnectionOption, _ relation: String, _ editing: SourceItem?) async -> String? {
+        let body = Components.Schemas.SourceInput(connectionId: connection.id, relation: relation)
+        do {
+            if let editing {
+                switch try await client.editSource(path: .init(sourceId: editing.id), body: .json(body)) {
+                case .ok(let ok):
+                    let saved = SourceItem(api: try ok.body.json)
+                    if let index = detail?.sources.firstIndex(where: { $0.id == editing.id }) { detail?.sources[index] = saved }
+                    return nil
+                case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Check the form."
+                case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That source doesn’t exist anymore."
+                case .unauthorized:
+                    await auth.sessionEnded()
+                    return "Sign in again."
+                case .undocumented(let status, _): return "Couldn’t save that source (the server answered \(status))."
+                }
+            } else {
+                switch try await client.addSource(path: .init(id: id), body: .json(body)) {
+                case .created(let created):
+                    detail?.sources.append(SourceItem(api: try created.body.json))
+                    return nil
+                case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Check the form."
+                case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore."
+                case .unauthorized:
+                    await auth.sessionEnded()
+                    return "Sign in again."
+                case .undocumented(let status, _): return "Couldn’t save that source (the server answered \(status))."
+                }
+            }
+        } catch {
+            return "Couldn’t save that source. Check your connection."
+        }
+    }
+
+    func deleteSource(_ source: SourceItem) {
+        guard let index = detail?.sources.firstIndex(where: { $0.id == source.id }) else { return }
+        detail?.sources.remove(at: index)
+        Task {
+            let restore = { [weak self] in
+                guard let self else { return }
+                self.detail?.sources.insert(source, at: min(index, self.detail?.sources.count ?? 0))
+            }
+            do {
+                switch try await client.deleteSource(path: .init(sourceId: source.id)) {
+                case .noContent, .notFound: break
+                case .unauthorized:
+                    restore()
+                    await auth.sessionEnded()
+                case .undocumented:
+                    restore()
+                    headerError = "Couldn’t remove that source. Try again in a moment."
+                }
+            } catch {
+                restore()
+                headerError = "Couldn’t remove that source. Check your connection."
+            }
+        }
+    }
+
     func saveWeek(_ objective: String) {
         guard let week = detail?.week else { return }
         weekState = .saving
@@ -513,7 +574,25 @@ extension GoalDetail {
             suggestions: body.suggestions.map { TaskSuggestion(title: $0.title, why: $0.why, minutes: $0.minutes) },
             clock: body.clock.flatMap { Clock(rawValue: $0.rawValue) },
             notes: body.notes.map { NoteItem(api: $0) },
-            author: NoteAuthor(name: body.author.name, imageURL: body.author.image.flatMap(URL.init(string:)))
+            author: NoteAuthor(name: body.author.name, imageURL: body.author.image.flatMap(URL.init(string:))),
+            sources: body.sources.map { SourceItem(api: $0) },
+            connectionOptions: body.connectionOptions.compactMap { option in
+                ConnectionItem.Provider(rawValue: option.provider.rawValue).map {
+                    ConnectionOption(id: option.id, provider: $0, label: option.label, relationHint: option.relationHint)
+                }
+            }
+        )
+    }
+}
+
+extension SourceItem {
+    init(api source: Components.Schemas.Source) {
+        self.init(
+            id: source.id,
+            connectionId: source.connectionId,
+            provider: ConnectionItem.Provider(rawValue: source.provider.rawValue) ?? .linear,
+            relation: source.relation,
+            lastError: source.lastError
         )
     }
 }

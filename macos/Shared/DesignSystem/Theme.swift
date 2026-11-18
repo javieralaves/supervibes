@@ -47,7 +47,7 @@ extension Font {
 }
 
 /// Tailwind's type scale (size, line height), for matching the web app's `text-*` classes.
-enum TextSize {
+enum TextSize: Equatable {
     case xs, sm, base, lg, xl, xl2, xl3, xl4
     case px(CGFloat)
 
