@@ -6,10 +6,13 @@ import Link from "next/link";
 import { startTransition, useOptimistic, useState } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
+import { StatusPill } from "@/components/status-pill";
+import { StatusTrajectory } from "@/components/status-trajectory";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
 import { DEFAULT_GOAL_ICON, isGoalIcon } from "@/lib/goal-icons";
 import { MAX_GOALS, type GoalInput } from "@/lib/goal-schema";
 import type { GoalDTO } from "@/lib/goals";
+import type { TrajectoryDay } from "@/lib/status-schema";
 
 import { createGoalAction, deleteGoalAction, updateGoalAction, type GoalActionResult } from "./actions";
 import { GoalDialog } from "./goal-dialog";
@@ -56,7 +59,17 @@ function toInput(goal: GoalDTO): GoalInput {
   };
 }
 
-export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
+export function GoalsBoard({
+  goals,
+  trajectories = {},
+  today,
+}: {
+  goals: GoalDTO[];
+  /** Each goal's status day by day over the last few weeks, by goal id. */
+  trajectories?: Record<string, { days: TrajectoryDay[]; reads: number }>;
+  /** The person's today, "YYYY-MM-DD". */
+  today: string;
+}) {
   const [optimisticGoals, apply] = useOptimistic(goals, applyOp);
   const [dialog, setDialog] = useState<DialogState>({ mode: "closed" });
   const [dialogKey, setDialogKey] = useState(0);
@@ -128,6 +141,9 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
             const pending = goal.id.startsWith(PENDING_PREFIX);
             const cardClass =
               "group relative flex h-full w-full items-start gap-4 rounded-2xl border border-card-border bg-card p-5 text-left transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30";
+            const trajectory = trajectories[goal.id];
+            // Its latest status: the last day's, which carries the most recent read.
+            const latest = trajectory?.days.at(-1);
             const content = (
               <>
                 <GoalBadge icon={goal.icon} color={goal.color} />
@@ -135,7 +151,18 @@ export function GoalsBoard({ goals }: { goals: GoalDTO[] }) {
                   <span className="block text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
                     {goal.title}
                   </span>
-                  {goal.targetDate && <TargetDateLabel date={goal.targetDate} className="mt-1.5 text-xs" />}
+                  {(goal.targetDate || latest?.status) && (
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {latest?.status && latest.basis && (
+                        <StatusPill status={latest.status} basis={latest.basis} className="px-1.5 text-[11px]" />
+                      )}
+                      {goal.targetDate && <TargetDateLabel date={goal.targetDate} className="text-xs" />}
+                    </span>
+                  )}
+                  {/* Its last few weeks at a glance, once it has a status. */}
+                  {latest?.status && trajectory && (
+                    <StatusTrajectory days={trajectory.days} today={today} size="mini" className="mt-3" />
+                  )}
                 </span>
                 <span
                   aria-hidden="true"

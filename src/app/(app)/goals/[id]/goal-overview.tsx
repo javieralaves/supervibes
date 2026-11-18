@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import type { Clock } from "@/lib/settings-schema";
-import type { StatusView } from "@/lib/status-schema";
+import type { StatusView, TrajectoryDay } from "@/lib/status-schema";
 
 import { refreshProgressAction } from "./actions";
 import { GoalHeader } from "./goal-header";
@@ -20,6 +20,8 @@ type Props = {
   read: (ReadView & { suggestions: SuggestionView[] }) | null;
   /** Where the goal stands, from the latest read that judged it. */
   status: StatusView | null;
+  /** Its status day by day over the last few weeks, and how many reads that rests on. */
+  trajectory: { days: TrajectoryDay[]; reads: number } | null;
   /** Whether a progress read is running in the background. */
   readPending: boolean;
   /** Why the last background read failed, if it did. */
@@ -46,6 +48,7 @@ export function GoalOverview({
   goal,
   read,
   status,
+  trajectory,
   readPending,
   readError,
   notes,
@@ -92,6 +95,9 @@ export function GoalOverview({
       <ProgressCard
         read={read}
         status={status}
+        trajectory={trajectory}
+        targetDate={goal.targetDate}
+        today={today}
         canRead={canRead}
         reading={reading}
         error={error ?? readError}

@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/skeleton";
 import { listConnections } from "@/lib/connections";
 import { requireUser } from "@/lib/session";
 import { getReadStatus } from "@/lib/background-read";
-import { getLatestStatus } from "@/lib/goal-statuses";
+import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
@@ -51,13 +51,17 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const today = todayIn(timeZone);
   const weekStart = weekStartOf(today);
   const lastWeekStart = addDays(weekStart, -7);
-  const objectives = await getWeekObjectives(user.id, id, [weekStart, lastWeekStart]);
+  const [objectives, trajectories] = await Promise.all([
+    getWeekObjectives(user.id, id, [weekStart, lastWeekStart]),
+    listTrajectories(user.id, [id], timeZone),
+  ]);
 
   return (
     <GoalOverview
       goal={goal}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
       status={status}
+      trajectory={trajectories.get(id) ?? null}
       readPending={readStatus.pending}
       readError={readStatus.error}
       notes={posts.map((p) => ({

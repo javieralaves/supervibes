@@ -49,3 +49,62 @@ export function statusLabel(status: GoalStatus, basis: StatusBasis): string {
 export function basisLabel(basis: StatusBasis): string {
   return basis === "target" ? "Judged against the target date" : basis === "week" ? "Judged against this week's objective" : "Judged on momentum";
 }
+
+/** How many days a trajectory shows, ending today. */
+export const TRAJECTORY_DAYS = 28;
+
+/**
+ * One day of a goal's trajectory: the status as of that day. A day with a read has
+ * that day's last status; a day without one carries the status before it, marked as
+ * carried; days before the first status are empty.
+ */
+export type TrajectoryDay = {
+  /** "YYYY-MM-DD", in the person's own calendar. */
+  day: string;
+  status: GoalStatus | null;
+  basis: StatusBasis | null;
+  reason: string | null;
+  /** No read that day: the status shown is the one before it. */
+  carried: boolean;
+};
+
+/**
+ * Lays statuses out by day, oldest first, for the `days` days ending `today`.
+ * `statuses` are the window's statuses with their day; `before` is the last one
+ * before the window, if any, to carry into its first days.
+ */
+export function buildTrajectory(
+  statuses: { day: string; status: GoalStatus; basis: StatusBasis; reason: string; at: string }[],
+  before: { status: GoalStatus; basis: StatusBasis; reason: string } | null,
+  today: string,
+  days = TRAJECTORY_DAYS,
+): TrajectoryDay[] {
+  const first = shiftDay(today, -(days - 1));
+  // The last status of each day; any from before the window carry into it.
+  const byDay = new Map<string, (typeof statuses)[number]>();
+  let last = before;
+  for (const s of statuses.toSorted((a, b) => a.at.localeCompare(b.at))) {
+    if (s.day < first) last = s;
+    else byDay.set(s.day, s);
+  }
+
+  const out: TrajectoryDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = shiftDay(today, -i);
+    const own = byDay.get(day);
+    if (own) last = own;
+    out.push({
+      day,
+      status: last?.status ?? null,
+      basis: last?.basis ?? null,
+      reason: last?.reason ?? null,
+      carried: !own && last !== null,
+    });
+  }
+  return out;
+}
+
+function shiftDay(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) + n * 86_400_000).toISOString().slice(0, 10);
+}

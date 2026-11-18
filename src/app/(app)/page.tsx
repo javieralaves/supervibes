@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 
 import { Skeleton } from "@/components/skeleton";
+import { listTrajectories } from "@/lib/goal-statuses";
 import { listGoals } from "@/lib/goals";
+import { getTimeZone } from "@/lib/settings";
+import { todayIn } from "@/lib/target-date";
 import { requireUser } from "@/lib/session";
 
 import { GoalsBoard } from "./goals/goals-board";
@@ -23,8 +26,13 @@ async function Greeting() {
 
 async function Goals() {
   const user = await requireUser();
-  const goals = await listGoals(user.id);
-  return <GoalsBoard goals={goals} />;
+  const [goals, timeZone] = await Promise.all([listGoals(user.id), getTimeZone(user.id)]);
+  const trajectories = await listTrajectories(
+    user.id,
+    goals.map((g) => g.id),
+    timeZone,
+  );
+  return <GoalsBoard goals={goals} trajectories={Object.fromEntries(trajectories)} today={todayIn(timeZone)} />;
 }
 
 export default function Home() {

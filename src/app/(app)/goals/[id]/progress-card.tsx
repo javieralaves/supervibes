@@ -5,7 +5,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ProviderMark } from "@/components/provider-mark";
 import { StatusPill } from "@/components/status-pill";
-import type { StatusView } from "@/lib/status-schema";
+import { StatusTrajectory } from "@/components/status-trajectory";
+import { TRAJECTORY_DAYS, type StatusView, type TrajectoryDay } from "@/lib/status-schema";
+import { formatTargetDate } from "@/lib/target-date";
 import { PROVIDERS, toProvider, type ProviderKey } from "@/lib/providers";
 import { shortAgo } from "@/lib/time";
 
@@ -20,6 +22,11 @@ type Props = {
   read: ReadView | null;
   /** Where the goal stands, from the latest read that judged it. */
   status: StatusView | null;
+  /** Its status day by day over the last few weeks, and how many reads that rests on. */
+  trajectory: { days: TrajectoryDay[]; reads: number } | null;
+  targetDate: string | null;
+  /** The person's today, "YYYY-MM-DD". */
+  today: string;
   /** There's something to read: at least one source or note. */
   canRead: boolean;
   /** A read is in progress (started here or from the goal's menu). */
@@ -29,7 +36,7 @@ type Props = {
 };
 
 /** The single high-level read of progress on a goal, above its sources. */
-export function ProgressCard({ read, status, canRead, reading, error, onUpdate }: Props) {
+export function ProgressCard({ read, status, trajectory, targetDate, today, canRead, reading, error, onUpdate }: Props) {
   const note = reading ? "Reading your sources. This can take a minute." : error;
   const noteEl = note && (
     <p role="status" className={`text-xs ${error && !reading ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
@@ -95,6 +102,20 @@ export function ProgressCard({ read, status, canRead, reading, error, onUpdate }
         </h2>
         <p className="mt-2 text-[0.95rem] leading-relaxed text-muted [text-wrap:pretty]">{read.summary}</p>
       </div>
+
+      {/* How it's stood day by day: the trajectory toward the target date, once there's a status. */}
+      {status && trajectory && (
+        <div className="mt-5">
+          <div className="mb-2 flex items-baseline justify-between gap-3 text-[11px] text-muted">
+            <span>Last {TRAJECTORY_DAYS / 7} weeks</span>
+            {targetDate && <span className="tabular-nums">Target {formatTargetDate(targetDate, today)}</span>}
+          </div>
+          <StatusTrajectory days={trajectory.days} today={today} />
+          {trajectory.reads < 3 && (
+            <p className="mt-2 text-[11px] text-muted">A few more days of reads will show a trend.</p>
+          )}
+        </div>
+      )}
 
       <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <p className="flex items-center gap-2">
