@@ -12,12 +12,13 @@ import { minutesLabel } from "@/lib/task-schema";
 import { setTaskDoneAction } from "../goals/[id]/actions";
 import { prepareAgendaAction } from "./actions";
 import type { CalendarGoal } from "./calendar-items";
+import { RecapSection } from "./recap-section";
 
 /**
  * The block you clicked, beside the calendar on the right. Protected time can
  * get an agenda: a short plan for the session from the goal's tasks, notes and
  * latest read, with the tasks it draws on listed below as context. An intention
- * shows the task it schedules.
+ * shows the task it schedules. Once a block has ended, it can be recapped.
  */
 export function BlockPanel({
   block,
@@ -25,6 +26,7 @@ export function BlockPanel({
   timeLabel,
   when,
   openTaskIds,
+  ended,
   onEdit,
   onClose,
   onToggleDone,
@@ -37,6 +39,8 @@ export function BlockPanel({
   when: string;
   /** Open tasks across goals; a related task that isn't open anymore shows as done. */
   openTaskIds: Set<string>;
+  /** Whether the session is over, by the calendar's clock; it can then be recapped. */
+  ended: boolean;
   onEdit: () => void;
   onClose: () => void;
   /** Only for intentions that schedule a task. */
@@ -69,6 +73,8 @@ export function BlockPanel({
         <h2 className="mt-3 text-[17px] font-semibold leading-snug tracking-[-0.01em] text-foreground [text-wrap:pretty]">{title}</h2>
         <p className="mt-1 text-sm tabular-nums text-muted">{timeLabel}</p>
 
+        {ended && <RecapSection block={block} />}
+
         {intention ? (
           onToggleDone && (
             <button
@@ -81,7 +87,7 @@ export function BlockPanel({
             </button>
           )
         ) : (
-          <Agenda key={block.id} blockId={block.id} saved={block.agenda} when={when} openTaskIds={openTaskIds} />
+          <Agenda key={block.id} blockId={block.id} saved={block.agenda} when={when} ended={ended} openTaskIds={openTaskIds} />
         )}
       </div>
     </aside>
@@ -92,11 +98,14 @@ function Agenda({
   blockId,
   saved,
   when,
+  ended,
   openTaskIds,
 }: {
   blockId: string;
   saved: BlockAgenda | null;
   when: string;
+  /** Once the session is over, an agenda is only kept for reference. */
+  ended: boolean;
   openTaskIds: Set<string>;
 }) {
   const [fresh, setFresh] = useState<BlockAgenda | null>(null);
@@ -133,6 +142,8 @@ function Agenda({
     });
   }
 
+  if (ended && !agenda) return null;
+
   return (
     <>
       <section aria-label="Agenda" className="mt-6">
@@ -167,7 +178,7 @@ function Agenda({
           </p>
         )}
 
-        {agenda ? (
+        {ended ? null : agenda ? (
           <button
             type="button"
             onClick={prepare}

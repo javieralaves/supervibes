@@ -1,13 +1,17 @@
 "use client";
 
-import { ArrowTurnBackwardIcon, Delete02Icon, PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { ArrowTurnBackwardIcon, Calendar03Icon, Delete02Icon, PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { startTransition, useId, useOptimistic, useState, useTransition } from "react";
 
 import { Avatar } from "@/components/avatar";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
+import { formatRange, useClock } from "@/lib/clock";
 import { MAX_POST, postBodySchema } from "@/lib/post-schema";
+import type { Breadcrumb, RecapSession } from "@/lib/recap-schema";
+import type { Clock } from "@/lib/settings-schema";
 import { shortAgo } from "@/lib/time";
 
 import { addPostAction, deletePostAction, editPostAction, setTaskDoneAction } from "./actions";
@@ -23,6 +27,10 @@ export type NoteView = {
   taskId?: string | null;
   /** That task's description, if it has one. */
   taskDescription?: string | null;
+  /** The calendar session this recaps, if it's a recap. */
+  session?: RecapSession | null;
+  /** Links to specific things in connected apps the recap drew on. */
+  breadcrumbs?: Breadcrumb[] | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,11 +57,14 @@ export function NotesSection({
   goalId,
   notes,
   author,
+  clock,
   onPosted,
 }: {
   goalId: string;
   notes: NoteView[];
   author: NoteAuthor;
+  /** The user's clock choice, for recapped sessions' times. */
+  clock: Clock | null;
   /** Called after a new note is saved, to refresh the progress read. */
   onPosted: () => void;
 }) {
@@ -168,6 +179,7 @@ export function NotesSection({
                 key={note.id}
                 note={note}
                 author={author}
+                clock={clock}
                 onEdit={(body) => run({ type: "edit", id: note.id, body }, () => editPostAction(note.id, body))}
                 onDelete={() => run({ type: "delete", id: note.id }, () => deletePostAction(note.id))}
               />
@@ -260,11 +272,13 @@ function CompletedTitle({ kind, children }: { kind: "task" | "suggestion"; child
 function NoteCard({
   note,
   author,
+  clock,
   onEdit,
   onDelete,
 }: {
   note: NoteView;
   author: NoteAuthor;
+  clock: Clock | null;
   onEdit: (body: string) => void;
   onDelete: () => void;
 }) {
@@ -275,6 +289,8 @@ function NoteCard({
   const edited = new Date(note.updatedAt).getTime() - new Date(note.createdAt).getTime() > 1000;
   // Posted from "Done" on a suggestion: shown like a completed task, with the note as its detail.
   const completion = Boolean(note.completedSuggestion);
+  // Posted from "Recap session" on a calendar block.
+  const session = note.session ?? null;
 
   function save() {
     const parsed = postBodySchema.safeParse(draft);
@@ -303,6 +319,7 @@ function NoteCard({
           <p className="truncate text-sm font-semibold text-foreground">{author.name}</p>
           <p className="text-xs text-muted" suppressHydrationWarning>
             {completion && !pending ? "Completed a suggestion · " : ""}
+            {session && !pending ? "Recapped a session · " : ""}
             {pending ? "Posting…" : shortAgo(note.createdAt)}
             {edited && !pending ? " · edited" : ""}
           </p>
@@ -326,9 +343,10 @@ function NoteCard({
       </div>
 
       {completion && <CompletedTitle kind="suggestion">{note.completedSuggestion}</CompletedTitle>}
+      {session && <SessionLine session={session} clock={clock} />}
 
       {editing ? (
-        <div className={completion ? "mt-1" : "mt-3"}>
+        <div className={completion ? "mt-1" : session ? "mt-2" : "mt-3"}>
           <label className="sr-only" htmlFor={`edit-${note.id}`}>
             Edit note
           </label>
@@ -375,15 +393,18 @@ function NoteCard({
           </div>
         </div>
       ) : (
-        <p
-          className={
-            completion
-              ? `mt-1 ${detailClass}`
-              : "mt-3 whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]"
-          }
-        >
-          {note.body}
-        </p>
+        <>
+          <p
+            className={
+              completion
+                ? `mt-1 ${detailClass}`
+                : `${session ? "mt-2" : "mt-3"} whitespace-pre-wrap text-[0.95rem] leading-relaxed text-foreground [overflow-wrap:anywhere]`
+            }
+          >
+            {note.body}
+          </p>
+          {note.breadcrumbs && <Breadcrumbs items={note.breadcrumbs} className="mt-2.5" />}
+        </>
       )}
 
       <ConfirmDialog
@@ -400,5 +421,25 @@ function NoteCard({
         }}
       />
     </li>
+  );
+}
+
+/** Which calendar session a recap covers, in the viewer's time zone: "Tue, Nov 17 · 10:00–11:20 PM · Title". */
+function SessionLine({ session, clock }: { session: RecapSession; clock: Clock | null }) {
+  const resolved = useClock(clock);
+  const start = new Date(session.startsAt);
+  const end = new Date(session.endsAt);
+  const minutes = (d: Date) => d.getHours() * 60 + d.getMinutes();
+  const day = start.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return (
+    <p className="mt-3 flex items-center gap-1.5 text-[13px] text-muted">
+      <HugeiconsIcon icon={Calendar03Icon} size={14} className="shrink-0" />
+      {/* Times are the viewer's local ones, which the server can't know. */}
+      <span className="shrink-0 tabular-nums" suppressHydrationWarning>
+        {day} · {formatRange(minutes(start), minutes(end), resolved)}
+      </span>
+      <span aria-hidden="true">·</span>
+      <span className="min-w-0 truncate font-medium text-foreground/75">{session.title}</span>
+    </p>
   );
 }

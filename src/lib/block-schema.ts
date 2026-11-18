@@ -1,5 +1,7 @@
 import * as z from "zod";
 
+import type { BlockRecap } from "@/lib/recap-schema";
+
 /* Client-safe shapes for calendar blocks. Storage lives in blocks.ts. */
 
 export const MAX_BLOCK_TITLE = 120;
@@ -46,6 +48,10 @@ export type BlockView = {
   taskDone: boolean;
   /** A plan for the session, if one has been prepared. */
   agenda: BlockAgenda | null;
+  /** A draft recap, once the session has ended and one has been prepared. */
+  recap: BlockRecap | null;
+  /** Whether a recap has been posted to the goal's activity. */
+  recapped: boolean;
 };
 
 /** A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made. */

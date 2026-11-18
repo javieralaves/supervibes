@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   date,
   index,
@@ -12,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { BlockAgenda } from "../lib/block-schema";
+import type { BlockRecap, Breadcrumb, RecapSession } from "../lib/recap-schema";
 
 import { user } from "./auth-schema";
 
@@ -166,13 +168,22 @@ export const goalPosts = pgTable(
     completedTask: text(),
     /** The task it records, while that task exists. */
     taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
+    /** The calendar block this post recaps, while that block exists. One recap per block. */
+    blockId: uuid().references((): AnyPgColumn => calendarBlocks.id, { onDelete: "set null" }),
+    /** The recapped session's title and times; set only on recaps. */
+    session: jsonb().$type<RecapSession>(),
+    /** Links to specific things in connected apps the recap drew on. */
+    breadcrumbs: jsonb().$type<Breadcrumb[]>(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("goal_posts_goal_created_idx").on(t.goalId, t.createdAt)],
+  (t) => [
+    index("goal_posts_goal_created_idx").on(t.goalId, t.createdAt),
+    uniqueIndex("goal_posts_block_idx").on(t.blockId),
+  ],
 );
 
 export type Connection = typeof connections.$inferSelect;
@@ -224,6 +235,8 @@ export const calendarBlocks = pgTable(
     taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
     /** A plan for the session, prepared on request from the goal's tasks and latest read. */
     agenda: jsonb().$type<BlockAgenda>(),
+    /** A draft recap of the session, until it's posted to the goal's activity or discarded. */
+    recap: jsonb().$type<BlockRecap>(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

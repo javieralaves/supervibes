@@ -106,7 +106,7 @@ export async function prepareAgenda(userId: string, blockId: string, when: strin
       : "Nothing finished recently.",
     "",
     notes.length > 0
-      ? ["The person's recent notes, newest first:", ...notes.map((n) => `- (${n.createdAt.toISOString().slice(0, 10)}) ${oneLine(n.body, 500)}`)].join("\n")
+      ? ["The person's recent notes, newest first:", ...notes.map((n) => `- (${n.createdAt.toISOString().slice(0, 10)}) ${n.session ? `[Recap of a session, "${oneLine(n.session.title, 120)}"] ` : ""}${oneLine(n.body, 500)}`)].join("\n")
       : "No notes.",
   ].join("\n");
 

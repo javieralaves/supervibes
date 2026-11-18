@@ -4,6 +4,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goalPosts, goals, goalTasks } from "@/db/schema";
+import type { Breadcrumb, RecapSession } from "@/lib/recap-schema";
 
 /*
  * Notes the user posts on a goal. Same rule as everything else: every query
@@ -21,6 +22,10 @@ export type PostDTO = {
   taskId: string | null;
   /** That task's description, when listing. */
   taskDescription?: string | null;
+  /** The session this post recaps; set only on recaps. */
+  session: RecapSession | null;
+  /** Links to specific things in connected apps a recap drew on. */
+  breadcrumbs: Breadcrumb[] | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -31,6 +36,8 @@ const columns = {
   completedSuggestion: goalPosts.completedSuggestion,
   completedTask: goalPosts.completedTask,
   taskId: goalPosts.taskId,
+  session: goalPosts.session,
+  breadcrumbs: goalPosts.breadcrumbs,
   createdAt: goalPosts.createdAt,
   updatedAt: goalPosts.updatedAt,
 };
@@ -62,6 +69,22 @@ export async function createPost(
     .values({ userId, goalId, body, completedSuggestion })
     .returning(columns);
   return post;
+}
+
+/**
+ * Posts a session recap. Returns null if the session already has one
+ * (one recap per block, enforced by a unique index).
+ */
+export async function createRecapPost(
+  userId: string,
+  input: { goalId: string; blockId: string; body: string; session: RecapSession; breadcrumbs: Breadcrumb[] },
+): Promise<PostDTO | null> {
+  const [post] = await db
+    .insert(goalPosts)
+    .values({ userId, ...input, breadcrumbs: input.breadcrumbs.length > 0 ? input.breadcrumbs : null })
+    .onConflictDoNothing({ target: goalPosts.blockId })
+    .returning(columns);
+  return post ?? null;
 }
 
 /** Records a task being checked off, as a note with no text of its own. */

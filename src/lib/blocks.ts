@@ -3,8 +3,9 @@ import "server-only";
 import { and, asc, eq, gt, lt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { calendarBlocks, goals, goalTasks } from "@/db/schema";
+import { calendarBlocks, goalPosts, goals, goalTasks } from "@/db/schema";
 import type { BlockAgenda } from "@/lib/block-schema";
+import type { BlockRecap } from "@/lib/recap-schema";
 
 /*
  * Calendar blocks: intentions and protected time. Same rule as everything else:
@@ -24,6 +25,10 @@ export type BlockDTO = {
   taskDone?: boolean;
   /** A plan for the session, if one has been prepared. */
   agenda: BlockAgenda | null;
+  /** A draft recap of the session, until it's posted or discarded. */
+  recap: BlockRecap | null;
+  /** Whether a recap of it has been posted to the goal's activity; only filled when listing. */
+  recapped?: boolean;
 };
 
 const columns = {
@@ -35,6 +40,7 @@ const columns = {
   fromSuggestion: calendarBlocks.fromSuggestion,
   taskId: calendarBlocks.taskId,
   agenda: calendarBlocks.agenda,
+  recap: calendarBlocks.recap,
 };
 
 const mine = (userId: string, blockId: string) =>
@@ -51,12 +57,17 @@ async function ownsGoal(userId: string, goalId: string) {
 /** Blocks overlapping [from, to), with whether each one's task is done. */
 export async function listBlocks(userId: string, from: Date, to: Date): Promise<BlockDTO[]> {
   const rows = await db
-    .select({ ...columns, taskDoneAt: goalTasks.doneAt })
+    .select({ ...columns, taskDoneAt: goalTasks.doneAt, recapPostId: goalPosts.id })
     .from(calendarBlocks)
     .leftJoin(goalTasks, eq(goalTasks.id, calendarBlocks.taskId))
+    .leftJoin(goalPosts, eq(goalPosts.blockId, calendarBlocks.id))
     .where(and(eq(calendarBlocks.userId, userId), gt(calendarBlocks.endsAt, from), lt(calendarBlocks.startsAt, to)))
     .orderBy(asc(calendarBlocks.startsAt));
-  return rows.map(({ taskDoneAt, ...block }) => ({ ...block, taskDone: taskDoneAt !== null }));
+  return rows.map(({ taskDoneAt, recapPostId, ...block }) => ({
+    ...block,
+    taskDone: taskDoneAt !== null,
+    recapped: recapPostId !== null,
+  }));
 }
 
 /** Blocks from a week back to a few weeks ahead; the browser works out which day each is on. */
@@ -105,7 +116,7 @@ export async function getBlock(userId: string, blockId: string): Promise<BlockDT
 export async function updateBlock(
   userId: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "startsAt" | "endsAt" | "agenda">>,
+  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "startsAt" | "endsAt" | "agenda" | "recap">>,
 ): Promise<BlockDTO | null> {
   if (patch.goalId && !(await ownsGoal(userId, patch.goalId))) return null;
   const [block] = await db.update(calendarBlocks).set(patch).where(mine(userId, blockId)).returning(columns);

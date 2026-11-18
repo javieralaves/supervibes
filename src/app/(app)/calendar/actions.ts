@@ -6,6 +6,10 @@ import * as z from "zod";
 import { AgendaError, prepareAgenda } from "@/lib/agenda";
 import { createBlock, deleteBlock, getBlock, updateBlock } from "@/lib/blocks";
 import { blockDetailsSchema, blockTimesSchema, newBlockSchema, type BlockAgenda } from "@/lib/block-schema";
+import { createRecapPost } from "@/lib/posts";
+import { postBodySchema } from "@/lib/post-schema";
+import { discardRecap, prepareRecap, RecapError } from "@/lib/recap";
+import { postRecapSchema, type BlockRecap } from "@/lib/recap-schema";
 import { requireUser } from "@/lib/session";
 import { getTask, markTaskDone } from "@/lib/tasks";
 
@@ -74,8 +78,8 @@ export async function updateBlockAction(blockId: unknown, input: unknown): Promi
   const block = await updateBlock(user.id, id.data, {
     ...parsed.data,
     title: intention ? (parsed.data.title ?? before.title) : parsed.data.title,
-    // An agenda is about one goal; moving the block to another goal clears it.
-    ...(parsed.data.goalId !== before.goalId ? { agenda: null } : {}),
+    // An agenda or draft recap is about one goal; moving the block to another goal clears them.
+    ...(parsed.data.goalId !== before.goalId ? { agenda: null, recap: null } : {}),
   });
   if (!block) return { ok: false, error: GONE };
   refresh();
@@ -124,4 +128,69 @@ export async function prepareAgendaAction(
     console.error("[agenda] failed", error);
     return { ok: false, error: "Couldn't prepare an agenda right now. Try again." };
   }
+}
+
+/** "Recap session" in the block panel: a draft of what happened, stored on the block. */
+export async function prepareRecapAction(
+  blockId: unknown,
+): Promise<{ ok: true; recap: BlockRecap } | { ok: false; error: string }> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  if (!id.success) return { ok: false, error: GONE };
+  try {
+    const recap = await prepareRecap(user.id, id.data);
+    refresh();
+    return { ok: true, recap };
+  } catch (error) {
+    if (error instanceof RecapError) return { ok: false, error: error.message };
+    console.error("[recap] failed", error);
+    return { ok: false, error: "Couldn't recap this session right now. Try again." };
+  }
+}
+
+/**
+ * Posts a recap to the goal's activity, as written or edited by the person.
+ * Only breadcrumbs from the stored draft can be kept, picked by their links.
+ */
+export async function postRecapAction(blockId: unknown, input: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  const parsed = postRecapSchema.safeParse(input);
+  if (!id.success) return { ok: false, error: GONE };
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const body = postBodySchema.safeParse(parsed.data.body);
+  if (!body.success) return { ok: false, error: firstIssue(body.error) };
+
+  const block = await getBlock(user.id, id.data);
+  if (!block) return { ok: false, error: GONE };
+  if (block.endsAt.getTime() > Date.now()) return { ok: false, error: "This session hasn't ended yet." };
+
+  const keep = new Set(parsed.data.keep);
+  const post = await createRecapPost(user.id, {
+    goalId: block.goalId,
+    blockId: block.id,
+    body: body.data,
+    session: {
+      title: block.title ?? block.fromSuggestion ?? "Protected time",
+      startsAt: block.startsAt.toISOString(),
+      endsAt: block.endsAt.toISOString(),
+    },
+    breadcrumbs: (block.recap?.breadcrumbs ?? []).filter((b) => keep.has(b.url)),
+  });
+  if (!post) return { ok: false, error: "This session already has a recap." };
+
+  if (parsed.data.markTaskDone && block.taskId) await markTaskDone(user.id, block.taskId, true);
+  await discardRecap(user.id, block.id);
+  refresh();
+  return { ok: true };
+}
+
+/** "Discard" on a draft recap. */
+export async function discardRecapAction(blockId: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  if (!id.success || !(await getBlock(user.id, id.data))) return { ok: false, error: GONE };
+  await discardRecap(user.id, id.data);
+  refresh();
+  return { ok: true };
 }

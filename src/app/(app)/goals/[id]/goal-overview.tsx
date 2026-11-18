@@ -62,7 +62,7 @@ export function GoalOverview({ goal, read, notes, author, tasks, clock, sources,
         connections={connections}
       />
       {/* A new note should change the read, so it triggers one straight away. */}
-      <NotesSection goalId={goal.id} notes={notes} author={author} onPosted={update} />
+      <NotesSection goalId={goal.id} notes={notes} author={author} clock={clock} onPosted={update} />
     </>
   );
 }

@@ -515,7 +515,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, agenda: null } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, fromSuggestion: null, taskId: null, taskDone: false, agenda: null, recap: null, recapped: false } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -549,6 +549,8 @@ export function DayCalendar({
           taskId: task.id,
           taskDone: false,
           agenda: null,
+          recap: null,
+          recapped: false,
           ...times,
         },
       },
@@ -835,6 +837,7 @@ export function DayCalendar({
               timeLabel={selectedTimes?.label ?? ""}
               when={selectedTimes?.when ?? ""}
               openTaskIds={openTaskIds}
+              ended={stamp !== null && Date.parse(selected.endsAt) <= stamp * 60_000}
               onEdit={() => editBlock(selected)}
               onClose={() => setSelectedId(null)}
               onToggleDone={

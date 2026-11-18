@@ -141,6 +141,13 @@
       "when": 1794983105848,
       "tag": "0019_goal_description_target_date",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794985019394,
+      "tag": "0020_session_recaps",
+      "breakpoints": true
     }
   ]
 }

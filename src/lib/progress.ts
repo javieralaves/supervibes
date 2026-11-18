@@ -1,20 +1,17 @@
 import "server-only";
 
-import Anthropic from "@anthropic-ai/sdk";
 import { and, eq } from "drizzle-orm";
 import * as z from "zod";
 
 import { db } from "@/db";
-import { goalReads, goals, goalSources } from "@/db/schema";
+import { goalReads, goals } from "@/db/schema";
 import { listUpcomingBlocks } from "@/lib/blocks";
-import { getUsableConnection, markConnectionError } from "@/lib/connections";
+import { answerText, askWithApps, clearSourceErrors, openGoalApps, reachedProviders, sourceLines } from "@/lib/goal-apps";
 import { listPosts } from "@/lib/posts";
 import { minutesLabel } from "@/lib/task-schema";
 import { listTasksForRead } from "@/lib/tasks";
-import { PROVIDERS, type ProviderKey } from "@/lib/providers";
 import { targetDateForPrompt } from "@/lib/target-date";
 
-const MODEL = "claude-sonnet-5-5";
 /** How far back each read looks. A rolling window keeps the read about recent momentum. */
 const WINDOW_DAYS = 30;
 /** How many of the person's own notes each read considers, newest first. */
@@ -140,44 +137,16 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) throw new ProgressError("That goal doesn't exist anymore.");
 
-  const sources = await db
-    .select({ id: goalSources.id, connectionId: goalSources.connectionId, relation: goalSources.relation })
-    .from(goalSources)
-    .where(and(eq(goalSources.goalId, goalId), eq(goalSources.userId, userId), eq(goalSources.enabled, true)));
+  const apps = await openGoalApps(userId, goalId);
   // Completed-task entries are covered by the tasks themselves, below.
   const notes = (await listPosts(userId, goalId, MAX_NOTES * 2)).filter((n) => !n.completedTask).slice(0, MAX_NOTES);
   const tasks = await listTasksForRead(userId, goalId, WINDOW_DAYS);
   const hasTasks = tasks.open.length > 0 || tasks.done.length > 0;
-  if (sources.length === 0 && notes.length === 0 && !hasTasks) {
+  if (apps.sources.length === 0 && notes.length === 0 && !hasTasks) {
     throw new ProgressError("Add a source, a note or a task first, so there's something to read.");
   }
 
-  // One MCP server per connected app, shared by all sources that use it.
-  const servers = new Map<string, { provider: ProviderKey; serverUrl: string; token: string; readTools: string[] }>();
-  const usable: typeof sources = [];
-  for (const source of sources) {
-    let connection = null;
-    try {
-      connection = await getUsableConnection(userId, source.connectionId);
-    } catch {
-      await markConnectionError(userId, source.connectionId, "Sign-in expired. Reconnect it.");
-    }
-    if (!connection || connection.readTools.length === 0) {
-      await db
-        .update(goalSources)
-        .set({ lastError: `Couldn't reach this app. Reconnect it on the Connections page.` })
-        .where(eq(goalSources.id, source.id));
-      continue;
-    }
-    servers.set(connection.id, {
-      provider: connection.provider,
-      serverUrl: connection.serverUrl,
-      token: connection.accessToken,
-      readTools: connection.readTools,
-    });
-    usable.push(source);
-  }
-  if (usable.length === 0 && notes.length === 0 && !hasTasks) {
+  if (apps.usable.length === 0 && notes.length === 0 && !hasTasks) {
     throw new ProgressError("None of this goal's apps could be reached. Reconnect them first.");
   }
 
@@ -186,21 +155,14 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
   const previous = await getLatestRead(userId, goalId);
   const planned = await listUpcomingBlocks(userId, goalId);
 
-  const serverName = (connectionId: string) => `${servers.get(connectionId)!.provider}-${connectionId.slice(0, 8)}`;
   const prompt = [
     `Goal: ${goal.title}`,
     ...(goal.description ? [`What done looks like, in the person's words: ${goal.description.replace(/\s+/g, " ").trim()}`] : []),
     ...(goal.targetDate ? [`Target date: ${targetDateForPrompt(goal.targetDate)}`] : []),
     `Time window: ${since.toISOString()} to ${now.toISOString()}`,
     "",
-    ...(usable.length > 0
-      ? [
-          "Sources, each described in the person's own words:",
-          ...usable.map((s, i) => {
-            const server = servers.get(s.connectionId)!;
-            return `${i + 1}. ${PROVIDERS[server.provider].label} (tools from "${serverName(s.connectionId)}"): ${s.relation}`;
-          }),
-        ]
+    ...(apps.usable.length > 0
+      ? ["Sources, each described in the person's own words:", ...sourceLines(apps)]
       : ["No connected sources for this read; rely on the person's notes and tasks."]),
     "",
     ...(notes.length > 0
@@ -213,8 +175,12 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
                   ? `[Completed suggestion: ${n.completedSuggestion}] `
                   : n.completedTask
                     ? `[Completed task: ${n.completedTask}] `
-                    : ""
-              }${n.body.replace(/\s+/g, " ")}`,
+                    : n.session
+                      ? `[Recap of a session, "${n.session.title}", confirmed by the person] `
+                      : ""
+              }${n.body.replace(/\s+/g, " ")}${
+                n.breadcrumbs?.length ? ` (Linked: ${n.breadcrumbs.map((b) => b.title).join("; ")})` : ""
+              }`,
           ),
         ]
       : ["The person hasn't written any notes for this goal."]),
@@ -256,59 +222,31 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
       : []),
   ].join("\n");
 
-  const mcpServers = [...servers.entries()].map(([id, s]) => ({
-    type: "url" as const,
-    url: s.serverUrl,
-    name: serverName(id),
-    authorization_token: s.token,
-  }));
-  const toolsets = [...servers.entries()].map(([id, s]) => ({
-    type: "mcp_toolset" as const,
-    mcp_server_name: serverName(id),
-    // Allowlist mode: only the server's read-only tools can be called.
-    default_config: { enabled: false },
-    configs: Object.fromEntries(s.readTools.map((name) => [name, { enabled: true }])),
-  }));
+  const { message: response } = await askWithApps(apps, {
+    system: SYSTEM,
+    prompt,
+    schema: OUTPUT_SCHEMA,
+    effort: "medium",
+    maxTokens: 32000,
+  });
 
-  const hasServers = mcpServers.length > 0;
-  const client = new Anthropic();
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
-  let response: Anthropic.Beta.BetaMessage | undefined;
-  // The API may pause a long server-side tool loop; resume it a few times.
-  for (let turn = 0; turn < 4; turn++) {
-    response = await client.beta.messages
-      .stream({
-        model: MODEL,
-        max_tokens: 32000,
-        betas: [...(hasServers ? (["mcp-client-2025-11-20"] as const) : []), "server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        system: SYSTEM,
-        output_config: { effort: "medium", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-        ...(hasServers ? { mcp_servers: mcpServers, tools: toolsets } : {}),
-        messages,
-      })
-      .finalMessage();
-    if (response.stop_reason !== "pause_turn") break;
-    messages.push({ role: "assistant", content: response.content });
-  }
-
-  if (!response || response.stop_reason === "refusal") throw new ProgressError("Claude declined to read these sources.");
+  if (response.stop_reason === "refusal") throw new ProgressError("Claude declined to read these sources.");
   if (response.stop_reason === "pause_turn" || response.stop_reason === "max_tokens") {
     throw new ProgressError("There was too much to read at once. Narrow where your sources look.");
   }
 
-  const text = response.content.findLast((b) => b.type === "text");
-  if (!text || text.type !== "text") throw new ProgressError("The read didn't come back. Try again.");
+  const text = answerText(response);
+  if (!text) throw new ProgressError("The read didn't come back. Try again.");
 
   let parsed;
   try {
-    parsed = readSchema.parse(JSON.parse(text.text));
+    parsed = readSchema.parse(JSON.parse(text));
   } catch (error) {
     console.error("[progress] unexpected output", error);
     throw new ProgressError("The read came back in an unexpected shape. Try again.");
   }
 
-  const basedOn: string[] = [...new Set([...servers.values()].map((s) => s.provider))];
+  const basedOn: string[] = reachedProviders(apps);
   if (notes.length > 0) basedOn.push(NOTES_MARKER);
   if (hasTasks) basedOn.push(TASKS_MARKER);
   // Replaces headline, summary and suggestions; keeps the list of passed-on suggestions.
@@ -319,13 +257,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     .onConflictDoUpdate({ target: goalReads.goalId, set: values })
     .returning(readColumns);
 
-  // Clear errors on the sources that were read.
-  for (const source of usable) {
-    await db
-      .update(goalSources)
-      .set({ lastError: null })
-      .where(eq(goalSources.id, source.id));
-  }
+  await clearSourceErrors(apps);
   return saved;
 }
 

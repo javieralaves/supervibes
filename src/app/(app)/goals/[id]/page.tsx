@@ -51,6 +51,8 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         completedTask: p.completedTask,
         taskId: p.taskId,
         taskDescription: p.taskDescription ?? null,
+        session: p.session,
+        breadcrumbs: p.breadcrumbs,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       }))}
