@@ -129,12 +129,38 @@ enum Icon: String {
     case sun = "Sun03-1_5"
     case tick = "Tick02-1_5"
     case chevronDown = "ArrowDown01-1_5"
+    case more = "MoreHorizontal-1_5"
+    case refresh = "Refresh01-1_5"
+    case unlink = "Unlink04-1_5"
+    case linearMark = "LinearMark"
+    case githubMark = "GitHubMark"
+    case granolaMark = "GranolaMark"
 
     func image(size: CGFloat) -> some View {
         Image(rawValue, bundle: Fonts.bundle)
-            .renderingMode(.template)
+            .renderingMode(self == .granolaMark ? .original : .template)
             .resizable()
             .frame(width: size, height: size)
+    }
+}
+
+// MARK: - Dates
+
+extension Date {
+    /// Dates as the web app writes them (it formats in US English whatever the device's locale):
+    /// "Nov 9, 2026".
+    var webDay: String {
+        formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(Locale(identifier: "en_US")))
+    }
+
+    /// "Nov 9".
+    var webMonthDay: String {
+        formatted(.dateTime.month(.abbreviated).day().locale(Locale(identifier: "en_US")))
+    }
+
+    /// "Nov 9, 10:18 AM".
+    var webMonthDayTime: String {
+        formatted(.dateTime.month(.abbreviated).day().hour().minute().locale(Locale(identifier: "en_US")))
     }
 }
 

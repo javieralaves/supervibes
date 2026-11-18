@@ -9,6 +9,8 @@ final class ShellModel {
     var isAccountMenuOpen = false
     private(set) var account: RailAccount?
     let web: WebContentModel
+    /// Menus and dialogs drawn above the window's content.
+    let overlays = OverlayCenter()
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -19,13 +21,31 @@ final class ShellModel {
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
         web.onNativePath = { [weak self] path in
-            if path == "/settings" { self?.openSettings() }
+            switch path {
+            case "/settings": self?.openSettings()
+            case "/connections": self?.open(.connections)
+            default: break
+            }
         }
     }
 
-    /// A rail item: its web page.
+    /// The rail item to light up for what's showing.
+    var activeRailItem: RailItem? {
+        switch route {
+        case .web: RailItem.matching(path: web.currentPath)
+        case .connections: .connections
+        case .settings: nil
+        }
+    }
+
+    /// A rail item: its native screen, or its web page.
     func open(_ item: RailItem) {
         isAccountMenuOpen = false
+        overlays.dismiss()
+        if item == .connections {
+            route = .connections
+            return
+        }
         route = .web
         // Like the web rail's links: go to the section's page unless it's already showing.
         if web.currentPath != item.href {
@@ -35,6 +55,7 @@ final class ShellModel {
 
     func openSettings() {
         isAccountMenuOpen = false
+        overlays.dismiss()
         route = .settings
     }
 

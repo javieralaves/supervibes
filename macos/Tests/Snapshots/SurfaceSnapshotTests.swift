@@ -77,6 +77,33 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testConnectionsPage() {
+        assertAppearances(
+            ConnectionsPage(items: Fixtures.connections, notice: .connected("Linear"))
+                .background(Theme.background),
+            width: 900, height: 620
+        )
+    }
+
+    func testConnectionMenuAndDialog() {
+        assertAppearances(
+            HStack(alignment: .top, spacing: 24) {
+                MenuPanel {
+                    MenuItem(icon: .refresh, title: "Reconnect") {}
+                    MenuItem(icon: .unlink, title: "Disconnect", isDestructive: true) {}
+                }
+                ConfirmDialog(
+                    title: "Disconnect Linear?",
+                    message: "Supervibes will stop reading from Linear. Goal sources that use it will be removed, so progress reads won’t look there anymore. You can connect it again anytime.",
+                    confirmTitle: "Disconnect"
+                )
+            }
+            .padding(32)
+            .background(Theme.shell),
+            width: 700, height: 320
+        )
+    }
+
     func testSignIn() {
         assertAppearances(SignInView(), width: 640, height: 360)
     }

@@ -5,6 +5,7 @@ enum Route: Hashable {
     /// A web page; the web view keeps its own path.
     case web
     case settings
+    case connections
 }
 
 /// The main window: sign-in while signed out; otherwise the native rail beside the app's window,
@@ -34,7 +35,7 @@ struct MainView: View {
     private var signedIn: some View {
         HStack(spacing: 0) {
             Rail(
-                active: shell.route == .web ? RailItem.matching(path: shell.web.currentPath) : nil,
+                active: shell.activeRailItem,
                 account: shell.account,
                 isMenuOpen: shell.isAccountMenuOpen,
                 topInset: 28,
@@ -50,10 +51,18 @@ struct MainView: View {
                         .opacity(shell.route == .web ? 1 : 0)
                         .allowsHitTesting(shell.route == .web)
 
-                    if shell.route == .settings {
+                    switch shell.route {
+                    case .web:
+                        EmptyView()
+                    case .settings:
                         ZStack {
                             Backdrop()
                             SettingsScreen(auth: auth)
+                        }
+                    case .connections:
+                        ZStack {
+                            Backdrop()
+                            ConnectionsScreen(auth: auth)
                         }
                     }
                 }
@@ -81,6 +90,42 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.14), value: shell.isAccountMenuOpen)
+        .overlayHost(shell.overlays)
+    }
+}
+
+/// The Connections page with its data, in the app's window.
+private struct ConnectionsScreen: View {
+    @State private var model: ConnectionsModel
+
+    init(auth: AuthModel) {
+        _model = State(initialValue: ConnectionsModel(auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .idle, .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load your connections", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                ConnectionsPage(
+                    items: model.items,
+                    notice: model.notice,
+                    busy: model.busy,
+                    onConnect: model.connect,
+                    onDisconnect: model.disconnect
+                )
+            }
+        }
+        .task { await model.refresh() }
     }
 }
 

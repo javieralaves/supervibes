@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { isAppFlow } from "@/lib/app-connect";
 import { saveConnection } from "@/lib/connections";
 import { decryptJson } from "@/lib/crypto";
 import { completeAuthorization, FLOW_COOKIE, listReadTools, type OAuthFlow } from "@/lib/mcp-oauth";
@@ -8,8 +9,22 @@ import { PROVIDERS } from "@/lib/providers";
 import { requireUser } from "@/lib/session";
 
 export async function GET(request: Request) {
-  const user = await requireUser();
   const url = new URL(request.url);
+
+  // Started by the Mac app (see lib/app-connect.ts): hand the result back to the app, which
+  // completes it with its own session. The browser here isn't signed in to Supervibes.
+  const state = url.searchParams.get("state");
+  if (state && (await isAppFlow(state))) {
+    const back = new URL("supervibes://connections");
+    back.searchParams.set("state", state);
+    const code = url.searchParams.get("code");
+    const denied = url.searchParams.get("error");
+    if (code && !denied) back.searchParams.set("code", code);
+    else back.searchParams.set("error", denied === "access_denied" ? "denied" : "failed");
+    return new Response(null, { status: 302, headers: { Location: back.toString(), "Cache-Control": "no-store" } });
+  }
+
+  const user = await requireUser();
   const jar = await cookies();
   const raw = jar.get(FLOW_COOKIE)?.value;
   jar.delete({ name: FLOW_COOKIE, path: "/api/connections/callback" });

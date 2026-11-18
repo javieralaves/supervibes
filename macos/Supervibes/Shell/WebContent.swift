@@ -43,7 +43,7 @@ final class WebContentModel: NSObject {
     @ObservationIgnored var onNativePath: (String) -> Void = { _ in }
 
     /// Web pages that have a native screen. Links to them open that instead.
-    static let nativePaths: Set<String> = ["/settings"]
+    static let nativePaths: Set<String> = ["/settings", "/connections"]
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private var urlObservation: NSKeyValueObservation?

@@ -33,7 +33,9 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 
 - The main window is native: `MainView` puts the native `Rail` (Shared/UI/Shell) beside `AppWindowFrame`, which shows either the web view (`WebContentModel`) or a native screen, chosen by `ShellModel.route`. The web page is told it's inside the app (`html[data-shell="mac"]`) and hides its own rail and frame (`[data-app-rail]`, `[data-app-window]` in globals.css).
 - To move a page: build it in `Shared/UI/` against plain models (`Shared/Models/`), with fixtures and a snapshot test (render it inside `Rail` + `AppWindowFrame` too); keep the API calls in an `@Observable` model in `Supervibes/`. Add a `Route` case, add its web path to `WebContentModel.nativePaths`, route it in `ShellModel`, and give it a rail item or menu entry. A page script catches in-app links to native paths before Next.js handles them, and full loads of them are cancelled.
-- Done so far: `/settings` → `SettingsPage` (also ⌘,), opened from the account menu.
+- Menus and confirm dialogs go through `OverlayCenter` (`@Environment(\.overlays)`), drawn above the window like the web's Radix portals: anchor a menu with `AnchorReader`, then `showMenu(anchor:)` with a `MenuPanel` of `MenuItem`s, or `showDialog` with a `ConfirmDialog`.
+- Dates the web formats in US English use `Date.webDay` / `webMonthDay` / `webMonthDayTime`, so they match whatever the Mac's locale.
+- Done so far: `/settings` → `SettingsPage` (also ⌘,), opened from the account menu; `/connections` → `ConnectionsPage`, the rail's Connections item. Connecting an app runs its consent page in the system sign-in sheet; see `src/lib/app-connect.ts` for why the code comes back to the app to finish.
 
 ## Commands (run from `macos/`)
 

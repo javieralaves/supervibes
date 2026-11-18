@@ -14,7 +14,9 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except auth endpoints (including the Mac app's sign-in), the API (which checks
-    // bearer tokens itself), the sign-in page, health check and static assets.
-    "/((?!api/auth|api/native|api/v1|api/health|api/cron|sign-in|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // bearer tokens itself), the connections callback (which can finish a Mac app flow in a
+    // browser that isn't signed in, and checks the session itself otherwise), the sign-in page,
+    // health check and static assets.
+    "/((?!api/auth|api/native|api/v1|api/connections/callback|api/health|api/cron|sign-in|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

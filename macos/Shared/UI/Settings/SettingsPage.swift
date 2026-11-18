@@ -210,7 +210,7 @@ private struct UsageSection: View {
         ]) {
             ForEach(calls) { call in
                 GridRow {
-                    Text(call.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
+                    Text(call.createdAt.webMonthDayTime)
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                     HStack(spacing: 6) {
@@ -424,7 +424,7 @@ private struct DailyChart: View {
     }
 
     static func label(_ date: Date?) -> String {
-        date?.formatted(.dateTime.month(.abbreviated).day()) ?? ""
+        date?.webMonthDay ?? ""
     }
 }
 

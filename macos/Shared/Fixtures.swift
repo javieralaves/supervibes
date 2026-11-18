@@ -65,4 +65,15 @@ enum Fixtures {
             )
         }
     }
+
+    static var connections: [ConnectionItem] {
+        [
+            ConnectionItem(provider: .linear, label: "Linear", description: "Issues, projects and cycles.",
+                           configured: true, state: .connected(since: referenceNow.addingTimeInterval(-9 * 86_400))),
+            ConnectionItem(provider: .github, label: "GitHub", description: "Commits, pull requests and issues.",
+                           configured: true, state: .needsAttention(message: "The token expired.")),
+            ConnectionItem(provider: .granola, label: "Granola", description: "Meeting notes and summaries.",
+                           configured: true, state: .notConnected),
+        ]
+    }
 }
