@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { db } from "@/db";
 import { calendarBlocks, goals } from "@/db/schema";
+import { CallMeter } from "@/lib/ai-usage";
 import type { BlockAgenda } from "@/lib/block-schema";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
@@ -63,6 +64,7 @@ export async function prepareAgenda(userId: string, blockId: string, when: strin
       endsAt: calendarBlocks.endsAt,
       taskId: calendarBlocks.taskId,
       fromSuggestion: calendarBlocks.fromSuggestion,
+      agenda: calendarBlocks.agenda,
       goalTitle: goals.title,
       goalDescription: goals.description,
       goalTargetDate: goals.targetDate,
@@ -111,13 +113,23 @@ export async function prepareAgenda(userId: string, blockId: string, when: strin
   ].join("\n");
 
   const client = new Anthropic();
-  const response = await client.beta.messages.create({
-    model: MODEL,
-    max_tokens: 2000,
-    system: SYSTEM,
-    output_config: { effort: "low", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-    messages: [{ role: "user", content: prompt }],
-  });
+  const meter = new CallMeter(
+    { userId, goalId: block.goalId, feature: "agenda", trigger: block.agenda ? "redraft" : "draft" },
+    MODEL,
+  );
+  let response;
+  try {
+    response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 2000,
+      system: SYSTEM,
+      output_config: { effort: "low", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
+      messages: [{ role: "user", content: prompt }],
+    });
+    meter.add(response);
+  } finally {
+    await meter.record(response?.stop_reason ?? "error");
+  }
   if (response.stop_reason === "refusal") throw new AgendaError("Claude declined to prepare this agenda.");
   const text = response.content.findLast((b) => b.type === "text");
   if (!text || text.type !== "text") throw new AgendaError("The agenda didn't come back. Try again.");

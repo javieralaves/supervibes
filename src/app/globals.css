@@ -12,6 +12,10 @@
   --card-border: rgb(15 17 20 / 0.08);
   --line-strong: rgb(15 17 20 / 0.16);
   --wash: rgb(15 17 20 / 0.04);
+  /* Chart series (Settings → Usage), in fixed order; validated against --card in each mode. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +27,9 @@
     --card-border: rgb(255 255 255 / 0.07);
     --line-strong: rgb(255 255 255 / 0.16);
     --wash: rgb(255 255 255 / 0.04);
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
   }
 }
 
@@ -34,6 +41,9 @@
   --color-card-border: var(--card-border);
   --color-line-strong: var(--line-strong);
   --color-wash: var(--wash);
+  --color-viz-1: var(--viz-1);
+  --color-viz-2: var(--viz-2);
+  --color-viz-3: var(--viz-3);
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
 }
 

@@ -5,6 +5,7 @@ import * as z from "zod";
 
 import { db } from "@/db";
 import { calendarBlocks, goals, goalTasks } from "@/db/schema";
+import type { AiTrigger } from "@/lib/ai-usage";
 import { answerText, askWithApps, clearSourceErrors, openGoalApps, sourceLines, type GoalApps } from "@/lib/goal-apps";
 import { PROVIDER_KEYS, type ProviderKey } from "@/lib/providers";
 import { MAX_BREADCRUMBS, type BlockRecap, type Breadcrumb } from "@/lib/recap-schema";
@@ -127,6 +128,7 @@ async function loadSession(userId: string, blockId: string) {
       startsAt: calendarBlocks.startsAt,
       endsAt: calendarBlocks.endsAt,
       agenda: calendarBlocks.agenda,
+      recap: calendarBlocks.recap,
       taskId: calendarBlocks.taskId,
       fromSuggestion: calendarBlocks.fromSuggestion,
       goalTitle: goals.title,
@@ -164,7 +166,8 @@ export async function prepareRecap(userId: string, blockId: string): Promise<Blo
     throw new RecapError("None of this goal's apps could be reached. Reconnect them first.");
   }
   // With no apps to read, the person writes it up themselves.
-  const recap = apps.sources.length === 0 ? blank(session) : await draft(userId, session, apps);
+  const recap =
+    apps.sources.length === 0 ? blank(session) : await draft(userId, session, apps, session.recap ? "redraft" : "draft");
 
   await db
     .update(calendarBlocks)
@@ -184,7 +187,7 @@ function blank(session: Session): BlockRecap {
   };
 }
 
-async function draft(userId: string, session: Session, apps: GoalApps): Promise<BlockRecap> {
+async function draft(userId: string, session: Session, apps: GoalApps, trigger: AiTrigger): Promise<BlockRecap> {
   if (!process.env.ANTHROPIC_API_KEY) throw new RecapError("Recapping a session needs an Anthropic API key.");
 
   const from = new Date(session.startsAt.getTime() - BEFORE_MS);
@@ -240,6 +243,7 @@ async function draft(userId: string, session: Session, apps: GoalApps): Promise<
     schema: OUTPUT_SCHEMA,
     effort: "medium",
     maxTokens: 16000,
+    context: { userId, goalId: session.goalId, feature: "recap", trigger },
   });
   if (message.stop_reason === "refusal") throw new RecapError("Claude declined to recap this session.");
   if (message.stop_reason === "pause_turn" || message.stop_reason === "max_tokens") {

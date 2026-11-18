@@ -56,7 +56,7 @@ export async function refreshProgressAction(goalId: unknown): Promise<ActionResu
   const id = idSchema.safeParse(goalId);
   if (!id.success || !(await getGoal(user.id, id.data))) return { ok: false, error: "That goal doesn't exist." };
 
-  await requestRead(user.id, id.data, { settle: false });
+  await requestRead(user.id, id.data, { trigger: "manual", settle: false });
   refresh();
   return { ok: true };
 }
@@ -71,7 +71,7 @@ export async function addPostAction(goalId: unknown, body: unknown): Promise<Act
   const post = await createPost(user.id, goal.data, parsed.data);
   if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
   // A new note should change the read; it runs after this returns.
-  await requestRead(user.id, goal.data);
+  await requestRead(user.id, goal.data, { trigger: "note" });
   refresh();
   return { ok: true };
 }

@@ -5,6 +5,7 @@ import * as z from "zod";
 
 import { db } from "@/db";
 import { goalReads, goals } from "@/db/schema";
+import type { AiTrigger } from "@/lib/ai-usage";
 import { listUpcomingBlocks } from "@/lib/blocks";
 import { answerText, askWithApps, clearSourceErrors, openGoalApps, reachedProviders, sourceLines } from "@/lib/goal-apps";
 import { listPosts } from "@/lib/posts";
@@ -128,7 +129,7 @@ export async function getLatestRead(userId: string, goalId: string): Promise<Goa
  * Reads every enabled source for a goal in one pass and replaces the goal's progress read.
  * Sources whose app can't be reached are skipped and flagged on the source.
  */
-export async function assessGoal(userId: string, goalId: string): Promise<GoalReadDTO> {
+export async function assessGoal(userId: string, goalId: string, trigger: AiTrigger): Promise<GoalReadDTO> {
   if (!process.env.ANTHROPIC_API_KEY) throw new ProgressError("Reading progress needs an Anthropic API key.");
 
   const [goal] = await db
@@ -228,6 +229,7 @@ export async function assessGoal(userId: string, goalId: string): Promise<GoalRe
     schema: OUTPUT_SCHEMA,
     effort: "medium",
     maxTokens: 32000,
+    context: { userId, goalId, feature: "progress_read", trigger },
   });
 
   if (response.stop_reason === "refusal") throw new ProgressError("Claude declined to read these sources.");

@@ -5,6 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goalSources } from "@/db/schema";
+import { CallMeter, type AiCallContext } from "@/lib/ai-usage";
 import { getUsableConnection, markConnectionError } from "@/lib/connections";
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
 
@@ -104,6 +105,8 @@ export async function askWithApps(
     schema: Record<string, unknown>;
     effort: "low" | "medium" | "high";
     maxTokens: number;
+    /** Who and what it's for, to record its tokens and cost. */
+    context: AiCallContext;
   },
 ): Promise<{ message: Anthropic.Beta.BetaMessage; toolText: string }> {
   const ids = [...apps.servers.keys()];
@@ -125,27 +128,36 @@ export async function askWithApps(
   const client = new Anthropic();
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: options.prompt }];
   const toolText: string[] = [];
+  const meter = new CallMeter(options.context, MODEL);
   let message: Anthropic.Beta.BetaMessage | undefined;
-  // The API may pause a long server-side tool loop; resume it a few times.
-  for (let turn = 0; turn < 4; turn++) {
-    message = await client.beta.messages
-      .stream({
-        model: MODEL,
-        max_tokens: options.maxTokens,
-        betas: [...(hasServers ? (["mcp-client-2025-11-20"] as const) : []), "server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        system: options.system,
-        output_config: { effort: options.effort, format: { type: "json_schema", schema: options.schema } },
-        ...(hasServers ? { mcp_servers: mcpServers, tools: toolsets } : {}),
-        messages,
-      })
-      .finalMessage();
-    for (const block of message.content) {
-      if (block.type !== "mcp_tool_result") continue;
-      toolText.push(typeof block.content === "string" ? block.content : block.content.map((c) => c.text).join("\n"));
+  let outcome = "error";
+  try {
+    // The API may pause a long server-side tool loop; resume it a few times.
+    for (let turn = 0; turn < 4; turn++) {
+      message = await client.beta.messages
+        .stream({
+          model: MODEL,
+          max_tokens: options.maxTokens,
+          betas: [...(hasServers ? (["mcp-client-2025-11-20"] as const) : []), "server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          system: options.system,
+          output_config: { effort: options.effort, format: { type: "json_schema", schema: options.schema } },
+          ...(hasServers ? { mcp_servers: mcpServers, tools: toolsets } : {}),
+          messages,
+        })
+        .finalMessage();
+      meter.add(message);
+      outcome = message.stop_reason ?? "unknown";
+      for (const block of message.content) {
+        if (block.type !== "mcp_tool_result") continue;
+        toolText.push(typeof block.content === "string" ? block.content : block.content.map((c) => c.text).join("\n"));
+      }
+      if (message.stop_reason !== "pause_turn") break;
+      messages.push({ role: "assistant", content: message.content });
     }
-    if (message.stop_reason !== "pause_turn") break;
-    messages.push({ role: "assistant", content: message.content });
+  } finally {
+    // Recorded even when a request throws partway, so failed calls still show their cost.
+    await meter.record(outcome);
   }
   return { message: message!, toolText: toolText.join("\n") };
 }

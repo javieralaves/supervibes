@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
 
 import { db } from "@/db";
+import type { AiTrigger } from "@/lib/ai-usage";
 import { goals } from "@/db/schema";
 import { assessGoal, ProgressError } from "@/lib/progress";
 
@@ -31,7 +32,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * action that has already checked the goal belongs to the user. `settle: false`
  * starts straight away, for when the person asked for the read themselves.
  */
-export async function requestRead(userId: string, goalId: string, { settle = true } = {}) {
+export async function requestRead(
+  userId: string,
+  goalId: string,
+  { trigger, settle = true }: { trigger: Extract<AiTrigger, "manual" | "note" | "recap">; settle?: boolean },
+) {
   // Made here, not with now() in SQL, so it compares exactly once stored (milliseconds both ways).
   const stamp = new Date();
   const mine = and(eq(goals.id, goalId), eq(goals.userId, userId));
@@ -46,7 +51,7 @@ export async function requestRead(userId: string, goalId: string, { settle = tru
     // Only clear the stamp if it's still ours; a request that came in mid-read gets its own read.
     const stillMine = and(mine, eq(goals.readRequestedAt, stamp));
     try {
-      await assessGoal(userId, goalId);
+      await assessGoal(userId, goalId, trigger);
       await db.update(goals).set({ readRequestedAt: null }).where(stillMine);
     } catch (error) {
       if (!(error instanceof ProgressError)) console.error("[progress] background read failed", error);

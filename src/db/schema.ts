@@ -281,3 +281,44 @@ export const goalTasks = pgTable(
   },
   (t) => [index("goal_tasks_goal_idx").on(t.goalId, t.position)],
 );
+
+/**
+ * One call to the Claude API: what it was for, what started it, and the tokens
+ * and cost it took. Raw token counts are kept so cost can be recomputed if prices change.
+ */
+export const aiCalls = pgTable(
+  "ai_calls",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** The goal it was about, while that goal exists. */
+    goalId: uuid().references(() => goals.id, { onDelete: "set null" }),
+    /** "progress_read" | "recap" | "agenda". */
+    feature: text().notNull(),
+    /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft". */
+    trigger: text().notNull(),
+    /** The model that answered (a refusal can be answered by a fallback model). */
+    model: text().notNull(),
+    /** Uncached input tokens. */
+    inputTokens: integer().notNull().default(0),
+    cacheReadTokens: integer().notNull().default(0),
+    cacheWriteTokens: integer().notNull().default(0),
+    /** Output tokens, thinking included. */
+    outputTokens: integer().notNull().default(0),
+    /** Calls to connected apps' tools during it. */
+    toolCalls: integer().notNull().default(0),
+    /** API requests it took: more than one when a long tool loop was paused and resumed. */
+    requests: integer().notNull().default(1),
+    durationMs: integer().notNull().default(0),
+    /** How it ended: the API's stop reason, or "error". */
+    outcome: text().notNull(),
+    /** Cost in millionths of a dollar, from src/lib/ai-pricing.ts at the time; null for an unpriced model. */
+    costMicros: integer(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_calls_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+export type AiCall = typeof aiCalls.$inferSelect;

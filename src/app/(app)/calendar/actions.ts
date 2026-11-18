@@ -183,7 +183,7 @@ export async function postRecapAction(blockId: unknown, input: unknown): Promise
   if (parsed.data.markTaskDone && block.taskId) await markTaskDone(user.id, block.taskId, true);
   await discardRecap(user.id, block.id);
   // The recap should change the goal's read; it runs after this returns.
-  await requestRead(user.id, block.goalId);
+  await requestRead(user.id, block.goalId, { trigger: "recap" });
   refresh();
   return { ok: true };
 }

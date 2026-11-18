@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       continue;
     }
     try {
-      await assessGoal(goal.userId, goal.goalId);
+      await assessGoal(goal.userId, goal.goalId, "cron");
       read++;
     } catch (error) {
       failed++;
