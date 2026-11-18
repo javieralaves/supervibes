@@ -158,7 +158,13 @@ export async function askWithApps(
           max_tokens: options.maxTokens,
           betas: [...(hasServers ? (["mcp-client-2025-11-20"] as const) : []), "server-side-fallback-2026-07-01"],
           fallbacks: "default",
-          system: options.system,
+          // Two cache points (5-minute TTL). The one on the system prompt covers the app tool
+          // definitions and instructions, which repeat across calls with the same apps (a recap
+          // drafted again, a read soon after another). The automatic one moves to the end of
+          // the request as the tool loop grows, so each step after the first reads everything
+          // before it from cache instead of paying full price for it again.
+          system: [{ type: "text", text: options.system, cache_control: { type: "ephemeral" } }],
+          cache_control: { type: "ephemeral" },
           output_config: { effort: options.effort, format: { type: "json_schema", schema: options.schema } },
           ...(hasServers ? { mcp_servers: mcpServers, tools: toolsets } : {}),
           messages,
