@@ -6,17 +6,17 @@ import Link from "next/link";
 import { startTransition, useOptimistic, useState } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
-import { StatusPill } from "@/components/status-pill";
+import { StatusText } from "@/components/status-pill";
 import { StatusTrajectory } from "@/components/status-trajectory";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
 import { DEFAULT_GOAL_ICON, isGoalIcon } from "@/lib/goal-icons";
 import { MAX_GOALS, type GoalInput } from "@/lib/goal-schema";
 import type { GoalDTO } from "@/lib/goals";
-import type { TrajectoryDay } from "@/lib/status-schema";
+import { buildTrajectory, type TrajectoryDay } from "@/lib/status-schema";
+import { daysUntil, formatTargetDate, shortRelative } from "@/lib/target-date";
 
 import { createGoalAction, deleteGoalAction, updateGoalAction, type GoalActionResult } from "./actions";
 import { GoalDialog } from "./goal-dialog";
-import { TargetDateLabel } from "./target-date-label";
 
 type Op =
   | { type: "create"; goal: GoalDTO }
@@ -139,36 +139,53 @@ export function GoalsBoard({
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {optimisticGoals.map((goal) => {
             const pending = goal.id.startsWith(PENDING_PREFIX);
+            // Two parts: who it is at the top, how it's going pinned to the bottom, so footers line up across a row.
             const cardClass =
-              "group relative flex h-full w-full items-start gap-4 rounded-2xl border border-card-border bg-card p-5 text-left transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30";
+              "group relative flex h-full w-full flex-col rounded-2xl border border-card-border bg-card p-5 text-left transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/30";
             const trajectory = trajectories[goal.id];
             // Its latest status: the last day's, which carries the most recent read.
             const latest = trajectory?.days.at(-1);
+            const days = goal.targetDate ? daysUntil(goal.targetDate, today) : null;
             const content = (
               <>
-                <GoalBadge icon={goal.icon} color={goal.color} />
-                <span className="min-w-0 flex-1 pt-0.5">
-                  <span className="block text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
+                {/* Who it is: the icon on the title's first line. */}
+                <span className="flex items-start gap-2.5 pr-5">
+                  <GoalBadge icon={goal.icon} color={goal.color} size="xs" />
+                  <span className="line-clamp-2 min-w-0 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
                     {goal.title}
                   </span>
-                  {(goal.targetDate || latest?.status) && (
-                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {latest?.status && latest.basis && (
-                        <StatusPill status={latest.status} basis={latest.basis} className="px-1.5 text-[11px]" />
-                      )}
-                      {goal.targetDate && <TargetDateLabel date={goal.targetDate} className="text-xs" />}
-                    </span>
-                  )}
-                  {/* Its last few weeks at a glance, once it has a status. */}
-                  {latest?.status && trajectory && (
-                    <StatusTrajectory days={trajectory.days} today={today} size="mini" className="mt-3" />
-                  )}
                 </span>
                 <span
                   aria-hidden="true"
-                  className="text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
+                  className="absolute right-4 top-5 text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
                 >
                   <HugeiconsIcon icon={ArrowRight01Icon} size={16} />
+                </span>
+
+                {/* How it's going: status and target date, then the last weeks, edge to edge. */}
+                <span className="mt-auto block pt-5">
+                  <span className="flex items-baseline justify-between gap-3 text-xs">
+                    {latest?.status && latest.basis ? (
+                      <StatusText status={latest.status} basis={latest.basis} />
+                    ) : (
+                      <span className="text-muted">No status yet</span>
+                    )}
+                    {goal.targetDate && days !== null && (
+                      <span
+                        suppressHydrationWarning
+                        title={`Target ${formatTargetDate(goal.targetDate, today)}`}
+                        className={`shrink-0 tabular-nums ${days < 0 ? "text-amber-700 dark:text-amber-400" : "text-muted"}`}
+                      >
+                        {formatTargetDate(goal.targetDate, today)} · {shortRelative(days)}
+                      </span>
+                    )}
+                  </span>
+                  <StatusTrajectory
+                    days={trajectory?.days ?? buildTrajectory([], null, today)}
+                    today={today}
+                    size="mini"
+                    className="mt-2"
+                  />
                 </span>
               </>
             );

@@ -29,3 +29,20 @@ export function StatusPill({
     </span>
   );
 }
+
+const TEXT: Record<GoalStatus, string> = {
+  on_track: "text-emerald-700 dark:text-emerald-400",
+  at_risk: "text-amber-700 dark:text-amber-400",
+  off_track: "text-red-700 dark:text-red-400",
+  unclear: "text-muted",
+};
+
+/** A quieter status: a dot and the word in its colour, with no pill behind it. For dense places like cards. */
+export function StatusText({ status, basis, className = "" }: { status: GoalStatus; basis: StatusBasis; className?: string }) {
+  return (
+    <span title={basisLabel(basis)} className={`inline-flex items-center gap-1.5 font-medium ${TEXT[status]} ${className}`}>
+      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONE[status].dot}`} />
+      {statusLabel(status, basis)}
+    </span>
+  );
+}
