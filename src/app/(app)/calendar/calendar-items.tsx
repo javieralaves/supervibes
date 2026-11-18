@@ -16,12 +16,13 @@ import { goalColorStyle } from "@/lib/goal-colors";
 import type { BlockView } from "@/lib/block-schema";
 import type { Clock } from "@/lib/settings-schema";
 
-import { GUTTER, y } from "./geometry";
+import { GUTTER, HOUR, y } from "./geometry";
 
 export type CalendarGoal = { id: string; title: string; icon: string; color: string };
 
-/** Short items get a single line: title and time side by side. */
-const isShort = (start: number, end: number) => end - start < 60;
+/** Height a block needs for its title and time on two lines, in px. Shorter ones get a single line. */
+const TWO_LINES = 48;
+const isShort = (start: number, end: number) => ((end - start) / 60) * HOUR < TWO_LINES;
 
 function place(start: number, end: number, inset = 0): React.CSSProperties {
   return {

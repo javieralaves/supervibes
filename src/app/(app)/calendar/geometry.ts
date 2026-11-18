@@ -1,7 +1,7 @@
 /* Shared layout of the day timeline. */
 
 /** Height of one hour on the timeline, in px. */
-export const HOUR = 88;
+export const HOUR = 176;
 /** Room above midnight and below the last hour so their labels aren't clipped. */
 export const PAD = 12;
 /** Width of the hour-label column. */
