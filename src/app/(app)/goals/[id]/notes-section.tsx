@@ -58,15 +58,12 @@ export function NotesSection({
   notes,
   author,
   clock,
-  onPosted,
 }: {
   goalId: string;
   notes: NoteView[];
   author: NoteAuthor;
   /** The user's clock choice, for recapped sessions' times. */
   clock: Clock | null;
-  /** Called after a new note is saved, to refresh the progress read. */
-  onPosted: () => void;
 }) {
   const [optimisticNotes, apply] = useOptimistic(notes, applyOp);
   const [draft, setDraft] = useState("");
@@ -87,9 +84,7 @@ export function NotesSection({
     startPosting(async () => {
       apply({ type: "add", note: { id: `pending-${now}`, body, createdAt: now, updatedAt: now } });
       const result = await addPostAction(goalId, body);
-      if (result.ok) {
-        onPosted();
-      } else {
+      if (!result.ok) {
         setDraft(body);
         setError(result.error);
       }

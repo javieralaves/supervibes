@@ -12,6 +12,9 @@ import { DayCalendar } from "./day-calendar";
 
 export const metadata: Metadata = { title: "Calendar · Supervibes" };
 
+// Posting a recap starts a progress read that runs after the response, within this limit.
+export const maxDuration = 300;
+
 async function Today() {
   const user = await requireUser();
   const [tasks, settings, goals, blocks] = await Promise.all([

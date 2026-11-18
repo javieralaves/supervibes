@@ -6,8 +6,9 @@ import * as z from "zod";
 import { postBodySchema } from "@/lib/post-schema";
 import { createPost, deletePost, updatePost } from "@/lib/posts";
 import { sourceInputSchema } from "@/lib/source-schema";
-import { createSource, deleteSource, updateSource } from "@/lib/sources";
-import { assessGoal, completeSuggestion, getLatestRead, passOnSuggestion, ProgressError } from "@/lib/progress";
+import { createSource, deleteSource, getGoal, updateSource } from "@/lib/sources";
+import { requestRead } from "@/lib/background-read";
+import { completeSuggestion, getLatestRead, passOnSuggestion } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
 import { createTask, deleteTask, markTaskDone, updateTask } from "@/lib/tasks";
@@ -49,20 +50,15 @@ export async function deleteSourceAction(sourceId: unknown): Promise<ActionResul
   return { ok: true };
 }
 
+/** "Update status": starts a progress read in the background; the page shows it until it lands. */
 export async function refreshProgressAction(goalId: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const id = idSchema.safeParse(goalId);
-  if (!id.success) return { ok: false, error: "That goal doesn't exist." };
+  if (!id.success || !(await getGoal(user.id, id.data))) return { ok: false, error: "That goal doesn't exist." };
 
-  try {
-    await assessGoal(user.id, id.data);
-    refresh();
-    return { ok: true };
-  } catch (error) {
-    if (!(error instanceof ProgressError)) console.error("[progress] read failed", error);
-    refresh();
-    return { ok: false, error: error instanceof ProgressError ? error.message : "Couldn't read progress. Try again." };
-  }
+  await requestRead(user.id, id.data, { settle: false });
+  refresh();
+  return { ok: true };
 }
 
 export async function addPostAction(goalId: unknown, body: unknown): Promise<ActionResult> {
@@ -74,6 +70,8 @@ export async function addPostAction(goalId: unknown, body: unknown): Promise<Act
 
   const post = await createPost(user.id, goal.data, parsed.data);
   if (!post) return { ok: false, error: "That goal doesn't exist anymore." };
+  // A new note should change the read; it runs after this returns.
+  await requestRead(user.id, goal.data);
   refresh();
   return { ok: true };
 }

@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import * as z from "zod";
 
 import { AgendaError, prepareAgenda } from "@/lib/agenda";
+import { requestRead } from "@/lib/background-read";
 import { createBlock, deleteBlock, getBlock, updateBlock } from "@/lib/blocks";
 import { blockDetailsSchema, blockTimesSchema, newBlockSchema, type BlockAgenda } from "@/lib/block-schema";
 import { createRecapPost } from "@/lib/posts";
@@ -181,6 +182,8 @@ export async function postRecapAction(blockId: unknown, input: unknown): Promise
 
   if (parsed.data.markTaskDone && block.taskId) await markTaskDone(user.id, block.taskId, true);
   await discardRecap(user.id, block.id);
+  // The recap should change the goal's read; it runs after this returns.
+  await requestRead(user.id, block.goalId);
   refresh();
   return { ok: true };
 }

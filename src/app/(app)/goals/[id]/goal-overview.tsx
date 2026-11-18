@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 
 import type { Clock } from "@/lib/settings-schema";
 
@@ -15,6 +16,10 @@ import { TasksSection, type SuggestionView, type TaskView } from "./tasks-sectio
 type Props = {
   goal: { id: string; title: string; description: string | null; targetDate: string | null; icon: string; color: string };
   read: (ReadView & { suggestions: SuggestionView[] }) | null;
+  /** Whether a progress read is running in the background. */
+  readPending: boolean;
+  /** Why the last background read failed, if it did. */
+  readError: string | null;
   notes: NoteView[];
   author: NoteAuthor;
   tasks: TaskView[];
@@ -26,14 +31,26 @@ type Props = {
 };
 
 /** Goal header, progress read, tasks and suggestions, sources and activity, sharing one "reading progress" state. */
-export function GoalOverview({ goal, read, notes, author, tasks, clock, sources, connections }: Props) {
-  const [reading, startReading] = useTransition();
+/** How often to check whether a background read has landed. */
+const POLL_MS = 4_000;
+
+export function GoalOverview({ goal, read, readPending, readError, notes, author, tasks, clock, sources, connections }: Props) {
+  const router = useRouter();
+  const [requesting, startRequesting] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Reads run on the server after posting or "Update status"; the page refreshes until one lands.
+  const reading = readPending || requesting;
+
+  useEffect(() => {
+    if (!readPending) return;
+    const id = setInterval(() => router.refresh(), POLL_MS);
+    return () => clearInterval(id);
+  }, [readPending, router]);
   const canRead = sources.length > 0 || tasks.length > 0 || notes.length > 0;
 
   function update() {
     setError(null);
-    startReading(async () => {
+    startRequesting(async () => {
       const result = await refreshProgressAction(goal.id);
       if (!result.ok) setError(result.error);
     });
@@ -42,7 +59,7 @@ export function GoalOverview({ goal, read, notes, author, tasks, clock, sources,
   return (
     <>
       <GoalHeader goal={goal} canUpdate={canRead} reading={reading} onUpdate={update} />
-      <ProgressCard read={read} canRead={canRead} reading={reading} error={error} onUpdate={update} />
+      <ProgressCard read={read} canRead={canRead} reading={reading} error={error ?? readError} onUpdate={update} />
       {/* Tasks, with the read's suggestions underneath as candidates to add. */}
       <TasksSection
         goalId={goal.id}
@@ -61,8 +78,8 @@ export function GoalOverview({ goal, read, notes, author, tasks, clock, sources,
         sources={sources}
         connections={connections}
       />
-      {/* A new note should change the read, so it triggers one straight away. */}
-      <NotesSection goalId={goal.id} notes={notes} author={author} clock={clock} onPosted={update} />
+      {/* Posting a note starts a read on the server; the page shows it via readPending. */}
+      <NotesSection goalId={goal.id} notes={notes} author={author} clock={clock} />
     </>
   );
 }

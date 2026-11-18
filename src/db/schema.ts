@@ -42,6 +42,13 @@ export const goals = pgTable(
     color: text().notNull(),
     /** Manual sort order within a user's goals, ascending. */
     position: integer().notNull().default(0),
+    /**
+     * When a progress read was last asked for and hasn't finished; null when none is pending.
+     * Reads run in the background after a post, so the goal page can show one is underway.
+     */
+    readRequestedAt: timestamp({ withTimezone: true }),
+    /** Why the last background read failed, until the next one is asked for. */
+    readError: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

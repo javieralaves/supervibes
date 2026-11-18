@@ -9,6 +9,7 @@ import * as z from "zod";
 import { Skeleton } from "@/components/skeleton";
 import { listConnections } from "@/lib/connections";
 import { requireUser } from "@/lib/session";
+import { getReadStatus } from "@/lib/background-read";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
@@ -19,7 +20,7 @@ import { GoalOverview } from "./goal-overview";
 
 export const metadata: Metadata = { title: "Goal · Supervibes" };
 
-// Progress reads run inside a server action on this page and can take a while.
+// Progress reads run after this page's server actions respond, within this limit.
 export const maxDuration = 300;
 
 async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -30,9 +31,10 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, connections, posts, tasks, schedules, settings] = await Promise.all([
+  const [sources, read, readStatus, connections, posts, tasks, schedules, settings] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
+    getReadStatus(user.id, id),
     listConnections(user.id),
     listPosts(user.id, id),
     listTasks(user.id, id),
@@ -44,6 +46,8 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     <GoalOverview
       goal={goal}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
+      readPending={readStatus.pending}
+      readError={readStatus.error}
       notes={posts.map((p) => ({
         id: p.id,
         body: p.body,
