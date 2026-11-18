@@ -198,6 +198,27 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testDayTimeline() {
+        // 6 AM to 3 PM of the timeline, the way it opens on a morning.
+        let top = DayGrid.y(6 * 60)
+        assertAppearances(
+            DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour)
+                .frame(width: 736)
+                .offset(y: -top)
+                .frame(width: 736, height: DayGrid.y(15 * 60) - top, alignment: .topLeading)
+                .clipped()
+                .background(Theme.card),
+            width: 736, height: DayGrid.y(15 * 60) - top
+        )
+    }
+
+    func testDayViewTop() {
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now).background(Theme.background),
+            width: 900, height: 360
+        )
+    }
+
     func testTrajectoryHoverCard() {
         let days = Fixtures.goals[1].trajectory
         assertAppearances(

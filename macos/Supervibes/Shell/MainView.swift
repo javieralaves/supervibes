@@ -10,6 +10,8 @@ enum Route: Hashable {
     case goal(String)
     case settings
     case connections
+    /// The calendar, being built natively in parts; the rail still opens the web one.
+    case calendar
 }
 
 /// The main window: sign-in while signed out; otherwise the native rail beside the app's window,
@@ -43,7 +45,13 @@ struct MainView: View {
                 account: shell.account,
                 isMenuOpen: shell.isAccountMenuOpen,
                 topInset: 28,
-                onSelect: shell.open,
+                onSelect: { item in
+                    #if DEBUG
+                    // Option-click Calendar previews the native one while it's being built.
+                    if item == .calendar, NSEvent.modifierFlags.contains(.option) { return shell.openNativeCalendar() }
+                    #endif
+                    shell.open(item)
+                },
                 onAccount: { shell.isAccountMenuOpen.toggle() }
             )
             .zIndex(1)
@@ -79,6 +87,8 @@ struct MainView: View {
                             Backdrop()
                             ConnectionsScreen(auth: auth)
                         }
+                    case .calendar:
+                        CalendarScreen(auth: auth)
                     }
                 }
             }
@@ -294,6 +304,48 @@ private struct GoalScreen: View {
         Task {
             if await model.delete() { shell.open(.goals) }
         }
+    }
+}
+
+/// The calendar with its data, in the app's window.
+private struct CalendarScreen: View {
+    @State private var model: CalendarModel
+
+    init(auth: AuthModel) {
+        _model = State(initialValue: CalendarModel(auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load your calendar", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                DayView(
+                    data: model.data,
+                    offset: model.offset,
+                    now: model.now,
+                    error: model.error,
+                    onStep: model.step,
+                    onToday: model.goToToday
+                )
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.leftArrow) { model.step(-1); return .handled }
+                .onKeyPress(.rightArrow) { model.step(1); return .handled }
+            }
+        }
+        .background(Theme.background)
+        .task { await model.start() }
+        .onDisappear { model.stop() }
     }
 }
 

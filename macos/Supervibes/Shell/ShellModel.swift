@@ -39,6 +39,7 @@ final class ShellModel {
         switch route {
         case .web: RailItem.matching(path: web.currentPath)
         case .goals, .goal: .goals
+        case .calendar: .calendar
         case .connections: .connections
         case .settings: nil
         }
@@ -63,6 +64,13 @@ final class ShellModel {
         if web.currentPath != item.href {
             web.navigate(to: item.href)
         }
+    }
+
+    /// The native calendar, previewed with Option-click in Debug builds until it's complete.
+    func openNativeCalendar() {
+        isAccountMenuOpen = false
+        overlays.dismiss()
+        route = .calendar
     }
 
     /// A goal's own page.

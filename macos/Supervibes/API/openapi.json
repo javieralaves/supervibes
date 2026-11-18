@@ -13,6 +13,254 @@
       }
     },
     "schemas": {
+      "Calendar": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "daysBack": {
+            "type": "integer",
+            "description": "How far back the blocks go, in days."
+          },
+          "daysAhead": {
+            "type": "integer",
+            "description": "How far ahead the blocks go, in days."
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarBlock"
+            }
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarGoal"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarTask"
+            },
+            "description": "Open tasks across goals, in each goal's order."
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "sleepStart": {
+                "type": "integer"
+              },
+              "wakeTime": {
+                "type": "integer"
+              },
+              "clock": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "12h",
+                  "24h",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "sleepStart",
+              "wakeTime",
+              "clock"
+            ]
+          },
+          "objectives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "goalId": {
+                  "type": "string"
+                },
+                "weekStart": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "objective": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "goalId",
+                "weekStart",
+                "objective"
+              ]
+            }
+          }
+        },
+        "required": [
+          "today",
+          "daysBack",
+          "daysAhead",
+          "blocks",
+          "goals",
+          "tasks",
+          "settings",
+          "objectives"
+        ]
+      },
+      "CalendarBlock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "null for protected time without a name."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "For protected time: what the session is for."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromSuggestion": {
+            "type": "string",
+            "nullable": true
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The task it schedules: an intention."
+          },
+          "taskDone": {
+            "type": "boolean"
+          },
+          "hasAgenda": {
+            "type": "boolean"
+          },
+          "hasRecapDraft": {
+            "type": "boolean",
+            "description": "A recap waiting to be read and posted."
+          },
+          "recapDrafting": {
+            "type": "boolean",
+            "description": "A recap is drafting itself in the background."
+          },
+          "hasRecapPost": {
+            "type": "boolean",
+            "description": "Its recap has been posted to the goal's activity."
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "title",
+          "description",
+          "startsAt",
+          "endsAt",
+          "fromSuggestion",
+          "taskId",
+          "taskDone",
+          "hasAgenda",
+          "hasRecapDraft",
+          "recapDrafting",
+          "hasRecapPost"
+        ]
+      },
+      "CalendarGoal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "icon",
+          "color"
+        ]
+      },
+      "CalendarTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "minutes": {
+            "type": "integer"
+          },
+          "plannedFor": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "dueOn": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "title",
+          "minutes",
+          "plannedFor",
+          "dueOn"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "not_found"
+              },
+              "message": {
+                "type": "string",
+                "example": "That block doesn't exist anymore."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
       "Connections": {
         "type": "object",
         "properties": {
@@ -87,31 +335,6 @@
           "linear",
           "github",
           "granola"
-        ]
-      },
-      "Error": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "object",
-            "properties": {
-              "code": {
-                "type": "string",
-                "example": "not_found"
-              },
-              "message": {
-                "type": "string",
-                "example": "That block doesn't exist anymore."
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ]
-          }
-        },
-        "required": [
-          "error"
         ]
       },
       "ConnectionStart": {
@@ -1281,6 +1504,61 @@
     "parameters": {}
   },
   "paths": {
+    "/api/v1/calendar": {
+      "get": {
+        "operationId": "getCalendar",
+        "summary": "Blocks around now, with goals, open tasks, sleep and weekly objectives",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": false,
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calendar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/connections": {
       "get": {
         "operationId": "listConnections",

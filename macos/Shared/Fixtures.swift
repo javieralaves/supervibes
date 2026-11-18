@@ -184,4 +184,32 @@ enum Fixtures {
         SourceItem(id: "s2", connectionId: "c2", provider: .github,
                    relation: "The supervibes repo. Merged PRs are progress.", lastError: "The token expired."),
     ]
+
+    /// A calendar day around `referenceNow` (10:18): sessions behind, one under way, more ahead.
+    static var calendar: CalendarData {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        let goals = [
+            CalendarGoal(id: "g1", title: "Ship Supervibes for Mac", icon: "Rocket01Icon", color: "sky"),
+            CalendarGoal(id: "g2", title: "Run a calm week", icon: "Plant01Icon", color: "pink"),
+            CalendarGoal(id: "g3", title: "Stay engaged with the community", icon: "Briefcase01Icon", color: "indigo"),
+        ]
+        let blocks = [
+            CalendarBlock(id: "b1", goalId: "g1", title: nil, startsAt: at(8, 15), endsAt: at(9, 45), hasRecapPost: true),
+            CalendarBlock(id: "b2", goalId: "g2", title: "Groceries with Julia", startsAt: at(9, 45), endsAt: at(10, 0)),
+            CalendarBlock(id: "b3", goalId: "g1", title: "Rebuild the calendar natively", startsAt: at(10, 0), endsAt: at(11, 30),
+                          taskId: "t9"),
+            CalendarBlock(id: "b4", goalId: "g3", title: "User research call", startsAt: at(12, 0), endsAt: at(12, 30)),
+            CalendarBlock(id: "b5", goalId: "g1", title: "Review the onboarding copy", startsAt: at(7, 0), endsAt: at(7, 45),
+                          taskId: "t3", taskDone: true),
+            CalendarBlock(id: "b6", goalId: "g2", title: "Lunch", startsAt: at(13, 0), endsAt: at(14, 0), hasRecapDraft: true),
+        ]
+        let tasks = [
+            CalendarTask(id: "t1", goalId: "g1", title: "Write the API sketch", minutes: 60, plannedFor: "2026-11-18"),
+            CalendarTask(id: "t2", goalId: "g2", title: "Book the restaurant", minutes: 15, plannedFor: "2026-11-16"),
+            CalendarTask(id: "t4", goalId: "g3", title: "Reply to Jorge", minutes: 30, dueOn: "2026-11-17"),
+        ]
+        return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
+                            clock: .twelveHour, objectives: [])
+    }
 }
