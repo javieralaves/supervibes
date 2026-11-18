@@ -916,6 +916,19 @@ export function DayCalendar({
                 setWeekView(false);
                 setOffset(day);
               }}
+              goals={goals}
+              creating={popover?.mode === "create" ? popover : null}
+              onCreate={(day, start, end) => {
+                // Same as drawing on the day: the goal you last protected time for, else the first.
+                const last = readPref(LAST_GOAL_KEY);
+                const goalId = goals.some((g) => g.id === last) ? last! : (goals[0]?.id ?? "");
+                setSelectedId(null);
+                setPopover({ mode: "create", day, start, end, initial: { goalId, title: null } });
+              }}
+              onSaveCreate={(details) => {
+                if (popover?.mode === "create") saveCreate(popover, details);
+              }}
+              onCancelCreate={closePopover}
             />
           ) : (
           <div

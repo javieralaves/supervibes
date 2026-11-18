@@ -26,6 +26,7 @@ export function BlockPopover({
   initial,
   intention,
   timeLabel,
+  place,
   onSave,
   onCancel,
 }: {
@@ -37,6 +38,11 @@ export function BlockPopover({
   /** Intentions are a task already: the title reads as what you'll do. */
   intention: boolean;
   timeLabel: string;
+  /**
+   * Where it sits across the timeline, as CSS. By default it lines up past the hour
+   * labels and fills the day; the week view puts it beside one day's column.
+   */
+  place?: { left: string; width: string };
   onSave: (details: BlockDetails) => void;
   onCancel: () => void;
 }) {
@@ -82,10 +88,11 @@ export function BlockPopover({
       }}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
-        left: `calc(${GUTTER} + 12px)`,
+        left: place?.left ?? `calc(${GUTTER} + 12px)`,
+        width: place?.width ?? "min(320px, calc(100% - 5.5rem))",
         ...(above ? { bottom: timelineHeight - anchorTop + 8 } : { top: anchorBottom + 8 }),
       }}
-      className="absolute z-40 w-[min(320px,calc(100%-5.5rem))] rounded-2xl border border-card-border bg-card p-1.5 shadow-[0_1px_2px_rgb(15_17_20/0.04),0_12px_32px_-8px_rgb(15_17_20/0.18)] animate-[pop-in_140ms_ease-out]"
+      className="absolute z-40 rounded-2xl border border-card-border bg-card p-1.5 shadow-[0_1px_2px_rgb(15_17_20/0.04),0_12px_32px_-8px_rgb(15_17_20/0.18)] animate-[pop-in_140ms_ease-out]"
     >
       {view === "goals" ? (
         <div className="animate-[fade-in_120ms_ease-out]">

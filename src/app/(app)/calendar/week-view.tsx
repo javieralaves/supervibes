@@ -6,7 +6,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
-import type { BlockView } from "@/lib/block-schema";
+import { BLOCK_STEP, type BlockDetails, type BlockView } from "@/lib/block-schema";
 import { formatHour, formatRange } from "@/lib/clock";
 import { DAY_MINUTES, sleepSpans, type DaySegment } from "@/lib/day";
 import { goalColorStyle } from "@/lib/goal-colors";
@@ -15,6 +15,7 @@ import { formatWeek } from "@/lib/target-date";
 import { MAX_WEEK_OBJECTIVE } from "@/lib/week-objective-schema";
 
 import { setWeekObjectiveAction } from "../goals/[id]/actions";
+import { BlockPopover } from "./block-popover";
 import type { CalendarGoal } from "./calendar-items";
 import type { StripItem } from "./day-strip";
 import { GoalSplitBar, PanelFigure, PanelHeader } from "./panel-header";
@@ -22,8 +23,9 @@ import { GoalSplitBar, PanelFigure, PanelHeader } from "./panel-header";
 /*
  * The week at a glance, Monday to Sunday: seven days side by side with what's
  * planned for each day without a time, and the blocks, filled in where time has
- * passed. For looking and choosing: click a block to open it, or a day to step
- * into it. Creating and moving things happens in the day view. Beside it, an
+ * passed. Drag on a day's empty time (or click it) to protect time for a goal,
+ * as in the day view; click a block to open it, or a day to step into it. Moving
+ * and resizing blocks happens in the day view. Beside it, an
  * overview panel: each goal's objective for the week, and its time planned and done.
  */
 
@@ -35,6 +37,41 @@ const wy = (minutes: number) => PAD + (minutes / 60) * WEEK_HOUR;
 const GRID_HEIGHT = wy(DAY_MINUTES) + PAD;
 /** Planned-for-the-day tasks shown per day before "+N". */
 const MAX_ANYTIME = 3;
+/** Minutes after midnight at a y offset on the week's timeline, unrounded. */
+const minutesAtY = (px: number) => ((px - PAD) / WEEK_HOUR) * 60;
+const snapDown = (m: number) => Math.floor(m / BLOCK_STEP) * BLOCK_STEP;
+const snapUp = (m: number) => Math.ceil(m / BLOCK_STEP) * BLOCK_STEP;
+const clampDay = (m: number) => Math.min(DAY_MINUTES, Math.max(0, m));
+/** How wide the popover is beside a day, in px. */
+const POPOVER_WIDTH = 300;
+
+/** Protected time being drawn on one day: where the press started, and where the pointer is. */
+type Drawing = { day: number; from: number; to: number; moved: boolean; originY: number };
+
+/** The span a drawing covers, snapped: a click makes an hour; a drag covers what it passed, at least a step. */
+function drawnSpan(d: Drawing) {
+  if (!d.moved) {
+    let start = snapDown(d.from);
+    const end = Math.min(DAY_MINUTES, start + 60);
+    if (end - start < BLOCK_STEP) start = end - BLOCK_STEP;
+    return { start, end };
+  }
+  const start = snapDown(Math.min(d.from, d.to));
+  return { start, end: Math.max(start + BLOCK_STEP, snapUp(Math.max(d.from, d.to))) };
+}
+
+/** Where the popover sits beside day `index` (0 is Monday) of the week's columns. */
+function popoverPlace(index: number) {
+  const column = `((100% - ${GUTTER}) / 7)`;
+  const left =
+    index < 5
+      ? `calc(${GUTTER} + ${column} * ${index + 1} + 6px)`
+      : `calc(${GUTTER} + ${column} * ${index} - ${POPOVER_WIDTH}px - 6px)`;
+  return { left, width: `${POPOVER_WIDTH}px` };
+}
+
+/** Protected time drawn on the week and waiting to be named, as the calendar holds it. */
+export type WeekCreating = { day: number; start: number; end: number; initial: BlockDetails };
 
 /** "45m", "2h", "2h 30m". */
 function duration(minutes: number) {
@@ -56,6 +93,11 @@ export function WeekView({
   selectedId,
   onOpenBlock,
   onOpenDay,
+  goals,
+  creating,
+  onCreate,
+  onSaveCreate,
+  onCancelCreate,
 }: {
   /** Local midnight today. */
   base: Date;
@@ -73,7 +115,50 @@ export function WeekView({
   selectedId: string | null;
   onOpenBlock: (blockId: string) => void;
   onOpenDay: (day: number) => void;
+  /** Goals to protect time for, for the popover's goal list. */
+  goals: CalendarGoal[];
+  /** Time drawn and waiting to be named, if any. */
+  creating: WeekCreating | null;
+  /** Time drawn on a day: open the popover to name it and pick its goal. */
+  onCreate: (day: number, start: number, end: number) => void;
+  onSaveCreate: (details: BlockDetails) => void;
+  onCancelCreate: () => void;
 }) {
+  const [drawing, setDrawingState] = useState<Drawing | null>(null);
+  // Also kept in a ref, so a quick tap's release sees the press before React re-renders.
+  const drawingRef = useRef<Drawing | null>(null);
+  const setDrawing = (d: Drawing | null) => {
+    drawingRef.current = d;
+    setDrawingState(d);
+  };
+  const timeline = useRef<HTMLDivElement>(null);
+  const minuteAt = (clientY: number) => clampDay(minutesAtY(clientY - timeline.current!.getBoundingClientRect().top));
+
+  function onColumnDown(e: React.PointerEvent<HTMLDivElement>, day: number) {
+    // Empty time only: blocks open on click, and the overlays let presses through.
+    if (e.button !== 0 || e.target !== e.currentTarget || !timeline.current) return;
+    // Keep getting moves while the pointer leaves the column; not every pointer can be captured.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    const m = minuteAt(e.clientY);
+    setDrawing({ day, from: m, to: m, moved: false, originY: e.clientY });
+  }
+  function onColumnMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = drawingRef.current;
+    if (!d) return;
+    setDrawing({ ...d, to: minuteAt(e.clientY), moved: d.moved || Math.abs(e.clientY - d.originY) > 4 });
+  }
+  function onColumnUp() {
+    const d = drawingRef.current;
+    if (!d) return;
+    const { start, end } = drawnSpan(d);
+    setDrawing(null);
+    onCreate(d.day, start, end);
+  }
+
+  // The dashed outline of time being drawn, or drawn and waiting to be named.
+  const draft = drawing?.moved ? { day: drawing.day, ...drawnSpan(drawing) } : creating;
   const days = Array.from({ length: 7 }, (_, i) => monday + i);
   const inWeek = segments.filter((s) => s.day >= monday && s.day <= monday + 6);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -146,7 +231,7 @@ export function WeekView({
           aria-label="Week timeline"
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          <div className="relative" style={{ height: GRID_HEIGHT }}>
+          <div ref={timeline} className="relative" style={{ height: GRID_HEIGHT }}>
             {/* Hour lines and labels */}
             {Array.from({ length: 25 }, (_, h) => (
               <div key={h} aria-hidden="true" className="absolute inset-x-0" style={{ top: wy(h * 60) }}>
@@ -167,7 +252,16 @@ export function WeekView({
                 // Whole days behind you, and today up to now, are washed slightly: time that's gone.
                 const pastUntil = d < 0 ? DAY_MINUTES : d === 0 ? nowMin : null;
                 return (
-                  <div key={d} className="relative border-l border-card-border">
+                  <div
+                    key={d}
+                    onPointerDown={(e) => onColumnDown(e, d)}
+                    onPointerMove={onColumnMove}
+                    onPointerUp={onColumnUp}
+                    onPointerCancel={() => setDrawing(null)}
+                    className={`relative touch-none select-none border-l border-card-border ${
+                      drawing?.day === d && drawing.moved ? "cursor-ns-resize" : ""
+                    }`}
+                  >
                     {sleep.map((span) => (
                       <div
                         key={span.start}
@@ -202,6 +296,17 @@ export function WeekView({
                           />
                         );
                       })}
+                    {draft && draft.day === d && (
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-x-0.5 z-30 rounded-md border-2 border-dashed border-foreground/40 bg-foreground/[.04]"
+                        style={{ top: wy(draft.start) + 1, height: wy(draft.end) - wy(draft.start) - 2 }}
+                      >
+                        <span className="absolute left-2 top-1 text-[11px] font-medium tabular-nums text-muted">
+                          {formatRange(draft.start, draft.end, clock)}
+                        </span>
+                      </div>
+                    )}
                     {d === 0 && (
                       <div
                         aria-hidden="true"
@@ -215,6 +320,24 @@ export function WeekView({
                 );
               })}
             </div>
+
+            {/* Naming time just drawn: beside its day, to the right, or to the left on the weekend so it stays in view. */}
+            {creating && creating.day >= monday && creating.day <= monday + 6 && (
+              <BlockPopover
+                key={`new-${creating.day}-${creating.start}`}
+                // Aligned with the drawn time's top edge (or its bottom, near the end of the day) rather than under it.
+                anchorTop={wy(creating.end) + 8}
+                anchorBottom={wy(creating.start) - 8}
+                timelineHeight={GRID_HEIGHT}
+                goals={goals}
+                initial={creating.initial}
+                intention={false}
+                timeLabel={`${new Date(base.getFullYear(), base.getMonth(), base.getDate() + creating.day).toLocaleDateString(undefined, { weekday: "long" })} · ${formatRange(creating.start, creating.end, clock)}`}
+                place={popoverPlace(creating.day - monday)}
+                onSave={onSaveCreate}
+                onCancel={onCancelCreate}
+              />
+            )}
           </div>
         </div>
     </div>
