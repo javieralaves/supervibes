@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import type { BlockRecap } from "@/lib/recap-schema";
+import type { BlockRecap, PostedRecap } from "@/lib/recap-schema";
 
 /* Client-safe shapes for calendar blocks. Storage lives in blocks.ts. */
 
@@ -60,8 +60,8 @@ export type BlockView = {
   agenda: BlockAgenda | null;
   /** A draft recap, once the session has ended and one has been prepared. */
   recap: BlockRecap | null;
-  /** Whether a recap has been posted to the goal's activity. */
-  recapped: boolean;
+  /** The recap posted to the goal's activity, once there is one. */
+  recapPost: PostedRecap | null;
 };
 
 /** A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made. */

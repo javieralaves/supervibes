@@ -1,8 +1,15 @@
 "use client";
 
-import { Cancel01Icon, CircleIcon, PencilEdit02Icon, Refresh01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  Cancel01Icon,
+  CircleIcon,
+  PencilEdit02Icon,
+  Refresh01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useRef, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
 import { agendaIsStale, MAX_BLOCK_DESCRIPTION, type BlockAgenda, type BlockView } from "@/lib/block-schema";
@@ -19,7 +26,8 @@ import { RecapSection } from "./recap-section";
  * say what the person wants out of it, and get an agenda: a short plan for the
  * session steered by that, from the goal's tasks, notes and latest read, with the
  * tasks it draws on listed below as context. An intention shows the task it
- * schedules. Once a block has ended, it can be recapped against what was wanted.
+ * schedules. Once a block has ended, it can be recapped against what was wanted;
+ * then it reads as a record: the aim, the posted recap, and the agenda folded away.
  */
 export function BlockPanel({
   block,
@@ -48,7 +56,8 @@ export function BlockPanel({
   onToggleDone?: () => void;
 }) {
   const intention = Boolean(block.fromSuggestion || block.taskId);
-  const kind = intention ? (block.taskDone ? "Done" : "Intention") : "Protected time";
+  const recapped = block.recapPost !== null;
+  const kind = `${intention ? (block.taskDone ? "Done" : "Intention") : "Protected time"}${recapped ? " · Recapped" : ""}`;
   const title = block.title ?? goal?.title ?? "Protected time";
   // The description as last saved here, ahead of the calendar catching up.
   const [description, setDescription] = useState(block.description);
@@ -78,11 +87,11 @@ export function BlockPanel({
         <h2 className="mt-3 text-[17px] font-semibold leading-snug tracking-[-0.01em] text-foreground [text-wrap:pretty]">{title}</h2>
         <p className="mt-1 text-sm tabular-nums text-muted">{timeLabel}</p>
 
-        {!intention && (!block.recapped || description) && (
+        {!intention && (!recapped || description) && (
           <SessionAim
             blockId={block.id}
             saved={description}
-            readOnly={block.recapped}
+            readOnly={recapped}
             onSaving={(p) => (saving.current = p)}
             onSaved={setDescription}
           />
@@ -154,7 +163,10 @@ function SessionAim({
     <section aria-label="Aim" className="mt-6">
       <h3 className="text-[13px] font-semibold text-foreground">Aim</h3>
       {readOnly ? (
-        <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-foreground/90 [text-wrap:pretty]">{saved}</p>
+        // The person's own words, set back a little so the recap below carries the weight.
+        <p className="mt-1.5 whitespace-pre-line border-l-2 border-foreground/10 pl-3 text-sm leading-relaxed text-muted [text-wrap:pretty]">
+          {saved}
+        </p>
       ) : (
         <textarea
           aria-label="What you want out of this session"
@@ -212,6 +224,10 @@ function Agenda({
   const [, startToggling] = useTransition();
   // Tasks checked off or reopened here, until the calendar catches up.
   const [toggled, setToggled] = useState<Map<string, boolean>>(new Map());
+  // Once the session is over, the agenda is history: folded away until asked for.
+  const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
+  const showBody = !ended || expanded;
 
   // Whichever is newer: what's saved on the block, or what was just prepared here.
   const agenda = fresh && (!saved || fresh.preparedAt > saved.preparedAt) ? fresh : saved;
@@ -247,16 +263,34 @@ function Agenda({
   return (
     <>
       <section aria-label="Agenda" className="mt-6">
-        {agenda && (
-          <div className="flex items-baseline gap-2">
-            <h3 className="text-[13px] font-semibold text-foreground">Agenda</h3>
-            {!preparing && (
-              <span className="text-xs text-muted" suppressHydrationWarning>
-                {preparedLabel(agenda.preparedAt)}
-              </span>
-            )}
-          </div>
-        )}
+        {agenda &&
+          (ended ? (
+            <h3>
+              <button
+                type="button"
+                onClick={() => setExpanded((e) => !e)}
+                aria-expanded={expanded}
+                aria-controls={bodyId}
+                className="-ml-1 flex items-center gap-1 rounded-md px-1 text-[13px] font-semibold text-foreground transition-colors hover:text-foreground/80 focus-visible:outline-2 focus-visible:outline-foreground/30"
+              >
+                Agenda
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  size={14}
+                  className={`text-muted transition-transform ${expanded ? "rotate-90" : ""}`}
+                />
+              </button>
+            </h3>
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-[13px] font-semibold text-foreground">Agenda</h3>
+              {!preparing && (
+                <span className="text-xs text-muted" suppressHydrationWarning>
+                  {preparedLabel(agenda.preparedAt)}
+                </span>
+              )}
+            </div>
+          ))}
 
         {preparing && !agenda ? (
           <div aria-label="Preparing agenda" className="space-y-2">
@@ -265,8 +299,12 @@ function Agenda({
             ))}
           </div>
         ) : (
-          agenda && (
-            <p className={`mt-1.5 text-sm leading-relaxed text-foreground/90 [text-wrap:pretty] ${preparing ? "opacity-50" : ""}`}>
+          agenda &&
+          showBody && (
+            <p
+              id={bodyId}
+              className={`mt-1.5 text-sm leading-relaxed text-foreground/90 [text-wrap:pretty] ${preparing ? "opacity-50" : ""}`}
+            >
               {agenda.text}
             </p>
           )
@@ -309,7 +347,7 @@ function Agenda({
         )}
       </section>
 
-      {agenda && agenda.tasks.length > 0 && (
+      {agenda && showBody && agenda.tasks.length > 0 && (
         <section aria-label="Related tasks" className="mt-6">
           <h3 className="text-[13px] font-semibold text-foreground">Related tasks</h3>
           <ul className="mt-1.5 -mx-2">

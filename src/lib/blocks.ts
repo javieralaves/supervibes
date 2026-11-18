@@ -5,7 +5,7 @@ import { and, asc, eq, gt, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { calendarBlocks, goalPosts, goals, goalTasks } from "@/db/schema";
 import type { BlockAgenda } from "@/lib/block-schema";
-import type { BlockRecap } from "@/lib/recap-schema";
+import type { BlockRecap, PostedRecap } from "@/lib/recap-schema";
 
 /*
  * Calendar blocks: intentions and protected time. Same rule as everything else:
@@ -29,8 +29,8 @@ export type BlockDTO = {
   agenda: BlockAgenda | null;
   /** A draft recap of the session, until it's posted or discarded. */
   recap: BlockRecap | null;
-  /** Whether a recap of it has been posted to the goal's activity; only filled when listing. */
-  recapped?: boolean;
+  /** The recap posted to the goal's activity, if there is one; only filled when listing. */
+  recapPost?: PostedRecap | null;
 };
 
 const columns = {
@@ -60,16 +60,22 @@ async function ownsGoal(userId: string, goalId: string) {
 /** Blocks overlapping [from, to), with whether each one's task is done. */
 export async function listBlocks(userId: string, from: Date, to: Date): Promise<BlockDTO[]> {
   const rows = await db
-    .select({ ...columns, taskDoneAt: goalTasks.doneAt, recapPostId: goalPosts.id })
+    .select({
+      ...columns,
+      taskDoneAt: goalTasks.doneAt,
+      recapPostId: goalPosts.id,
+      recapBody: goalPosts.body,
+      recapBreadcrumbs: goalPosts.breadcrumbs,
+    })
     .from(calendarBlocks)
     .leftJoin(goalTasks, eq(goalTasks.id, calendarBlocks.taskId))
     .leftJoin(goalPosts, eq(goalPosts.blockId, calendarBlocks.id))
     .where(and(eq(calendarBlocks.userId, userId), gt(calendarBlocks.endsAt, from), lt(calendarBlocks.startsAt, to)))
     .orderBy(asc(calendarBlocks.startsAt));
-  return rows.map(({ taskDoneAt, recapPostId, ...block }) => ({
+  return rows.map(({ taskDoneAt, recapPostId, recapBody, recapBreadcrumbs, ...block }) => ({
     ...block,
     taskDone: taskDoneAt !== null,
-    recapped: recapPostId !== null,
+    recapPost: recapPostId !== null ? { body: recapBody ?? "", breadcrumbs: recapBreadcrumbs ?? [] } : null,
   }));
 }
 

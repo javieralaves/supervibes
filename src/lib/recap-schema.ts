@@ -28,6 +28,9 @@ export type BlockRecap = {
   preparedAt: string;
 };
 
+/** A recap as posted to the goal's activity, shown back on its block. */
+export type PostedRecap = { body: string; breadcrumbs: Breadcrumb[] };
+
 /** A snapshot of the session a recap post covers, so it still reads right if the block is deleted. */
 export type RecapSession = {
   title: string;

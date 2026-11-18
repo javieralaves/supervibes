@@ -515,7 +515,7 @@ export function DayCalendar({
     const times = { startsAt: isoAt(base, p.day, p.start), endsAt: isoAt(base, p.day, p.end) };
     setPopover(null);
     run(
-      { type: "add", block: { id: pendingId(), ...details, ...times, description: null, fromSuggestion: null, taskId: null, taskDone: false, agenda: null, recap: null, recapped: false } },
+      { type: "add", block: { id: pendingId(), ...details, ...times, description: null, fromSuggestion: null, taskId: null, taskDone: false, agenda: null, recap: null, recapPost: null } },
       () => createBlockAction({ ...details, ...times }),
     );
   }
@@ -551,7 +551,7 @@ export function DayCalendar({
           taskDone: false,
           agenda: null,
           recap: null,
-          recapped: false,
+          recapPost: null,
           ...times,
         },
       },

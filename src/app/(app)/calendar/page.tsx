@@ -31,7 +31,7 @@ async function Today() {
       blocks={blocks.map((b) => ({
         ...b,
         taskDone: b.taskDone ?? false,
-        recapped: b.recapped ?? false,
+        recapPost: b.recapPost ?? null,
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
       }))}

@@ -1,27 +1,29 @@
 "use client";
 
-import { ArrowRight01Icon, Refresh01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import type { BlockView } from "@/lib/block-schema";
 import { MAX_POST } from "@/lib/post-schema";
-import type { BlockRecap } from "@/lib/recap-schema";
+import type { BlockRecap, PostedRecap } from "@/lib/recap-schema";
 
 import { discardRecapAction, postRecapAction, prepareRecapAction } from "./actions";
 
 /**
  * "Recap session", once a block has ended: a draft of what was meant to happen
  * and what did, from the goal's connected apps, that the person edits and posts
- * to the goal's activity. With no apps to read, it's an empty write-up.
+ * to the goal's activity. With no apps to read, it's an empty write-up. Once
+ * posted, the recap itself shows here, as the record of how the session went.
  */
 export function RecapSection({ block }: { block: BlockView }) {
   const [fresh, setFresh] = useState<BlockRecap | null>(null);
   // Set after discarding, until the calendar catches up.
   const [cleared, setCleared] = useState(false);
-  const [posted, setPosted] = useState(false);
+  // What was just posted here, until the calendar catches up with it.
+  const [posted, setPosted] = useState<PostedRecap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preparing, startPreparing] = useTransition();
 
@@ -42,23 +44,8 @@ export function RecapSection({ block }: { block: BlockView }) {
     });
   }
 
-  if (block.recapped || posted) {
-    return (
-      <section aria-label="Recap" className="mt-6 flex items-center gap-2 text-sm">
-        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-background">
-          <HugeiconsIcon icon={Tick02Icon} size={10} strokeWidth={3} />
-        </span>
-        <span className="font-medium text-foreground">Recapped</span>
-        <Link
-          href={`/goals/${block.goalId}`}
-          className="ml-auto flex items-center gap-0.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
-        >
-          View in goal
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
-        </Link>
-      </section>
-    );
-  }
+  const shown = block.recapPost ?? posted;
+  if (shown) return <PostedRecapView goalId={block.goalId} recap={shown} />;
 
   return (
     <section aria-label="Recap" className="mt-6">
@@ -79,7 +66,7 @@ export function RecapSection({ block }: { block: BlockView }) {
           recap={recap}
           preparing={preparing}
           onRedraft={prepare}
-          onPosted={() => setPosted(true)}
+          onPosted={setPosted}
           onDiscarded={() => {
             setFresh(null);
             setCleared(true);
@@ -123,7 +110,7 @@ function RecapDraft({
   recap: BlockRecap;
   preparing: boolean;
   onRedraft: () => void;
-  onPosted: () => void;
+  onPosted: (recap: PostedRecap) => void;
   onDiscarded: () => void;
 }) {
   const [text, setText] = useState(recap.happened);
@@ -144,7 +131,7 @@ function RecapDraft({
         keep: kept.map((b) => b.url),
         markTaskDone: canMarkDone && markDone,
       });
-      if (result.ok) onPosted();
+      if (result.ok) onPosted({ body: text.trim(), breadcrumbs: kept });
       else setError(result.error);
     });
   }
@@ -248,5 +235,56 @@ function RecapDraft({
         </button>
       </div>
     </div>
+  );
+}
+
+/** A posted recap: what happened, clamped until asked for in full, and the links it kept. */
+function PostedRecapView({ goalId, recap }: { goalId: string; recap: PostedRecap }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const body = useRef<HTMLParagraphElement>(null);
+
+  // Only offer "Show more" when the clamp is actually hiding something.
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (el && !expanded) setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [recap.body, expanded]);
+
+  return (
+    <section aria-label="Recap" className="mt-6">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-[13px] font-semibold text-foreground">Recap</h3>
+        <Link
+          href={`/goals/${goalId}`}
+          className="flex items-center gap-0.5 self-center text-xs font-medium text-muted transition-colors hover:text-foreground"
+        >
+          View in goal
+          <HugeiconsIcon icon={ArrowRight01Icon} size={13} />
+        </Link>
+      </div>
+      {recap.body && (
+        <>
+          <p
+            ref={body}
+            className={`mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere] [text-wrap:pretty] ${
+              expanded ? "" : "line-clamp-4"
+            }`}
+          >
+            {recap.body}
+          </p>
+          {(clamped || expanded) && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              aria-expanded={expanded}
+              className="mt-1 text-xs font-medium text-muted transition-colors hover:text-foreground"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </>
+      )}
+      <Breadcrumbs items={recap.breadcrumbs} className="mt-2" />
+    </section>
   );
 }
