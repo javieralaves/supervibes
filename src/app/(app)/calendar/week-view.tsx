@@ -24,8 +24,9 @@ import { GoalSplitBar, PanelFigure, PanelHeader } from "./panel-header";
  * The week at a glance, Monday to Sunday: seven days side by side with what's
  * planned for each day without a time, and the blocks, filled in where time has
  * passed. Drag on a day's empty time (or click it) to protect time for a goal,
- * as in the day view; click a block to open it, or a day to step into it. Moving
- * and resizing blocks happens in the day view. Beside it, an
+ * and drag a block's top or bottom edge to change its length, as in the day view;
+ * click a block to open it, or a day to step into it. Moving blocks happens in
+ * the day view. Beside it, an
  * overview panel: each goal's objective for the week, and its time planned and done.
  */
 
@@ -70,6 +71,15 @@ function popoverPlace(index: number) {
   return { left, width: `${POPOVER_WIDTH}px` };
 }
 
+/** Where a block's part on a day sits, moved by an edge being dragged if it's this one. */
+function resized(s: DaySegment, r: Resizing | null) {
+  if (!r || r.blockId !== s.id || r.day !== s.day) return { start: s.start, end: s.end };
+  return r.edge === "start" ? { start: s.start + r.delta, end: s.end } : { start: s.start, end: s.end + r.delta };
+}
+
+/** A block's edge being dragged: which, where it started, and how far it's moved, in minutes. */
+type Resizing = { blockId: string; day: number; edge: "start" | "end"; start: number; end: number; delta: number };
+
 /** Protected time drawn on the week and waiting to be named, as the calendar holds it. */
 export type WeekCreating = { day: number; start: number; end: number; initial: BlockDetails };
 
@@ -98,6 +108,7 @@ export function WeekView({
   onCreate,
   onSaveCreate,
   onCancelCreate,
+  onResize,
 }: {
   /** Local midnight today. */
   base: Date;
@@ -123,7 +134,67 @@ export function WeekView({
   onCreate: (day: number, start: number, end: number) => void;
   onSaveCreate: (details: BlockDetails) => void;
   onCancelCreate: () => void;
+  /** A block's new times after one of its edges was dragged. */
+  onResize: (block: BlockView, times: { startsAt: string; endsAt: string }) => void;
 }) {
+  const [resizing, setResizing] = useState<Resizing | null>(null);
+  // A drag that ends over the block would also click it; that click shouldn't open the panel.
+  const justResized = useRef(false);
+  // The resize cursor everywhere while an edge is dragged, even off the block.
+  const isResizing = resizing !== null;
+  useEffect(() => {
+    if (!isResizing) return;
+    const cursor = document.body.style.cursor;
+    document.body.style.cursor = "ns-resize";
+    return () => {
+      document.body.style.cursor = cursor;
+    };
+  }, [isResizing]);
+
+  /** Drag a block's top or bottom edge: snapped to steps, keeping it within the day and at least a step long. */
+  function startResize(e: React.PointerEvent<HTMLElement>, block: BlockView, s: DaySegment, edge: "start" | "end") {
+    if (e.button !== 0 || block.id.startsWith("pending-")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const originY = e.clientY;
+    const [min, max] = edge === "start" ? [-s.start, s.end - BLOCK_STEP - s.start] : [s.start + BLOCK_STEP - s.end, DAY_MINUTES - s.end];
+    let delta = 0;
+    const base = { blockId: block.id, day: s.day, edge, start: s.start, end: s.end };
+    setResizing({ ...base, delta });
+
+    function onMove(ev: PointerEvent) {
+      const raw = Math.round(((ev.clientY - originY) / WEEK_HOUR) * 60 / BLOCK_STEP) * BLOCK_STEP;
+      const next = Math.max(min, Math.min(max, raw));
+      if (next === delta) return;
+      delta = next;
+      setResizing({ ...base, delta });
+    }
+    function finish(save: boolean) {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      setResizing(null);
+      if (!save || delta === 0) return;
+      justResized.current = true;
+      setTimeout(() => (justResized.current = false), 0);
+      const shift = delta * 60_000;
+      onResize(block, {
+        startsAt: new Date(Date.parse(block.startsAt) + (edge === "start" ? shift : 0)).toISOString(),
+        endsAt: new Date(Date.parse(block.endsAt) + (edge === "end" ? shift : 0)).toISOString(),
+      });
+    }
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") finish(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+  }
+
   const [drawing, setDrawingState] = useState<Drawing | null>(null);
   // Also kept in a ref, so a quick tap's release sees the press before React re-renders.
   const drawingRef = useRef<Drawing | null>(null);
@@ -161,6 +232,9 @@ export function WeekView({
   const draft = drawing?.moved ? { day: drawing.day, ...drawnSpan(drawing) } : creating;
   const days = Array.from({ length: 7 }, (_, i) => monday + i);
   const inWeek = segments.filter((s) => s.day >= monday && s.day <= monday + 6);
+  /** A local time, `minutes` after midnight `day` days from today, in ms. */
+  const at = (day: number, minutes: number) =>
+    new Date(base.getFullYear(), base.getMonth(), base.getDate() + day, 0, minutes).getTime();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const elapsedOf = (s: DaySegment) => elapsed(s, base, now);
 
@@ -287,12 +361,25 @@ export function WeekView({
                             key={`${s.id}:${s.day}`}
                             block={block}
                             goal={goalById.get(block.goalId)}
-                            start={s.start}
-                            end={s.end}
+                            {...resized(s, resizing)}
                             elapsed={elapsedOf(s)}
                             clock={clock}
                             selected={block.id === selectedId}
-                            onOpen={() => onOpenBlock(block.id)}
+                            resizing={resizing?.blockId === s.id}
+                            // Only the day a block starts on has its top edge, and the day it ends on its bottom.
+                            onStartEdge={
+                              at(s.day, s.start) === Date.parse(block.startsAt)
+                                ? (e) => startResize(e, block, s, "start")
+                                : undefined
+                            }
+                            onEndEdge={
+                              at(s.day, s.end) === Date.parse(block.endsAt)
+                                ? (e) => startResize(e, block, s, "end")
+                                : undefined
+                            }
+                            onOpen={() => {
+                              if (!justResized.current) onOpenBlock(block.id);
+                            }}
                           />
                         );
                       })}
@@ -537,6 +624,9 @@ function WeekBlock({
   elapsed,
   clock,
   selected,
+  resizing,
+  onStartEdge,
+  onEndEdge,
   onOpen,
 }: {
   block: BlockView;
@@ -546,6 +636,12 @@ function WeekBlock({
   elapsed: number;
   clock: Clock;
   selected: boolean;
+  /** One of its edges is being dragged. */
+  resizing: boolean;
+  /** Drag its top edge; absent on a day it doesn't start on. */
+  onStartEdge?: (e: React.PointerEvent<HTMLElement>) => void;
+  /** Drag its bottom edge; absent on a day it doesn't end on. */
+  onEndEdge?: (e: React.PointerEvent<HTMLElement>) => void;
   onOpen: () => void;
 }) {
   const intention = Boolean(block.fromSuggestion || block.taskId);
@@ -566,11 +662,32 @@ function WeekBlock({
         ["--elapsed" as string]: `${Math.round(elapsed * 1000) / 10}%`,
       }}
       // A flex column so the title sits at the top: a button centres its content otherwise.
-      className={`goal-tint ${intention ? "goal-tint-opaque" : "goal-hatch"} block-time absolute inset-x-0.5 z-10 flex flex-col justify-start overflow-hidden rounded-md text-left ${
-        selected ? "ring-2 ring-[var(--goal)]/60" : ""
-      } ${pending ? "opacity-60" : "cursor-pointer"}`}
+      className={`goal-tint ${intention ? "goal-tint-opaque" : "goal-hatch"} block-time group absolute inset-x-0.5 flex flex-col justify-start overflow-hidden rounded-md text-left ${
+        resizing ? "z-30" : "z-10"
+      } ${selected ? "ring-2 ring-[var(--goal)]/60" : ""} ${pending ? "opacity-60" : "cursor-pointer"}`}
     >
       <span aria-hidden="true" className="block-bar absolute inset-y-0 left-0 w-[3px]" />
+      {/* Drag the top or bottom edge to change the length, as in the day view. */}
+      {!pending && onStartEdge && (
+        <span
+          aria-hidden="true"
+          onPointerDown={onStartEdge}
+          className="absolute inset-x-0 top-0 z-10 h-1.5 cursor-ns-resize"
+        />
+      )}
+      {!pending && onEndEdge && (
+        <span
+          aria-hidden="true"
+          onPointerDown={onEndEdge}
+          className="absolute inset-x-0 bottom-0 z-10 flex h-2 cursor-ns-resize justify-center"
+        >
+          <span
+            className={`mt-0.5 h-1 w-6 rounded-full bg-foreground/20 transition-opacity group-hover:opacity-100 ${
+              resizing ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        </span>
+      )}
       {height >= 18 && (
         <span className={`block px-2 ${height >= 44 ? "pt-1.5" : "pt-0.5"}`}>
           <span

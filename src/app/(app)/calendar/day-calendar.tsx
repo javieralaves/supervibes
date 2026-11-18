@@ -929,6 +929,10 @@ export function DayCalendar({
                 if (popover?.mode === "create") saveCreate(popover, details);
               }}
               onCancelCreate={closePopover}
+              // Same as dragging an edge in the day view: shown at once, then saved.
+              onResize={(block, times) =>
+                run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times))
+              }
             />
           ) : (
           <div
