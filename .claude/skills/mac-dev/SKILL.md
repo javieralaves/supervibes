@@ -15,6 +15,13 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 - `Tests/Snapshots/`: snapshot tests. Reference PNGs live in `__Snapshots__/` and are checked in.
 - `Config/*.xcconfig`: per-configuration settings. Debug talks to `http://localhost:3000`, Release to production. Signing is ad hoc unless `Config/Signing.local.xcconfig` (gitignored) sets a team.
 
+## The API and the generated client
+
+- The app talks to `/api/v1`, a Hono app in `src/lib/api/` mounted by `src/app/api/v1/[[...route]]/route.ts`. Each route is one `createRoute` declaration (path, zod input and output, `operationId`) plus a handler that calls the same `src/lib` functions the server actions use, scoped with `c.var.user.id`. Errors are always `{ error: { code, message } }`, with a message written for people.
+- After changing anything in `src/lib/api`, run `npm run api:spec` (dev server running) to rewrite `macos/Supervibes/API/openapi.json`. The Swift client (`Client`, `Components.Schemas.*`, `Operations.*`) is generated from it at build time by swift-openapi-generator; nothing generated is checked in. `npm run api:spec -- --check` fails if the checked-in document is stale.
+- `APIClient.make` adds the bearer token and decodes dates with fractional seconds (the server sends `.000Z`). Map generated types into the app's own models (e.g. `Block.init(api:)`) rather than using them in views, so views stay snapshot-testable with fixtures.
+- Handle `.unauthorized` by calling `auth.sessionEnded()`.
+
 ## Commands (run from `macos/`)
 
 | Goal | Command |
@@ -38,7 +45,8 @@ Debug builds load the local Next.js server. Start it with the preview tool's `de
 
 ## Gotchas
 
-- Fixtures stand in for real data until the API exists. `Fixtures.referenceNow` is fixed so snapshots are deterministic. Never use `Date()` in a snapshot test.
+- The menu bar runs on `/api/v1/today` (fetched every 5 minutes, on sign-in, on wake and when the day changes). Fixtures remain for snapshot tests and the widget, which can't read the app's data until there's an App Group, and that needs a real signing team. `Fixtures.referenceNow` is fixed so snapshots are deterministic. Never use `Date()` in a snapshot test.
+- `xcodebuild` runs with `-skipPackagePluginValidation` (in `scripts/_common.sh`) so the OpenAPI generator plugin runs without an Xcode trust prompt.
 - Times are formatted in the Mac's locale and time zone (Europe/Madrid), so the references assume that.
 - Ad-hoc signing turns hardened runtime off and means Screen Recording and Accessibility permissions won't survive rebuilds. Set up `Signing.local.xcconfig` before any work on screen context.
 - Sign-in goes through the system sign-in sheet (`Supervibes/Auth/AuthModel.swift`, server side in `src/lib/native-auth.ts` and `src/app/api/native/*`). The app keeps a bearer token and gives the web view the same session through `/api/native/handoff`. Google sign-in can't run inside the WKWebView, and the web app's `/sign-in` page is replaced by native sign-in.

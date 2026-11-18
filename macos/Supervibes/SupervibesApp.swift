@@ -2,11 +2,14 @@ import SwiftUI
 
 @main
 struct SupervibesApp: App {
-    @State private var model = AppModel()
-    @State private var auth = AuthModel(baseURL: AppConfig.baseURL)
+    @State private var auth: AuthModel
+    @State private var model: AppModel
 
     init() {
         Log.app.info("Launched, talking to \(AppConfig.baseURL.absoluteString, privacy: .public)")
+        let auth = AuthModel(baseURL: AppConfig.baseURL)
+        _auth = State(initialValue: auth)
+        _model = State(initialValue: AppModel(auth: auth))
     }
 
     var body: some Scene {
@@ -14,7 +17,9 @@ struct SupervibesApp: App {
         Window("Supervibes", id: "main") {
             WebShellView(auth: auth)
                 .frame(minWidth: 900, minHeight: 600)
-                .task { await auth.restore() }        }
+                .task { await auth.restore() }
+                .onChange(of: auth.isSignedIn) { model.refreshSoon() }
+        }
         .defaultSize(width: 1280, height: 820)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -45,6 +50,7 @@ private struct MenuBarRoot: View {
             current: model.current,
             upcoming: model.upcoming,
             now: model.now,
+            isSignedIn: model.isSignedIn,
             onOpen: {
                 openWindow(id: "main")
                 NSApp.activate()

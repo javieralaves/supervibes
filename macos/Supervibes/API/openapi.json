@@ -1,0 +1,328 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Supervibes",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The session token from the Mac app's sign-in (see lib/native-auth.ts)."
+      }
+    },
+    "schemas": {
+      "Me": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "email",
+              "name",
+              "image"
+            ]
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "sleepStart": {
+                "type": "integer",
+                "description": "Bedtime, minutes after local midnight."
+              },
+              "wakeTime": {
+                "type": "integer",
+                "description": "Wake-up time, minutes after local midnight."
+              },
+              "clock": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "12h",
+                  "24h",
+                  null
+                ],
+                "description": "null follows the device."
+              },
+              "timeZone": {
+                "type": "string",
+                "nullable": true,
+                "description": "As the web app last reported it."
+              }
+            },
+            "required": [
+              "sleepStart",
+              "wakeTime",
+              "clock",
+              "timeZone"
+            ]
+          }
+        },
+        "required": [
+          "user",
+          "settings"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "not_found"
+              },
+              "message": {
+                "type": "string",
+                "example": "That block doesn't exist anymore."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Today": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "The calendar day, in `timeZone`."
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodayBlock"
+            },
+            "description": "Every block that overlaps the day, earliest first."
+          }
+        },
+        "required": [
+          "day",
+          "timeZone",
+          "blocks"
+        ]
+      },
+      "TodayBlock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "intention",
+              "protected"
+            ],
+            "description": "An intention schedules a task; protected time is held for the goal."
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "null for protected time without a name; show the goal's title."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "For protected time: what the session is for."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true
+          },
+          "taskDone": {
+            "type": "boolean"
+          },
+          "hasAgenda": {
+            "type": "boolean"
+          },
+          "goal": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/components/schemas/GoalColor"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "color"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "description",
+          "startsAt",
+          "endsAt",
+          "taskId",
+          "taskDone",
+          "hasAgenda",
+          "goal"
+        ]
+      },
+      "GoalColor": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "violet"
+          },
+          "light": {
+            "type": "string",
+            "description": "Hex for light mode.",
+            "example": "#8b3df0"
+          },
+          "dark": {
+            "type": "string",
+            "description": "Hex for dark mode.",
+            "example": "#b88bff"
+          }
+        },
+        "required": [
+          "key",
+          "light",
+          "dark"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "The signed-in person and their settings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/today": {
+      "get": {
+        "operationId": "getToday",
+        "summary": "Today's blocks, for the menu bar, widgets and notifications",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The device's time zone. Defaults to the one the web app last reported, then UTC.",
+              "example": "Europe/Madrid"
+            },
+            "required": false,
+            "description": "The device's time zone. Defaults to the one the web app last reported, then UTC.",
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Today"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -14,5 +14,5 @@ generate() {
 # xcodebuild with quiet, readable output: only warnings, errors and test results.
 xb() {
   xcodebuild -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS' \
-    -derivedDataPath "$DERIVED" "$@" 2>&1 | xcbeautify --quiet --disable-logging --disable-colored-output
+    -derivedDataPath "$DERIVED" -skipPackagePluginValidation -skipMacroValidation "$@" 2>&1 | xcbeautify --quiet --disable-logging --disable-colored-output
 }

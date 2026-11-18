@@ -1,13 +1,16 @@
+import AppKit
 import Foundation
+import SwiftUI
 
 /// A block of time on the calendar, as the Mac surfaces show it.
-/// Placeholder shape until the API exists; it will be generated from the server's schema.
 struct Block: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
+    /// The goal's title, or "Protected time" when the block is the goal's own time.
     let goal: String
     let start: Date
     let end: Date
+    var tint: Tint? = nil
 
     func progress(at now: Date) -> Double {
         let total = end.timeIntervalSince(start)
@@ -21,6 +24,33 @@ struct Block: Identifiable, Hashable, Sendable {
 
     func isHappening(at now: Date) -> Bool {
         start <= now && now < end
+    }
+}
+
+/// A goal's colour, as hex for light and dark mode (the server's palette, src/lib/goal-colors.ts).
+struct Tint: Hashable, Sendable {
+    let light: String
+    let dark: String
+
+    var color: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light) ?? .controlAccentColor
+        })
+    }
+}
+
+extension NSColor {
+    /// "#rrggbb"
+    convenience init?(hex: String) {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        self.init(
+            srgbRed: CGFloat((value >> 16) & 0xff) / 255,
+            green: CGFloat((value >> 8) & 0xff) / 255,
+            blue: CGFloat(value & 0xff) / 255,
+            alpha: 1
+        )
     }
 }
 

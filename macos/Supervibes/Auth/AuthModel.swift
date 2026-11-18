@@ -19,7 +19,8 @@ final class AuthModel: NSObject {
     private(set) var state: State = .checking
     let baseURL: URL
 
-    @ObservationIgnored private let store: any TokenStore
+    /// Where the session token lives. Readable from any thread, for the API client.
+    nonisolated let store: any TokenStore
     @ObservationIgnored private var authSession: ASWebAuthenticationSession?
     /// The state sent with the sign-in in progress; nil once its callback has been handled.
     @ObservationIgnored private var pendingState: String?

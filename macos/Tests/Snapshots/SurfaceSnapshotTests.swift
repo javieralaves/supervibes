@@ -20,6 +20,10 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now), width: 300)
     }
 
+    func testMenuBarSignedOut() {
+        assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now, isSignedIn: false), width: 300)
+    }
+
     func testSignIn() {
         assertAppearances(SignInView(), width: 640, height: 360)
     }

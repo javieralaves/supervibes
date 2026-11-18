@@ -5,28 +5,37 @@ struct MenuBarContent: View {
     let current: Block?
     let upcoming: [Block]
     let now: Date
+    var isSignedIn = true
     var onOpen: () -> Void = {}
     var onQuit: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Group {
+            if !isSignedIn {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Not signed in")
+                        .font(.headline)
+                    Text("Sign in to see today's blocks here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
                 if let current {
                     CurrentBlockView(block: current, now: now)
                 } else {
                     NoBlockView()
                 }
-            }
 
-            if !upcoming.isEmpty {
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Next")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                    ForEach(upcoming) { block in
-                        UpcomingRow(block: block)
+                if !upcoming.isEmpty {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Next")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                        ForEach(upcoming) { block in
+                            UpcomingRow(block: block)
+                        }
                     }
                 }
             }
@@ -34,7 +43,7 @@ struct MenuBarContent: View {
             Divider()
 
             HStack {
-                Button("Open Supervibes", action: onOpen)
+                Button(isSignedIn ? "Open Supervibes" : "Sign In…", action: onOpen)
                     .keyboardShortcut("o")
                 Spacer()
                 Button("Quit", action: onQuit)
@@ -61,10 +70,13 @@ private struct UpcomingRow: View {
                 Text(block.title)
                     .font(.callout)
                     .lineLimit(1)
-                Text(block.goal)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    GoalDot(tint: block.tint)
+                    Text(block.goal)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
     }

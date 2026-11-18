@@ -1,0 +1,6 @@
+# swift-openapi-generator reads this and openapi.json (written by `npm run api:spec`) at build time.
+generate:
+  - types
+  - client
+accessModifier: internal
+namingStrategy: idiomatic

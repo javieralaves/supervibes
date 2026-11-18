@@ -1,6 +1,6 @@
 import Foundation
 
-/// Stand-in data for the menu bar, widgets and snapshot tests until the API exists.
+/// Stand-in data for snapshot tests and the widget (until the widget can share the app's data).
 enum Fixtures {
     /// A fixed moment, so snapshot tests render the same image every run.
     static let referenceNow: Date = {
@@ -15,6 +15,9 @@ enum Fixtures {
         return components.date!
     }()
 
+    static let sky = Tint(light: "#0a8be0", dark: "#3cb8ff")
+    static let pink = Tint(light: "#e6327f", dark: "#ff6fae")
+
     /// Today's blocks, laid out around `now`: one in progress and two still to come.
     static func blocks(around now: Date) -> [Block] {
         let minute: TimeInterval = 60
@@ -22,13 +25,13 @@ enum Fixtures {
         let currentEnd = now.addingTimeInterval(42 * minute)
         return [
             Block(id: "current", title: "Scaffold the Mac app", goal: "Ship Supervibes for Mac",
-                  start: currentStart, end: currentEnd),
+                  start: currentStart, end: currentEnd, tint: sky),
             Block(id: "next", title: "Weekly review", goal: "Run a calm week",
                   start: currentEnd.addingTimeInterval(18 * minute),
-                  end: currentEnd.addingTimeInterval(48 * minute)),
+                  end: currentEnd.addingTimeInterval(48 * minute), tint: pink),
             Block(id: "later", title: "Write the API sketch", goal: "Ship Supervibes for Mac",
                   start: currentEnd.addingTimeInterval(108 * minute),
-                  end: currentEnd.addingTimeInterval(198 * minute)),
+                  end: currentEnd.addingTimeInterval(198 * minute), tint: sky),
         ]
     }
 

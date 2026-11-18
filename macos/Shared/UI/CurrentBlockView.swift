@@ -23,20 +23,34 @@ struct CurrentBlockView: View {
                 Text(block.title)
                     .font(.headline)
                     .lineLimit(2)
-                Text(block.goal)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    GoalDot(tint: block.tint)
+                    Text(block.goal)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             ProgressView(value: block.progress(at: now))
                 .progressViewStyle(.linear)
-                .tint(.accentColor)
+                .tint(block.tint?.color ?? .accentColor)
 
             Text(Block.timeRange(block))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// A small dot in the goal's colour.
+struct GoalDot: View {
+    let tint: Tint?
+
+    var body: some View {
+        Circle()
+            .fill(tint?.color ?? Color.secondary)
+            .frame(width: 7, height: 7)
     }
 }
 

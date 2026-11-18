@@ -28,6 +28,16 @@ packages:
   SnapshotTesting:
     url: https://github.com/pointfreeco/swift-snapshot-testing
     from: "1.17.0"
+  # The API client is generated at build time from Supervibes/API/openapi.json (`npm run api:spec`).
+  OpenAPIGenerator:
+    url: https://github.com/apple/swift-openapi-generator
+    from: "1.0.0"
+  OpenAPIRuntime:
+    url: https://github.com/apple/swift-openapi-runtime
+    from: "1.0.0"
+  OpenAPIURLSession:
+    url: https://github.com/apple/swift-openapi-urlsession
+    from: "1.0.0"
 
 targets:
   Supervibes:
@@ -53,6 +63,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.supervibes.mac
     dependencies:
       - target: SupervibesWidgets
+      - package: OpenAPIRuntime
+      - package: OpenAPIURLSession
+    buildToolPlugins:
+      - plugin: OpenAPIGenerator
+        package: OpenAPIGenerator
 
   SupervibesWidgets:
     type: app-extension
