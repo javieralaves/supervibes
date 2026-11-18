@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon, CircleIcon, Flag02Icon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon, Cancel01Icon, Flag02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { goalColorStyle } from "@/lib/goal-colors";
@@ -104,43 +104,45 @@ function StripChip({
 }) {
   const { task, planned, carriedFrom, due } = item;
   const pending = task.block?.id.startsWith("pending-") ?? false;
-  const dueLabel = due === "overdue" && task.dueOn ? `Overdue · ${relativeDayLabel(task.dueOn, today)}` : due ? "Due" : null;
+  const dueLabel =
+    due === "overdue" && task.dueOn ? `Overdue since ${relativeDayLabel(task.dueOn, today)}` : due ? "Due this day" : null;
   const carried = carriedFrom ? `from ${relativeDayLabel(carriedFrom, today)}` : null;
+  // The icon says why it's here: a flag when it's due (red once overdue), a calendar when it's planned.
+  const icon = due ? Flag02Icon : Calendar03Icon;
+  const iconTone =
+    due === "overdue" ? "text-red-600 dark:text-red-400" : "text-[var(--goal-light)] dark:text-[var(--goal-dark)]";
   return (
     <li
       style={goalColorStyle(goal?.color ?? "slate")}
       onPointerDown={pending ? undefined : onPointerDown}
       aria-roledescription="draggable task"
-      aria-label={[task.title, minutesLabel(task.minutes), carried && `planned ${carried}`, dueLabel].filter(Boolean).join(", ")}
-      title={`${task.title}\nDrag onto the timeline to give it a time`}
+      aria-label={[task.title, minutesLabel(task.minutes), planned && (carried ? `planned ${carried}` : "planned"), dueLabel]
+        .filter(Boolean)
+        .join(", ")}
+      title={[task.title, planned && !carried ? "Planned for this day" : carried && `Planned ${carried}`, dueLabel]
+        .filter(Boolean)
+        .concat("Drag onto the timeline to give it a time")
+        .join("\n")}
       // Capped, so a few fit side by side; the full title is in the tooltip.
-      className={`goal-tint group relative flex max-w-[min(100%,17rem)] touch-none select-none items-center gap-1.5 rounded-lg border border-card-border bg-card py-1 pl-2 ${
-        planned ? "pr-7" : "pr-2.5"
-      } shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-opacity ${dragging || pending ? "opacity-50" : "cursor-grab"}`}
+      // --chip is the chip's tint as a solid colour, for the × to fade in over its end.
+      className={`goal-tint group relative flex max-w-[min(100%,17rem)] touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border border-card-border bg-card py-1 pl-2 pr-2.5 [--chip:color-mix(in_oklab,var(--goal)_13%,var(--card))] dark:[--chip:color-mix(in_oklab,var(--goal)_18%,var(--card))] shadow-[0_1px_2px_rgb(15_17_20/0.05)] transition-opacity ${dragging || pending ? "opacity-50" : "cursor-grab"}`}
     >
-      <HugeiconsIcon icon={CircleIcon} size={12} className="shrink-0 text-[var(--goal-light)] dark:text-[var(--goal-dark)]" />
+      <HugeiconsIcon icon={icon} size={13} className={`shrink-0 ${iconTone}`} />
       <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{task.title}</span>
       <span className="shrink-0 text-[11px] tabular-nums text-muted">{minutesLabel(task.minutes)}</span>
       {carried && <span className="shrink-0 text-[11px] font-medium text-amber-700 dark:text-amber-400">{carried}</span>}
-      {dueLabel && (
-        <span
-          className={`flex shrink-0 items-center gap-0.5 text-[11px] font-medium ${
-            due === "overdue" ? "text-red-600 dark:text-red-400" : "text-foreground"
-          }`}
-        >
-          <HugeiconsIcon icon={Flag02Icon} size={11} />
-          {dueLabel}
-        </span>
-      )}
+      {/* Takes no room: it fades in over the end of the chip on hover. */}
       {planned && !pending && (
         <button
           type="button"
           aria-label={`Take “${task.title}” off this day`}
           title="Take it off this day"
           onClick={onUnplan}
-          className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-0 transition-opacity hover:bg-wash hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+          className="group/x absolute inset-y-0 right-0 flex items-center pl-4 pr-1 text-muted opacity-0 transition-opacity [background:linear-gradient(to_right,transparent,var(--chip)_0.875rem)] focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={12} />
+          <span className="flex h-5 w-5 items-center justify-center rounded-md transition-colors group-hover/x:bg-foreground/10 group-hover/x:text-foreground">
+            <HugeiconsIcon icon={Cancel01Icon} size={12} />
+          </span>
         </button>
       )}
     </li>

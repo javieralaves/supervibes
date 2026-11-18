@@ -724,29 +724,31 @@ function TaskRow({
   const quiet = isOpen
     ? ""
     : "opacity-0 group-hover:opacity-100 group-has-[[data-state=open]]:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:hidden";
-  const days = (
-    <>
-      {/* A time on the calendar says when already; the planned day follows it. */}
-      {!task.scheduledAt && (
-        <DayPill
-          kind="plan"
-          value={task.plannedFor}
-          today={today}
-          onChange={onPlan}
-          disabled={pending}
-          className={task.plannedFor ? "" : quiet}
-        />
-      )}
-      <DayPill
-        kind="due"
-        value={task.dueOn}
-        today={today}
-        onChange={onDue}
-        disabled={pending}
-        className={task.dueOn ? "" : quiet}
-      />
-    </>
+  // A time on the calendar says when already; the planned day follows it.
+  const plan = !task.scheduledAt && (
+    <DayPill
+      key="plan"
+      kind="plan"
+      value={task.plannedFor}
+      today={today}
+      onChange={onPlan}
+      disabled={pending}
+      className={task.plannedFor ? "" : quiet}
+    />
   );
+  const due = (
+    <DayPill
+      key="due"
+      kind="due"
+      value={task.dueOn}
+      today={today}
+      onChange={onDue}
+      disabled={pending}
+      className={task.dueOn ? "" : quiet}
+    />
+  );
+  // Set pills first and empty ones after, so a hidden empty pill never leaves a gap between the others.
+  const days = !task.plannedFor && task.dueOn ? [due, plan] : [plan, due];
 
   if (isOpen) {
     return (
