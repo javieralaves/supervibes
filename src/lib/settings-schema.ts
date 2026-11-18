@@ -38,3 +38,17 @@ export const settingsSchema = z
 export function awakeMinutes({ sleepStart, wakeTime }: Pick<Settings, "sleepStart" | "wakeTime">) {
   return (sleepStart - wakeTime + 24 * 60) % (24 * 60);
 }
+
+/** A time zone the runtime knows, e.g. "Europe/Madrid", as a browser reports it. */
+export const timeZoneSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((tz) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Unknown time zone.");

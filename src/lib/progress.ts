@@ -9,9 +9,10 @@ import type { AiTrigger } from "@/lib/ai-usage";
 import { listUpcomingBlocks } from "@/lib/blocks";
 import { answerText, askWithApps, clearSourceErrors, openGoalApps, reachedProviders, sourceLines } from "@/lib/goal-apps";
 import { listPosts } from "@/lib/posts";
+import { getTimeZone } from "@/lib/settings";
 import { minutesLabel } from "@/lib/task-schema";
 import { listTasksForRead } from "@/lib/tasks";
-import { targetDateForPrompt } from "@/lib/target-date";
+import { targetDateForPrompt, taskDaysForPrompt, todayIn } from "@/lib/target-date";
 
 /** How far back each read looks. A rolling window keeps the read about recent momentum. */
 const WINDOW_DAYS = 30;
@@ -28,6 +29,7 @@ How to work:
 - If the person has said what done looks like, that is the finish line: judge progress by how much closer they are to it, not by how busy they've been. Without it, infer the finish line from the goal's title and context.
 - If there's a target date, weigh pace against the time left: say plainly if they're on track, behind, or past it. Without one, don't invent a deadline.
 - The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
+- An open task may have a day the person planned to do it and a due date they set: their own commitments, not yours to invent. Overdue tasks and plans that slipped are worth naming when they matter for the goal; a due date coming up shapes what matters most right now. A task's due date is not the goal's target date.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
 - Weigh everything together. You're judging momentum toward the goal, not listing activity.
@@ -85,10 +87,11 @@ const readSchema = z.object({
   suggestions: z.array(suggestionSchema).transform((list) => list.slice(0, 3)),
 });
 
-/** A task as one prompt line: its title, then its description on the same line. */
-function taskLine(t: { title: string; description: string | null }) {
+/** A task as one prompt line: its title, any planned day or due date, then its description. */
+function taskLine(t: { title: string; description: string | null }, days = "") {
   const description = t.description?.replace(/\s+/g, " ").trim();
-  return description ? `${t.title} — ${description.slice(0, 400)}` : t.title;
+  const title = days ? `${t.title} [${days}]` : t.title;
+  return description ? `${title} — ${description.slice(0, 400)}` : title;
 }
 
 /** Stored shape; minutes is 30, 60 or 120. */
@@ -152,6 +155,8 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   }
 
   const now = new Date();
+  // The person's own day, so "today", "overdue" and "in 3 days" match what they see.
+  const today = todayIn(await getTimeZone(userId), now);
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const previous = await getLatestRead(userId, goalId);
   const planned = await listUpcomingBlocks(userId, goalId);
@@ -159,7 +164,8 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   const prompt = [
     `Goal: ${goal.title}`,
     ...(goal.description ? [`What done looks like, in the person's words: ${goal.description.replace(/\s+/g, " ").trim()}`] : []),
-    ...(goal.targetDate ? [`Target date: ${targetDateForPrompt(goal.targetDate)}`] : []),
+    ...(goal.targetDate ? [`Target date: ${targetDateForPrompt(goal.targetDate, today)}`] : []),
+    `Today, in the person's time zone: ${today}`,
     `Time window: ${since.toISOString()} to ${now.toISOString()}`,
     "",
     ...(apps.usable.length > 0
@@ -190,12 +196,17 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
       ? [
           "Tasks the person has set for this goal (their own plan):",
           ...(tasks.open.length > 0
-            ? ["Open, in their order:", ...tasks.open.map((t) => `- [${minutesLabel(t.minutes)}] ${taskLine(t)}`)]
+            ? [
+                "Open, in their order:",
+                ...tasks.open.map((t) => `- [${minutesLabel(t.minutes)}] ${taskLine(t, taskDaysForPrompt(t, today))}`),
+              ]
             : ["No open tasks."]),
           ...(tasks.done.length > 0
             ? [
                 "Finished within the time window, newest first:",
-                ...tasks.done.map((t) => `- ${t.doneAt!.toISOString().slice(0, 10)}: ${taskLine(t)}`),
+                ...tasks.done.map(
+                  (t) => `- ${t.doneAt!.toISOString().slice(0, 10)}: ${taskLine(t, taskDaysForPrompt(t, today, { done: true }))}`,
+                ),
               ]
             : ["Nothing finished within the time window."]),
         ]

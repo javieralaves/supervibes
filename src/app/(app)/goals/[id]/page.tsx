@@ -13,7 +13,8 @@ import { getReadStatus } from "@/lib/background-read";
 import { getLatestRead } from "@/lib/progress";
 import { listPosts } from "@/lib/posts";
 import { getGoal, listSources } from "@/lib/sources";
-import { getSettings } from "@/lib/settings";
+import { getSettings, getTimeZone } from "@/lib/settings";
+import { todayIn } from "@/lib/target-date";
 import { listTasks, listTaskSchedules } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
@@ -31,7 +32,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   const goal = await getGoal(user.id, id);
   if (!goal) notFound();
 
-  const [sources, read, readStatus, connections, posts, tasks, schedules, settings] = await Promise.all([
+  const [sources, read, readStatus, connections, posts, tasks, schedules, settings, timeZone] = await Promise.all([
     listSources(user.id, id),
     getLatestRead(user.id, id),
     getReadStatus(user.id, id),
@@ -40,6 +41,7 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
     listTasks(user.id, id),
     listTaskSchedules(user.id, id),
     getSettings(user.id),
+    getTimeZone(user.id),
   ]);
 
   return (
@@ -67,9 +69,13 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         description: t.description,
         minutes: t.minutes,
         doneAt: t.doneAt?.toISOString() ?? null,
+        plannedFor: t.plannedFor,
+        dueOn: t.dueOn,
         scheduledAt: schedules.get(t.id)?.toISOString() ?? null,
       }))}
       clock={settings.clock}
+      // The person's own today, so the server and their browser agree on "Today" and "Overdue".
+      today={todayIn(timeZone)}
       sources={sources}
       connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
     />

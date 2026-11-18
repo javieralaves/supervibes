@@ -28,8 +28,17 @@ export const taskDescriptionSchema = z
   .nullable()
   .transform((d) => d || null);
 
+/** A calendar day, "YYYY-MM-DD", or null to clear it. For a task's planned day and due date. */
+export const taskDaySchema = z.iso.date("Pick a valid day.").nullable();
+
 export const taskPatchSchema = z
-  .object({ title: taskTitleSchema, description: taskDescriptionSchema, minutes: taskMinutesSchema })
+  .object({
+    title: taskTitleSchema,
+    description: taskDescriptionSchema,
+    minutes: taskMinutesSchema,
+    plannedFor: taskDaySchema,
+    dueOn: taskDaySchema,
+  })
   .partial()
   .refine((p) => Object.values(p).some((v) => v !== undefined), "Nothing to change.");
 

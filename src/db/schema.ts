@@ -212,6 +212,8 @@ export const userSettings = pgTable("user_settings", {
   wakeTime: integer().notNull().default(7 * 60),
   /** "12h" or "24h"; null follows the device. */
   clock: text(),
+  /** IANA time zone from their browser, e.g. "Europe/Madrid", so "today" is their day on the server too. */
+  timeZone: text(),
   updatedAt: timestamp({ withTimezone: true })
     .notNull()
     .defaultNow()
@@ -279,6 +281,13 @@ export const goalTasks = pgTable(
     minutes: integer().notNull().default(30),
     /** When it was checked off; null while open. */
     doneAt: timestamp({ withTimezone: true }),
+    /**
+     * The day the person means to do it ("YYYY-MM-DD", their own calendar day), without a time yet.
+     * Giving it a time on the calendar keeps this in step with the block's day.
+     */
+    plannedFor: date({ mode: "string" }),
+    /** The day it has to be done by ("YYYY-MM-DD", their own calendar day). */
+    dueOn: date({ mode: "string" }),
     /** Manual order among the goal's tasks, ascending. */
     position: integer().notNull().default(0),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

@@ -5,6 +5,8 @@ import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, max, min, sql 
 import { db } from "@/db";
 import { calendarBlocks, goals, goalTasks } from "@/db/schema";
 import { createTaskDonePost, deleteTaskDonePosts } from "@/lib/posts";
+import { getTimeZone } from "@/lib/settings";
+import { todayIn } from "@/lib/target-date";
 import { DEFAULT_TASK_MINUTES } from "@/lib/task-schema";
 
 /*
@@ -19,6 +21,10 @@ export type TaskDTO = {
   description: string | null;
   minutes: number;
   doneAt: Date | null;
+  /** The day they mean to do it, "YYYY-MM-DD", if they've picked one. */
+  plannedFor: string | null;
+  /** The day it's due, "YYYY-MM-DD", if it has a deadline. */
+  dueOn: string | null;
   createdAt: Date;
 };
 
@@ -29,6 +35,8 @@ const columns = {
   description: goalTasks.description,
   minutes: goalTasks.minutes,
   doneAt: goalTasks.doneAt,
+  plannedFor: goalTasks.plannedFor,
+  dueOn: goalTasks.dueOn,
   createdAt: goalTasks.createdAt,
 };
 
@@ -167,7 +175,7 @@ export async function reorderTasks(userId: string, goalId: string, ids: string[]
 export async function updateTask(
   userId: string,
   taskId: string,
-  patch: { title?: string; description?: string | null; minutes?: number },
+  patch: Partial<Pick<TaskDTO, "title" | "description" | "minutes" | "plannedFor" | "dueOn">>,
 ): Promise<TaskDTO | null> {
   const [task] = await db.update(goalTasks).set(patch).where(mine(userId, taskId)).returning(columns);
   return task ?? null;
@@ -185,4 +193,15 @@ export async function setTaskDone(userId: string, taskId: string, done: boolean)
 export async function deleteTask(userId: string, taskId: string): Promise<boolean> {
   const rows = await db.delete(goalTasks).where(mine(userId, taskId)).returning({ id: goalTasks.id });
   return rows.length > 0;
+}
+
+/**
+ * A task given a time on the calendar is planned for that day: when its block is
+ * made or moved, its planned day follows the block's start, in the person's own
+ * time zone. Deleting the block leaves the planned day as it was.
+ */
+export async function planTaskForBlock(userId: string, block: { taskId: string | null; startsAt: Date }) {
+  if (!block.taskId) return;
+  const plannedFor = todayIn(await getTimeZone(userId), block.startsAt);
+  await db.update(goalTasks).set({ plannedFor }).where(mine(userId, block.taskId));
 }

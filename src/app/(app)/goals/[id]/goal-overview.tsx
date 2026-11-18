@@ -25,6 +25,8 @@ type Props = {
   tasks: TaskView[];
   /** The user's clock choice, for times like when a task is scheduled. */
   clock: Clock | null;
+  /** The person's today, "YYYY-MM-DD". */
+  today: string;
   sources: SourceView[];
   /** Connected apps a new source can read from. */
   connections: ConnectionOption[];
@@ -34,7 +36,19 @@ type Props = {
 /** How often to check whether a background read has landed. */
 const POLL_MS = 4_000;
 
-export function GoalOverview({ goal, read, readPending, readError, notes, author, tasks, clock, sources, connections }: Props) {
+export function GoalOverview({
+  goal,
+  read,
+  readPending,
+  readError,
+  notes,
+  author,
+  tasks,
+  clock,
+  today,
+  sources,
+  connections,
+}: Props) {
   const router = useRouter();
   const [requesting, startRequesting] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +83,7 @@ export function GoalOverview({ goal, read, readPending, readError, notes, author
         reading={reading}
         onRefresh={update}
         clock={clock}
+        today={today}
       />
       {/* Rendered here rather than passed in from the server page: a server-built element
           that arrives late in a streamed action response trips React's dev-only key check. */}

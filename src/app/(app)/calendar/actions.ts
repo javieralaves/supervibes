@@ -18,7 +18,8 @@ import { postBodySchema } from "@/lib/post-schema";
 import { discardRecap, prepareRecap, RecapError } from "@/lib/recap";
 import { postRecapSchema, type BlockRecap } from "@/lib/recap-schema";
 import { requireUser } from "@/lib/session";
-import { getTask, markTaskDone } from "@/lib/tasks";
+import { taskDaySchema } from "@/lib/task-schema";
+import { getTask, markTaskDone, planTaskForBlock, updateTask } from "@/lib/tasks";
 
 export type BlockResult = { ok: true } | { ok: false; error: string };
 
@@ -56,6 +57,33 @@ export async function scheduleTaskAction(taskId: unknown, times: unknown): Promi
     endsAt: new Date(when.data.endsAt),
   });
   if (!block) return { ok: false, error: "That goal doesn't exist anymore." };
+  await planTaskForBlock(user.id, block);
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * A task dropped on a day's strip: planned for that day, without a time. If it had
+ * a time on the calendar that hasn't started yet, that block goes, since the day
+ * is now the plan. `day` null takes it off the day.
+ */
+export async function planTaskAction(taskId: unknown, day: unknown, unscheduleBlockId?: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(taskId);
+  const plannedFor = taskDaySchema.safeParse(day);
+  if (!id.success) return { ok: false, error: "That task doesn't exist anymore." };
+  if (!plannedFor.success) return { ok: false, error: firstIssue(plannedFor.error) };
+  if (unscheduleBlockId !== undefined) {
+    const blockId = idSchema.safeParse(unscheduleBlockId);
+    const block = blockId.success ? await getBlock(user.id, blockId.data) : null;
+    // Only its own block, and only one that hasn't started: a past session is a record.
+    if (block && block.taskId === id.data && block.startsAt.getTime() > Date.now()) {
+      await deleteBlock(user.id, block.id);
+    }
+  }
+  if (!(await updateTask(user.id, id.data, { plannedFor: plannedFor.data }))) {
+    return { ok: false, error: "That task doesn't exist anymore." };
+  }
   refresh();
   return { ok: true };
 }
@@ -121,6 +149,7 @@ export async function moveBlockAction(blockId: unknown, times: unknown): Promise
     endsAt: new Date(when.data.endsAt),
   });
   if (!block) return { ok: false, error: GONE };
+  await planTaskForBlock(user.id, block);
   refresh();
   return { ok: true };
 }

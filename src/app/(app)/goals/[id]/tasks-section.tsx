@@ -16,6 +16,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { startTransition, useEffect, useId, useLayoutEffect, useOptimistic, useRef, useState } from "react";
 
+import { DayPill } from "@/components/day-pill";
 import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
 import { formatTime, useClock } from "@/lib/clock";
 import type { Clock } from "@/lib/settings-schema";
@@ -46,6 +47,10 @@ export type TaskView = {
   description: string | null;
   minutes: number;
   doneAt: string | null;
+  /** The day they mean to do it, "YYYY-MM-DD", if they've picked one. */
+  plannedFor: string | null;
+  /** The day it's due, "YYYY-MM-DD", if it has a deadline. */
+  dueOn: string | null;
   /** When it's next on the calendar, if it is. */
   scheduledAt?: string | null;
 };
@@ -114,6 +119,9 @@ const PILL =
  * is the person's priority: reads, agendas and the calendar follow it.
  * Checked-off tasks move to the goal's Activity.
  *
+ * Each task can be planned for a day (without a time yet) and given a due date,
+ * from pills beside its estimate. Empty ones show on hover and in the open task.
+ *
  * Under the list, the latest read's suggestions: candidates you can add as tasks
  * or pass on. Once they're all handled, you can ask for new ones.
  */
@@ -125,6 +133,7 @@ export function TasksSection({
   reading,
   onRefresh,
   clock: clockPreference,
+  today,
 }: {
   goalId: string;
   tasks: TaskView[];
@@ -136,6 +145,8 @@ export function TasksSection({
   /** Runs a new read, which brings new suggestions. */
   onRefresh: () => void;
   clock: Clock | null;
+  /** The person's today, "YYYY-MM-DD", for the plan and due pills. */
+  today: string;
 }) {
   const clock = useClock(clockPreference);
   const [list, apply] = useOptimistic(tasks, applyOp);
@@ -182,7 +193,7 @@ export function TasksSection({
       hide(s.title);
       apply({
         type: "add",
-        task: { id: `pending-${++pendingSeq}`, title: s.title, description: s.why || null, minutes: s.minutes, doneAt: null },
+        task: { id: `pending-${++pendingSeq}`, title: s.title, description: s.why || null, minutes: s.minutes, doneAt: null, plannedFor: null, dueOn: null },
       });
       const result = await addSuggestionAsTaskAction(goalId, s.title);
       if (!result.ok) setError(result.error);
@@ -205,7 +216,15 @@ export function TasksSection({
     run(
       {
         type: "add",
-        task: { id: `pending-${++pendingSeq}`, title: parsed.data, description: null, minutes: DEFAULT_TASK_MINUTES, doneAt: null },
+        task: {
+          id: `pending-${++pendingSeq}`,
+          title: parsed.data,
+          description: null,
+          minutes: DEFAULT_TASK_MINUTES,
+          doneAt: null,
+          plannedFor: null,
+          dueOn: null,
+        },
       },
       () => addTaskAction(goalId, parsed.data),
     );
@@ -433,6 +452,11 @@ export function TasksSection({
                 onEstimate={(minutes) =>
                   run({ type: "edit", id: task.id, patch: { minutes } }, () => editTaskAction(task.id, { minutes }))
                 }
+                today={today}
+                onPlan={(plannedFor) =>
+                  run({ type: "edit", id: task.id, patch: { plannedFor } }, () => editTaskAction(task.id, { plannedFor }))
+                }
+                onDue={(dueOn) => run({ type: "edit", id: task.id, patch: { dueOn } }, () => editTaskAction(task.id, { dueOn }))}
                 onDelete={() => run({ type: "remove", id: task.id }, () => deleteTaskAction(task.id))}
               />
             ))}
@@ -601,6 +625,9 @@ function TaskRow({
   onClose,
   onToggle,
   onEstimate,
+  today,
+  onPlan,
+  onDue,
   onDelete,
 }: {
   task: TaskView;
@@ -622,6 +649,9 @@ function TaskRow({
   onClose: () => void;
   onToggle: () => void;
   onEstimate: (minutes: number) => void;
+  today: string;
+  onPlan: (day: string | null) => void;
+  onDue: (day: string | null) => void;
   onDelete: () => void;
 }) {
   const description = useRef<HTMLTextAreaElement>(null);
@@ -689,6 +719,35 @@ function TaskRow({
     </DropdownMenu.Root>
   );
 
+  // An empty pill waits for hover or focus on a closed row; on touch screens, for the open task.
+  // While any menu on the row is open (the pointer is off in the menu), the row stays as it was on hover.
+  const quiet = isOpen
+    ? ""
+    : "opacity-0 group-hover:opacity-100 group-has-[[data-state=open]]:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:hidden";
+  const days = (
+    <>
+      {/* A time on the calendar says when already; the planned day follows it. */}
+      {!task.scheduledAt && (
+        <DayPill
+          kind="plan"
+          value={task.plannedFor}
+          today={today}
+          onChange={onPlan}
+          disabled={pending}
+          className={task.plannedFor ? "" : quiet}
+        />
+      )}
+      <DayPill
+        kind="due"
+        value={task.dueOn}
+        today={today}
+        onChange={onDue}
+        disabled={pending}
+        className={task.dueOn ? "" : quiet}
+      />
+    </>
+  );
+
   if (isOpen) {
     return (
       <li
@@ -733,7 +792,10 @@ function TaskRow({
             // Same type as the description on the closed row; only the clamping differs.
             className={`block w-full resize-none bg-transparent outline-none [field-sizing:content] placeholder:text-muted/70 ${DESCRIPTION}`}
           />
-          <div className="mt-1.5">{estimate}</div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            {estimate}
+            {days}
+          </div>
         </div>
       </li>
     );
@@ -794,6 +856,7 @@ function TaskRow({
               {scheduleLabel(task.scheduledAt, clock)}
             </span>
           )}
+          {days}
         </div>
       </div>
       {/* Floats over the content's top-right corner on hover, so the text keeps the full width. */}

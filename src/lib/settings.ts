@@ -22,3 +22,20 @@ export async function saveSettings(userId: string, settings: Settings): Promise<
     .values({ userId, ...settings })
     .onConflictDoUpdate({ target: userSettings.userId, set: settings });
 }
+
+/** The person's time zone, as their browser last reported it; null until it has. */
+export async function getTimeZone(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ timeZone: userSettings.timeZone })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId));
+  return row?.timeZone ?? null;
+}
+
+/** Records the time zone their browser reports. Validate it first. */
+export async function saveTimeZone(userId: string, timeZone: string): Promise<void> {
+  await db
+    .insert(userSettings)
+    .values({ userId, timeZone })
+    .onConflictDoUpdate({ target: userSettings.userId, set: { timeZone } });
+}

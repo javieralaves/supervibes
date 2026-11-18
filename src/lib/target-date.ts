@@ -1,7 +1,8 @@
 /*
- * A goal's target date is a calendar day ("YYYY-MM-DD") with no time zone.
- * Pure and client-safe. "Today" is the local day wherever this runs, so on the
- * server it can be a day off from the person's own; fine for "in 3 weeks".
+ * Calendar days ("YYYY-MM-DD") with no time zone: a goal's target date, and a
+ * task's planned day and due date. Pure and client-safe. "Today" is the local
+ * day wherever this runs, so on the server it can be a day off from the
+ * person's own; pass their time zone to `todayIn` where that matters.
  */
 
 /** Today's local calendar day as "YYYY-MM-DD". */
@@ -10,6 +11,20 @@ export function todayISO(now = new Date()): string {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+/**
+ * Today's calendar day in a time zone, as "YYYY-MM-DD". Falls back to the local
+ * day wherever this runs when the zone is missing or unknown.
+ */
+export function todayIn(timeZone: string | null | undefined, now = new Date()): string {
+  if (!timeZone) return todayISO(now);
+  try {
+    // en-CA formats as YYYY-MM-DD.
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  } catch {
+    return todayISO(now);
+  }
 }
 
 function utcDay(iso: string): number {
@@ -54,4 +69,53 @@ export function targetDateForPrompt(target: string, today = todayISO()): string 
   const distance =
     days === 0 ? "which is today" : days > 0 ? `${days} days away` : `${-days} days ago, so it has passed`;
   return `${target}, ${distance} (today is ${today})`;
+}
+
+/** The calendar day `n` days after `day` (before, when negative). */
+export function addDays(day: string, n: number): string {
+  return new Date(utcDay(day) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** "Friday" or "Fri" for a calendar day. */
+export function weekdayName(day: string, style: "long" | "short" = "short"): string {
+  return new Date(utcDay(day)).toLocaleDateString("en-US", { weekday: style, timeZone: "UTC" });
+}
+
+/** "Today", "Tomorrow", "Yesterday", "Fri" within a week either way, otherwise "Nov 28". */
+export function relativeDayLabel(day: string, today = todayISO()): string {
+  const days = daysUntil(day, today);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  if (Math.abs(days) < 7) return weekdayName(day);
+  return formatTargetDate(day, today);
+}
+
+const dayCount = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+
+/**
+ * A task's planned day and due date for a prompt, measured from `today`, e.g.
+ * "planned for 2026-11-20 (in 2 days); due 2026-11-24 (in 6 days)". A finished
+ * task only says when it was due. Empty when it has neither.
+ */
+export function taskDaysForPrompt(
+  t: { plannedFor: string | null; dueOn: string | null },
+  today: string,
+  { done = false }: { done?: boolean } = {},
+): string {
+  const parts: string[] = [];
+  if (t.plannedFor && !done) {
+    const d = daysUntil(t.plannedFor, today);
+    const when = d === 0 ? "today" : d > 0 ? `in ${dayCount(d)}` : `${dayCount(-d)} ago and still not done, so it slipped`;
+    parts.push(`planned for ${t.plannedFor} (${when})`);
+  }
+  if (t.dueOn) {
+    if (done) {
+      parts.push(`was due ${t.dueOn}`);
+    } else {
+      const d = daysUntil(t.dueOn, today);
+      parts.push(`due ${t.dueOn} (${d === 0 ? "today" : d > 0 ? `in ${dayCount(d)}` : `${dayCount(-d)} overdue`})`);
+    }
+  }
+  return parts.join("; ");
 }

@@ -1,14 +1,22 @@
 import { Suspense } from "react";
 
 import { Skeleton } from "@/components/skeleton";
+import { TimeZoneSync } from "@/components/time-zone-sync";
 import { requireUser } from "@/lib/session";
+import { getTimeZone } from "@/lib/settings";
 
 import { RailNav, RailNavView } from "./rail-nav";
 import { UserMenu } from "./user-menu";
 
 async function RailUser() {
   const user = await requireUser();
-  return <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />;
+  const timeZone = await getTimeZone(user.id);
+  return (
+    <>
+      <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />
+      <TimeZoneSync stored={timeZone} />
+    </>
+  );
 }
 
 /** The app's left rail: main sections, and the account menu at the bottom. */

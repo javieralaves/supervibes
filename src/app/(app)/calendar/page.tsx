@@ -34,7 +34,7 @@ async function Today() {
   draftRecapsAfterResponse(user.id, toRecap);
   return (
     <DayCalendar
-      tasks={tasks.map(({ id, goalId, title, minutes }) => ({ id, goalId, title, minutes }))}
+      tasks={tasks.map(({ id, goalId, title, minutes, plannedFor, dueOn }) => ({ id, goalId, title, minutes, plannedFor, dueOn }))}
       settings={settings}
       goals={goals.map(({ id, title, icon, color }) => ({ id, title, icon, color }))}
       blocks={blocks.map((b) => ({

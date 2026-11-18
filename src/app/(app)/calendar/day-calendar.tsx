@@ -25,6 +25,7 @@ import {
   createBlockAction,
   deleteBlockAction,
   moveBlockAction,
+  planTaskAction,
   scheduleTaskAction,
   setBlockTaskDoneAction,
   updateBlockAction,
@@ -32,6 +33,7 @@ import {
 import { BlockPanel } from "./block-panel";
 import { BlockPopover } from "./block-popover";
 import { BlockCard, DropPreview, type CalendarGoal } from "./calendar-items";
+import { DayStrip, type StripItem } from "./day-strip";
 import { DAY_MS, dayOffset, GUTTER, HOUR, isoAt, minutesAt, PAD, startOfDay, y } from "./geometry";
 import { TaskPanel, type PanelGroup, type PanelTask } from "./task-panel";
 
@@ -41,7 +43,22 @@ export type { CalendarGoal };
 const RECAP_POLL_MS = 15_000;
 
 /** An open task the calendar can schedule. */
-export type CalendarTask = { id: string; goalId: string; title: string; minutes: number };
+export type CalendarTask = {
+  id: string;
+  goalId: string;
+  title: string;
+  minutes: number;
+  /** The day it's planned for, "YYYY-MM-DD", with or without a time. */
+  plannedFor: string | null;
+  /** The day it's due, "YYYY-MM-DD". */
+  dueOn: string | null;
+};
+
+/** "YYYY-MM-DD" for the day `day` days after `base` (a local midnight). */
+function localDay(base: Date, day: number): string {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + day);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -180,6 +197,8 @@ type Placing = {
   y: number;
   /** Where it would land on the shown day, or null while the pointer is off the timeline. */
   start: number | null;
+  /** Over the shown day's strip, to plan it for the day without a time. */
+  onStrip: boolean;
 };
 
 /** Where a block's edges sit while one of them, or the whole block, is being dragged. */
@@ -210,6 +229,11 @@ export function DayCalendar({
   const clock = useClock(settings.clock);
   const [offset, setOffset] = useState(0);
   const [blocks, apply] = useOptimistic(savedBlocks, applyOp);
+  const [taskList, applyTask] = useOptimistic(
+    tasks,
+    (all: CalendarTask[], op: { id: string; patch: Partial<CalendarTask> }) =>
+      all.map((t) => (t.id === op.id ? { ...t, ...op.patch } : t)),
+  );
   const router = useRouter();
   // While recaps draft themselves in the background, check back for them now and then.
   const recapsDrafting = savedBlocks.some((b) => b.recapDrafting);
@@ -238,22 +262,46 @@ export function DayCalendar({
   // Earlier days are all behind you; later days haven't started.
   const pastUntil = offset < 0 ? DAY_MINUTES : isToday ? now : null;
 
-  // The panel: each goal's open tasks in your order, those already on the calendar last.
+  // Days as "YYYY-MM-DD": the one shown, and today.
+  const shownISO = base ? localDay(base, offset) : null;
+  const todayISO = base ? localDay(base, 0) : null;
+
+  // Each open task's next block that hasn't ended: dragging the task moves it rather than adding another.
+  const nextBlock = new Map<string, BlockView>();
+  for (const b of blocks) {
+    if (!b.taskId || Date.parse(b.endsAt) <= (today?.getTime() ?? 0)) continue;
+    const seen = nextBlock.get(b.taskId);
+    if (!seen || Date.parse(b.startsAt) < Date.parse(seen.startsAt)) nextBlock.set(b.taskId, b);
+  }
+  const asPanelTask = (t: CalendarTask): PanelTask => ({ ...t, block: nextBlock.get(t.id) ?? null });
+
+  // The day's strip: tasks meant for the shown day without a time on it, and tasks due then.
+  // On today, plans missed on earlier days and overdue tasks carry over.
+  const stripItems: StripItem[] = [];
+  if (base && shownISO && todayISO) {
+    const timedHere = new Set(
+      blocks.filter((b) => b.taskId && dayOffset(new Date(b.startsAt), base) === offset).map((b) => b.taskId!),
+    );
+    for (const t of taskList) {
+      if (timedHere.has(t.id)) continue;
+      const carriedFrom = isToday && t.plannedFor && t.plannedFor < todayISO ? t.plannedFor : null;
+      const planned = t.plannedFor === shownISO || carriedFrom !== null;
+      const due = t.dueOn === shownISO ? "due" : isToday && t.dueOn && t.dueOn < todayISO ? "overdue" : null;
+      if (planned || due) stripItems.push({ task: asPanelTask(t), planned, carriedFrom, due });
+    }
+    // What you meant to do first, then what's only due.
+    stripItems.sort((a, b) => Number(b.planned) - Number(a.planned));
+  }
+
+  // The panel: each goal's open tasks in your order. Those planned for the shown day come
+  // first, ready to drag in; those already on the calendar last.
   let panelGroups: PanelGroup[] = [];
   if (taskPanel) {
-    const nowMs = today?.getTime() ?? 0;
-    const nextBlock = new Map<string, BlockView>();
-    for (const b of blocks) {
-      if (!b.taskId || Date.parse(b.endsAt) <= nowMs) continue;
-      const seen = nextBlock.get(b.taskId);
-      if (!seen || Date.parse(b.startsAt) < Date.parse(seen.startsAt)) nextBlock.set(b.taskId, b);
-    }
     panelGroups = goals
       .map((goal) => {
-        const mine = tasks
-          .filter((t) => t.goalId === goal.id)
-          .map((t): PanelTask => ({ ...t, block: nextBlock.get(t.id) ?? null }));
-        return { goal, tasks: [...mine.filter((t) => !t.block), ...mine.filter((t) => t.block)] };
+        const mine = taskList.filter((t) => t.goalId === goal.id).map(asPanelTask);
+        const rank = (t: PanelTask) => (t.block ? 2 : t.plannedFor === shownISO ? 0 : 1);
+        return { goal, tasks: mine.toSorted((a, b) => rank(a) - rank(b)) };
       })
       .filter((g) => g.tasks.length > 0);
   }
@@ -437,7 +485,17 @@ export function DayCalendar({
     const minutes = task.block
       ? Math.min(DAY_MINUTES, Math.round((Date.parse(task.block.endsAt) - Date.parse(task.block.startsAt)) / 60_000))
       : task.minutes;
-    setPlacing({ task, minutes, originX: e.clientX, originY: e.clientY, moved: false, x: e.clientX, y: e.clientY, start: null });
+    setPlacing({
+      task,
+      minutes,
+      originX: e.clientX,
+      originY: e.clientY,
+      moved: false,
+      x: e.clientX,
+      y: e.clientY,
+      start: null,
+      onStrip: false,
+    });
   }
 
   /** The start a dragged task would get on the shown day, or null while the pointer is off the timeline. */
@@ -466,8 +524,17 @@ export function DayCalendar({
     }
     if (chip.current) chip.current.style.transform = `translate(${x + 14}px, ${py + 10}px)`;
     const start = placing.moved ? landing() : null;
-    if (start !== placing.start) setPlacing({ ...placing, start });
+    const onStrip = placing.moved && overStrip();
+    if (start !== placing.start || onStrip !== placing.onStrip) setPlacing({ ...placing, start, onStrip });
   });
+
+  /** Whether the pointer is over the shown day's strip. */
+  const strip = useRef<HTMLDivElement>(null);
+  function overStrip() {
+    const rect = strip.current?.getBoundingClientRect();
+    const { x, y: py } = pointer.current;
+    return Boolean(rect && x >= rect.left && x <= rect.right && py >= rect.top && py <= rect.bottom);
+  }
 
   const onPlacingMove = useEffectEvent((e: PointerEvent) => {
     pointer.current = { x: e.clientX, y: e.clientY };
@@ -476,11 +543,16 @@ export function DayCalendar({
     }
   });
 
-  /** Let go: schedule the task at that time, or move its block there. Anywhere else, nothing happens. */
+  /**
+   * Let go: on the timeline, schedule the task at that time or move its block there;
+   * on the day's strip, plan it for the day. Anywhere else, nothing happens.
+   */
   const dropPlacing = useEffectEvent(() => {
     const p = placing;
     const start = landing();
+    const onStrip = overStrip();
     setPlacing(null);
+    if (p?.moved && onStrip && shownISO) return planForDay(p.task, shownISO);
     if (!p?.moved || start === null || !base) return;
     const times = { startsAt: isoAt(base, offset, start), endsAt: isoAt(base, offset, start + p.minutes) };
     const block = p.task.block;
@@ -548,6 +620,22 @@ export function DayCalendar({
     run({ type: "update", id: block.id, patch: times }, () => moveBlockAction(block.id, times));
   }
 
+  /**
+   * Plan a task for a day without a time (null takes it off its day). A time it had
+   * that hasn't started yet goes: the day is now the plan.
+   */
+  function planForDay(task: PanelTask, day: string | null) {
+    const unschedule = task.block && Date.parse(task.block.startsAt) > Date.now() ? task.block : null;
+    if (task.plannedFor === day && !unschedule) return;
+    setError(null);
+    startTransition(async () => {
+      applyTask({ id: task.id, patch: { plannedFor: day } });
+      if (unschedule) apply({ type: "remove", id: unschedule.id });
+      const result = await planTaskAction(task.id, day, unschedule?.id);
+      if (!result.ok) setError(result.error);
+    });
+  }
+
   /** Put one of your tasks on the calendar at these times. */
   function scheduleTask(task: { id: string; goalId: string; title: string }, times: { startsAt: string; endsAt: string }) {
     run(
@@ -590,7 +678,7 @@ export function DayCalendar({
 
   // The block panel: hidden while the block is still being saved, or once it's gone.
   const selected = selectedId && !selectedId.startsWith("pending-") ? blocks.find((b) => b.id === selectedId) : undefined;
-  const openTaskIds = new Set(tasks.map((t) => t.id));
+  const openTaskIds = new Set(taskList.map((t) => t.id));
   let selectedTimes: { label: string; when: string } | null = null;
   if (selected && base) {
     const s = new Date(selected.startsAt);
@@ -667,6 +755,7 @@ export function DayCalendar({
               groups={panelGroups}
               clock={clock}
               today={base}
+              todayISO={todayISO}
               draggingId={placing?.moved ? placing.task.id : null}
               onTaskPointerDown={onTaskPointerDown}
             />
@@ -679,6 +768,23 @@ export function DayCalendar({
               <p role="alert" className="shrink-0 border-b border-card-border px-4 py-2 text-sm text-red-600 dark:text-red-400">
                 {error}
               </p>
+            )}
+
+            {/* With nothing on it, the strip only shows when there are tasks beside it to drop in. */}
+            {todayISO && (stripItems.length > 0 || taskPanel) && (
+              <div ref={strip}>
+                <DayStrip
+                  items={stripItems}
+                  goals={goalById}
+                  today={todayISO}
+                  dayName={relative ?? dayName(offset)}
+                  dropping={Boolean(placing?.moved && placing.onStrip)}
+                  dragging={Boolean(placing?.moved)}
+                  draggingId={placing?.moved ? placing.task.id : null}
+                  onTaskPointerDown={onTaskPointerDown}
+                  onUnplan={(task) => planForDay(task, null)}
+                />
+              </div>
             )}
 
             <div
