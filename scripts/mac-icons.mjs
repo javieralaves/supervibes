@@ -29,6 +29,10 @@ const ICONS = {
   Search01Icon: [1.5],
   Delete02Icon: [1.5],
   Calendar03Icon: [1.8, 1.5],
+  ArrowLeft01Icon: [1.5],
+  PencilEdit02Icon: [1.5],
+  Note01Icon: [1.5],
+  CheckListIcon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

@@ -106,4 +106,26 @@ enum Fixtures {
                  trajectory: trail([(10, .atRisk, .momentum), (27, .onTrack, .momentum)])),
         ]
     }
+
+    /// The first goal's page, with a read, a status and this week's objective.
+    static var goalDetail: GoalDetail {
+        var goal = goals[0]
+        goal.description = "A calmer planner that reads where your work happens and tells you, honestly, whether you’re moving."
+        return GoalDetail(
+            goal: goal,
+            today: "2026-11-18",
+            read: .init(
+                headline: "Steady progress: the native app is taking shape faster than planned",
+                summary: "Three screens moved from web to native this week, and the API now backs each of them. Tasks are moving too; the risk is the calendar, which hasn’t started.",
+                basedOn: ["linear", "github", "notes", "tasks"],
+                createdAt: referenceNow.addingTimeInterval(-2 * 3600)
+            ),
+            status: .init(status: .onTrack, basis: .target, reason: "Shipping weekly toward Dec 18.", at: referenceNow),
+            readsInTrajectory: 3,
+            readPending: false,
+            readError: nil,
+            canRead: true,
+            week: .init(start: "2026-11-16", objective: "Ship the goal page natively.", lastWeek: "Get sign-in working in the Mac app.")
+        )
+    }
 }

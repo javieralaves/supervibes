@@ -34,7 +34,7 @@ final class ShellModel {
     var activeRailItem: RailItem? {
         switch route {
         case .web: RailItem.matching(path: web.currentPath)
-        case .goals: .goals
+        case .goals, .goal: .goals
         case .connections: .connections
         case .settings: nil
         }
@@ -59,6 +59,12 @@ final class ShellModel {
         if web.currentPath != item.href {
             web.navigate(to: item.href)
         }
+    }
+
+    /// A goal's native page; reachable by Option-clicking a card in Debug builds until it's complete.
+    func openNativeGoal(_ id: String) {
+        overlays.dismiss()
+        route = .goal(id)
     }
 
     /// A goal's own page, still on the web.

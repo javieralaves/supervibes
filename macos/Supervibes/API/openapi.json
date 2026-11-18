@@ -368,6 +368,189 @@
           "color"
         ]
       },
+      "GoalDetail": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/Goal"
+          },
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "read": {
+            "$ref": "#/components/schemas/GoalRead"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GoalStatusView"
+          },
+          "readsInTrajectory": {
+            "type": "integer",
+            "description": "How many reads the trajectory rests on."
+          },
+          "readPending": {
+            "type": "boolean",
+            "description": "A progress read is running; poll until it lands."
+          },
+          "readError": {
+            "type": "string",
+            "nullable": true
+          },
+          "canRead": {
+            "type": "boolean",
+            "description": "There's a source, task or note to read."
+          },
+          "week": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "The Monday this week starts on."
+              },
+              "objective": {
+                "type": "string",
+                "nullable": true
+              },
+              "lastWeek": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "start",
+              "objective",
+              "lastWeek"
+            ]
+          }
+        },
+        "required": [
+          "goal",
+          "today",
+          "read",
+          "status",
+          "readsInTrajectory",
+          "readPending",
+          "readError",
+          "canRead",
+          "week"
+        ]
+      },
+      "GoalRead": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "basedOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Provider keys or labels, plus \"notes\" and \"tasks\"."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "headline",
+          "summary",
+          "basedOn",
+          "createdAt"
+        ]
+      },
+      "GoalStatusView": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "on_track",
+              "at_risk",
+              "off_track",
+              "unclear"
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "target",
+              "week",
+              "momentum"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "outlook": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "on_track",
+                  "at_risk",
+                  "off_track"
+                ]
+              },
+              "finishFrom": {
+                "type": "string",
+                "nullable": true,
+                "format": "date"
+              },
+              "finishTo": {
+                "type": "string",
+                "nullable": true,
+                "format": "date"
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "finishFrom",
+              "finishTo",
+              "confidence"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "status",
+          "basis",
+          "reason",
+          "outlook",
+          "at"
+        ]
+      },
+      "WeekObjectiveInput": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective"
+        ]
+      },
       "Me": {
         "type": "object",
         "properties": {
@@ -978,6 +1161,320 @@
           },
           "401": {
             "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}": {
+      "get": {
+        "operationId": "getGoal",
+        "summary": "One goal's page: its read, status, trail and this week",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": false,
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateGoal",
+        "summary": "Edit a goal",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteGoal",
+        "summary": "Delete a goal, with its sources and reads",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/read": {
+      "post": {
+        "operationId": "requestGoalRead",
+        "summary": "Update status: start a progress read in the background",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Started; poll the goal until readPending is false"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/weeks/{weekStart}": {
+      "put": {
+        "operationId": "setWeekObjective",
+        "summary": "What a week should move for the goal; empty clears it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "required": true,
+            "name": "weekStart",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeekObjectiveInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
             "content": {
               "application/json": {
                 "schema": {

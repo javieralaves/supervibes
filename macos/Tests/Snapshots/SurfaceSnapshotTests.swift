@@ -132,6 +132,46 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testGoalPage() {
+        assertAppearances(
+            GoalPage(detail: Fixtures.goalDetail, now: now).background(Theme.background),
+            width: 900, height: 880
+        )
+    }
+
+    func testTrajectoryHoverCard() {
+        let days = Fixtures.goals[1].trajectory
+        assertAppearances(
+            VStack(spacing: 0) {
+                TrajectoryDays(days: days, today: "2026-11-18", hovered: 20)
+                TrajectoryDays(days: days, today: "2026-11-18", hovered: 1).padding(.top, 110)
+                TrajectoryDays(days: days, today: "2026-11-18", hovered: 27).padding(.top, 110)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 100)
+            .padding(.bottom, 16)
+            .background(Theme.card),
+            width: 640, height: 400
+        )
+    }
+
+    func testNewGoalDialogEmpty() {
+        assertAppearances(
+            GoalDialog(input: GoalInput(), today: "2026-11-18").padding(24).background(Theme.shell),
+            width: 528, height: 688
+        )
+    }
+
+    func testGoalPageFirstRead() {
+        var detail = Fixtures.goalDetail
+        detail = GoalDetail(
+            goal: detail.goal, today: detail.today, read: nil, status: nil, readsInTrajectory: 0,
+            readPending: true, readError: nil, canRead: true,
+            week: .init(start: "2026-11-16", objective: nil, lastWeek: "Get sign-in working in the Mac app.")
+        )
+        assertAppearances(GoalPage(detail: detail, now: now).background(Theme.background), width: 900, height: 760)
+    }
+
     func testSignIn() {
         assertAppearances(SignInView(), width: 640, height: 360)
     }
@@ -180,6 +220,7 @@ extension XCTestCase {
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let host = NSHostingController(
                 rootView: view
+                    .environment(\.staticRendering, true)
                     .frame(width: width, height: height)
                     .background(Color(nsColor: .windowBackgroundColor))
             )

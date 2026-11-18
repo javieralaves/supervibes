@@ -142,6 +142,7 @@ struct MenuItem: View {
     let icon: Icon
     let title: String
     var isDestructive = false
+    var isDisabled = false
     let action: () -> Void
     @State private var isHovered = false
 
@@ -154,10 +155,12 @@ struct MenuItem: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 36)
-            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .background(isHovered && !isDisabled ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .opacity(isDisabled ? 0.5 : 1)
             .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
         .onHover { isHovered = $0 }
     }
 }
@@ -311,5 +314,19 @@ struct AnchorReader: ViewModifier {
 
     func body(content: Content) -> some View {
         content.onGeometryChange(for: CGRect.self) { $0.frame(in: .overlayHost) } action: { frame = $0 }
+    }
+}
+
+// MARK: - Placeholders
+
+extension View {
+    /// The web's `placeholder:text-muted/70` for a field: macOS draws a TextField's own prompt in
+    /// the system colour, so fields pass an empty prompt and this draws the placeholder instead.
+    func placeholder(_ text: String, when isEmpty: Bool, font: Font, color: Color = Theme.muted.opacity(0.7)) -> some View {
+        overlay(alignment: .topLeading) {
+            if isEmpty {
+                Text(text).font(font).foregroundStyle(color).allowsHitTesting(false)
+            }
+        }
     }
 }

@@ -147,3 +147,81 @@ enum CalendarDay {
         return days > 0 ? span : "\(span) past"
     }
 }
+
+// MARK: - A goal's page
+
+/// What a goal's page shows above its tasks (GET /api/v1/goals/{id}).
+struct GoalDetail: Hashable, Sendable {
+    struct Read: Hashable, Sendable {
+        let headline: String
+        let summary: String
+        /// Provider keys or labels, plus "notes" and "tasks".
+        let basedOn: [String]
+        let createdAt: Date
+    }
+
+    struct Status: Hashable, Sendable {
+        let status: GoalStatus
+        let basis: StatusBasis
+        let reason: String
+        let at: Date
+    }
+
+    struct Week: Hashable, Sendable {
+        /// The Monday it starts on, "YYYY-MM-DD".
+        let start: String
+        var objective: String?
+        let lastWeek: String?
+    }
+
+    var goal: Goal
+    let today: String
+    let read: Read?
+    let status: Status?
+    let readsInTrajectory: Int
+    var readPending: Bool
+    let readError: String?
+    /// There's a source, task or note to read.
+    let canRead: Bool
+    var week: Week
+}
+
+extension CalendarDay {
+    /// "Nov 16–22", or "Nov 30 – Dec 6" across months, for the week starting `weekStart`.
+    static func formatWeek(_ weekStart: String) -> String {
+        guard let start = date(weekStart) else { return weekStart }
+        let end = start.addingTimeInterval(6 * 86_400)
+        let month = Date.FormatStyle(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!).month(.abbreviated)
+        let day = { (d: Date) in Int(string(d).suffix(2)) ?? 0 }
+        let (m1, m2) = (start.formatted(month), end.formatted(month))
+        return m1 == m2 ? "\(m1) \(day(start))–\(day(end))" : "\(m1) \(day(start)) – \(m2) \(day(end))"
+    }
+
+    /// "Today", "Tomorrow", "Yesterday", "Fri" within a week either way, otherwise "Nov 28".
+    static func relativeLabel(_ day: String, today: String) -> String {
+        let days = daysUntil(day, today: today)
+        switch days {
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        case -1: return "Yesterday"
+        default:
+            if abs(days) < 7, let date = date(day) {
+                return date.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!).weekday(.abbreviated))
+            }
+            return format(day, today: today)
+        }
+    }
+}
+
+extension Date {
+    /// "just now", "3 min ago", "2 hr ago", "4 days ago", like src/lib/time.ts.
+    func shortAgo(now: Date = Date()) -> String {
+        let minutes = max(0, Int((now.timeIntervalSince(self) / 60).rounded()))
+        if minutes < 1 { return "just now" }
+        if minutes < 60 { return "\(minutes) min ago" }
+        let hours = Int((Double(minutes) / 60).rounded())
+        if hours < 24 { return "\(hours) hr ago" }
+        let days = Int((Double(hours) / 24).rounded())
+        return "\(days) \(days == 1 ? "day" : "days") ago"
+    }
+}

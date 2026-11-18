@@ -1,15 +1,21 @@
 import SwiftUI
 
-/// New goal, matching src/app/(app)/goals/goal-dialog.tsx: a live badge beside the title and what
-/// done looks like, a target date, then the colour and a searchable grid of icons.
+/// New goal or Edit goal, matching src/app/(app)/goals/goal-dialog.tsx: a live badge beside the
+/// title and what done looks like, a target date, then the colour and a searchable grid of icons.
 struct GoalDialog: View {
+    enum Mode { case create, edit }
+
     @State var input: GoalInput
+    var mode: Mode = .create
     /// Today, "YYYY-MM-DD", for the target date's "in 3 weeks".
     var today = CalendarDay.today()
     var onCancel: () -> Void = {}
     var onSave: (GoalInput) -> Void = { _ in }
+    /// Editing only: deletes the goal, after an inline "for good?".
+    var onDelete: (() -> Void)?
 
     @State private var query = ""
+    @State private var confirmingDelete = false
     @State private var error: String?
     @State private var isPickingDate = false
     @FocusState private var titleFocused: Bool
@@ -46,7 +52,8 @@ struct GoalDialog: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("New goal").appText(.base, .semibold, tracking: -0.01).foregroundStyle(Theme.foreground)
+                Text(mode == .create ? "New goal" : "Edit goal")
+                    .appText(.base, .semibold, tracking: -0.01).foregroundStyle(Theme.foreground)
                 Spacer()
                 CloseButton(action: onCancel)
             }
@@ -55,20 +62,24 @@ struct GoalDialog: View {
             HStack(alignment: .top, spacing: 16) {
                 GoalBadge(icon: input.icon, color: input.color, size: .lg)
                 VStack(alignment: .leading, spacing: 6) {
-                    TextField("What are you working toward?", text: titleBinding, axis: .vertical)
+                    TextField("", text: titleBinding, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.app(20, .semibold))
                         .tracking(-0.02 * 20)
                         .foregroundStyle(Theme.foreground)
                         .lineLimit(1...4)
+                        .placeholder("What are you working toward?", when: input.title.isEmpty, font: .app(20, .semibold))
+                        .accessibilityLabel("Title")
                         .focused($titleFocused)
                         .onSubmit(submit)
                         .padding(.top, 12)
-                    TextField("What does done look like?", text: descriptionBinding, axis: .vertical)
+                    TextField("", text: descriptionBinding, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.app(14))
                         .foregroundStyle(Theme.foreground(0.8))
                         .lineLimit(1...6)
+                        .placeholder("What does done look like?", when: input.description.isEmpty, font: .app(14))
+                        .accessibilityLabel("Description")
                     TargetDateField(date: $input.targetDate, today: today, isPicking: $isPickingDate)
                         .padding(.top, 6)
                 }
@@ -96,7 +107,9 @@ struct GoalDialog: View {
         return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Icon.search.image(size: 16).foregroundStyle(Theme.muted)
-                TextField("Search icons", text: $query)
+                TextField("", text: $query)
+                    .placeholder("Search icons", when: query.isEmpty, font: .app(14), color: Theme.muted)
+                    .accessibilityLabel("Search icons")
                     .textFieldStyle(.plain)
                     .font(.app(14))
                     .foregroundStyle(Theme.foreground)
@@ -147,11 +160,23 @@ struct GoalDialog: View {
             if let error {
                 Text(error).appText(.sm).foregroundStyle(Theme.danger)
             }
-            HStack(spacing: 8) {
-                Spacer()
-                GhostButton(title: "Cancel", action: onCancel)
-                PrimaryButton(title: "Add goal", action: submit)
-                    .keyboardShortcut(.return, modifiers: .command)
+            if confirmingDelete, let onDelete {
+                HStack(spacing: 12) {
+                    Text("Delete this goal for good?").appText(.sm).foregroundStyle(Theme.foreground)
+                    Spacer()
+                    GhostButton(title: "Keep") { confirmingDelete = false }
+                    DangerButton(title: "Delete", action: onDelete)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    if mode == .edit, onDelete != nil {
+                        DeleteButton { confirmingDelete = true }
+                    }
+                    Spacer()
+                    GhostButton(title: "Cancel", action: onCancel)
+                    PrimaryButton(title: mode == .create ? "Add goal" : "Save", action: submit)
+                        .keyboardShortcut(.return, modifiers: .command)
+                }
             }
         }
         .padding(.horizontal, 24)
@@ -187,6 +212,29 @@ struct GoalDialog: View {
             return
         }
         onSave(input)
+    }
+}
+
+/// `-ml-2 h-10 rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-500/10`
+private struct DeleteButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Icon.delete.image(size: 16)
+                Text("Delete").appText(.sm, .medium)
+            }
+            .foregroundStyle(Theme.danger)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .background(isHovered ? Color(nsColor: .rgb(0xef4444, alpha: 0.1)) : .clear, in: .rect(cornerRadius: 12))
+            .contentShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .padding(.leading, -8)
     }
 }
 

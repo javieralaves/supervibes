@@ -160,3 +160,134 @@ struct TrajectoryStrip: View {
         .accessibilityLabel(days.contains { $0.status != nil } ? "Status over the last weeks" : "No status yet")
     }
 }
+
+/// A status as a small pill: `rounded-full px-2 py-0.5 text-xs font-medium` on a tint of its colour.
+struct StatusPill: View {
+    let status: GoalStatus
+    let basis: StatusBasis
+
+    private var background: Color {
+        switch status {
+        case .onTrack: Color(nsColor: .rgb(0x10b981, alpha: 0.10))
+        case .atRisk: Color(nsColor: .rgb(0xf59e0b, alpha: 0.12))
+        case .offTrack: Color(nsColor: .rgb(0xef4444, alpha: 0.10))
+        case .unclear: Theme.foreground(0.06)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(StatusTone.dot(status)).frame(width: 6, height: 6)
+            Text(statusLabel(status, basis)).appText(.xs, .medium)
+        }
+        .foregroundStyle(StatusTone.text(status))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(background, in: .capsule)
+        .help(basisLabel(basis))
+    }
+}
+
+/// What a status is measured against, for a tooltip.
+func basisLabel(_ basis: StatusBasis) -> String {
+    switch basis {
+    case .target: "Judged against the target date"
+    case .week: "Judged against this week’s objective"
+    case .momentum: "Judged on momentum"
+    }
+}
+
+/// The last weeks one cell a day (`flex h-3 gap-[3px]`), today ringed, each day's status and why on hover.
+struct TrajectoryDays: View {
+    let days: [TrajectoryDay]
+    let today: String
+    @State private var hovered: Int?
+
+    private static let cardWidth: CGFloat = 224
+    /// Room above the strip for the card, which sits at the bottom of it.
+    private static let cardRoom: CGFloat = 400
+
+    /// `hovered` opens with that day's card showing, for snapshot tests.
+    init(days: [TrajectoryDay], today: String, hovered: Int? = nil) {
+        self.days = days
+        self.today = today
+        _hovered = State(initialValue: hovered)
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(StatusTone.day(day))
+                    .overlay {
+                        if day.day == today {
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Theme.foreground(0.4))
+                                .padding(-2)
+                        }
+                    }
+                    .contentShape(.rect)
+                    .onHover { inside in
+                        if inside { hovered = index } else if hovered == index { hovered = nil }
+                    }
+            }
+        }
+        .frame(height: 12)
+        .overlay(alignment: .topLeading) {
+            // Positioned with offsets from the strip's own size: above the hovered day, and near
+            // either end lined up with that end so it stays inside the page.
+            GeometryReader { geometry in
+                if let hovered, days.indices.contains(hovered) {
+                    let width = geometry.size.width
+                    let center = (CGFloat(hovered) + 0.5) * width / CGFloat(days.count)
+                    let x = hovered < 4 ? 0 : hovered >= days.count - 4 ? width - Self.cardWidth : center - Self.cardWidth / 2
+                    // The card at the bottom of a tall box that ends 8pt above the strip, so it sits above
+                    // the day whatever its height, with nothing measured.
+                    DayCard(day: days[hovered], today: today)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: Self.cardWidth, height: Self.cardRoom, alignment: .bottomLeading)
+                        .offset(x: x, y: -Self.cardRoom - 8)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .accessibilityLabel("Status over the last weeks")
+    }
+
+    /// `w-56 rounded-lg border bg-card px-2.5 py-2 shadow`
+    private struct DayCard: View {
+        let day: TrajectoryDay
+        let today: String
+
+        var body: some View {
+            let formatted = CalendarDay.format(day.day, today: today)
+            let when = CalendarDay.relativeLabel(day.day, today: today)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(when == formatted ? formatted : "\(formatted) · \(when)")
+                    .font(.app(11)).foregroundStyle(Theme.muted)
+                Group {
+                    if let status = day.status, let basis = day.basis {
+                        Text("\(statusLabel(status, basis))\(Text(day.carried ? " · no read this day" : "").foregroundStyle(Theme.muted).fontWeight(.regular))")
+                    } else {
+                        Text("No status yet")
+                    }
+                }
+                .appText(.xs, .medium).foregroundStyle(Theme.foreground)
+                if let reason = day.reason {
+                    Text(reason).appText(.xs).foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(width: 224, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.card)
+                    .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.25)), radius: 12, y: 8)
+            }
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
+        }
+    }
+}

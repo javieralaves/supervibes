@@ -136,6 +136,10 @@ enum Icon: String {
     case search = "Search01-1_5"
     case delete = "Delete02-1_5"
     case calendarSmall = "Calendar03-1_5"
+    case arrowLeft = "ArrowLeft01-1_5"
+    case edit = "PencilEdit02-1_5"
+    case note = "Note01-1_5"
+    case checklist = "CheckList-1_5"
     case refresh = "Refresh01-1_5"
     case unlink = "Unlink04-1_5"
     case linearMark = "LinearMark"
@@ -148,6 +152,14 @@ enum Icon: String {
             .resizable()
             .frame(width: size, height: size)
     }
+}
+
+// MARK: - Rendering
+
+extension EnvironmentValues {
+    /// Set by snapshot tests: views that would animate on their own (spinners) stay still, so
+    /// every render is the same image.
+    @Entry var staticRendering = false
 }
 
 // MARK: - Dates
