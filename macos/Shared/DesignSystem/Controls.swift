@@ -237,12 +237,14 @@ final class OverlayCenter {
         let content: AnyView
         /// Whether clicking outside closes it (not while a dialog is busy).
         var dismissible = true
+        /// Who opened it, e.g. a task's id, so that row can stay active while it's open.
+        var owner: String?
     }
 
     private(set) var presented: Presented?
 
-    func showMenu(anchor: CGRect, @ViewBuilder content: () -> some View) {
-        presented = Presented(placement: .menu(anchor: anchor), content: AnyView(content()))
+    func showMenu(anchor: CGRect, owner: String? = nil, @ViewBuilder content: () -> some View) {
+        presented = Presented(placement: .menu(anchor: anchor), content: AnyView(content()), owner: owner)
     }
 
     func showDialog(dismissible: Bool = true, @ViewBuilder content: () -> some View) {

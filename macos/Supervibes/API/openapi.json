@@ -422,6 +422,30 @@
               "objective",
               "lastWeek"
             ]
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            },
+            "description": "Open tasks in their order (checked-off ones move to the activity)."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "description": "The latest read's suggestions still to handle."
+          },
+          "clock": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "12h",
+              "24h",
+              null
+            ],
+            "description": "The person's clock; null follows the device."
           }
         },
         "required": [
@@ -433,7 +457,10 @@
           "readPending",
           "readError",
           "canRead",
-          "week"
+          "week",
+          "tasks",
+          "suggestions",
+          "clock"
         ]
       },
       "GoalRead": {
@@ -540,6 +567,77 @@
           "at"
         ]
       },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "minutes": {
+            "type": "integer",
+            "description": "The estimate: 15, 30, 60 or 120."
+          },
+          "doneAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "plannedFor": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "The day they mean to do it."
+          },
+          "dueOn": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "The day it's due."
+          },
+          "scheduledAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When it's next on the calendar, if it is."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "minutes",
+          "doneAt",
+          "plannedFor",
+          "dueOn",
+          "scheduledAt"
+        ]
+      },
+      "Suggestion": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "minutes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "why",
+          "minutes"
+        ]
+      },
       "WeekObjectiveInput": {
         "type": "object",
         "properties": {
@@ -644,6 +742,77 @@
           "sleepStart",
           "wakeTime",
           "clock"
+        ]
+      },
+      "NewTask": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "TaskOrder": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "TaskPatch": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Empty clears it."
+          },
+          "minutes": {
+            "type": "integer",
+            "description": "One of 15, 30, 60, 120."
+          },
+          "plannedFor": {
+            "type": "string",
+            "description": "YYYY-MM-DD; empty clears it."
+          },
+          "dueOn": {
+            "type": "string",
+            "description": "YYYY-MM-DD; empty clears it."
+          }
+        }
+      },
+      "TaskDone": {
+        "type": "object",
+        "properties": {
+          "done": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "done"
+        ]
+      },
+      "SuggestionChoice": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
         ]
       },
       "Today": {
@@ -1561,6 +1730,481 @@
           },
           "401": {
             "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/tasks": {
+      "post": {
+        "operationId": "addTask",
+        "summary": "Add a task at the end of the goal's open tasks",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewTask"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/tasks/order": {
+      "put": {
+        "operationId": "reorderTasks",
+        "summary": "Put the goal's open tasks in this order (all of them, exactly once)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{taskId}": {
+      "patch": {
+        "operationId": "editTask",
+        "summary": "Change a task's title, description, estimate, planned day or due date",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTask",
+        "summary": "Delete a task",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{taskId}/done": {
+      "put": {
+        "operationId": "setTaskDone",
+        "summary": "Check a task off (it moves to the goal's activity) or reopen it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDone"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/suggestions/accept": {
+      "post": {
+        "operationId": "acceptSuggestion",
+        "summary": "Add a suggestion as a task, keeping its estimate and reason",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/suggestions/pass": {
+      "post": {
+        "operationId": "passOnSuggestion",
+        "summary": "Not now: hide a suggestion and keep later reads from suggesting it again",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Passed on"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
             "content": {
               "application/json": {
                 "schema": {

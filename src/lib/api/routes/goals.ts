@@ -4,6 +4,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
+import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
 import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
@@ -12,12 +13,12 @@ import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
 import { createGoal, deleteGoal, GoalLimitError, listGoals, updateGoal, type GoalDTO } from "@/lib/goals";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
-import { getTimeZone } from "@/lib/settings";
-import { timeZoneSchema } from "@/lib/settings-schema";
+import { getSettings, getTimeZone } from "@/lib/settings";
+import { CLOCKS, timeZoneSchema } from "@/lib/settings-schema";
 import { getGoal, listSources } from "@/lib/sources";
 import { buildTrajectory, CONFIDENCES, STATUS_BASES, STATUSES } from "@/lib/status-schema";
 import { addDays, todayIn, weekStartOf } from "@/lib/target-date";
-import { listTasks } from "@/lib/tasks";
+import { listTasks, listTaskSchedules } from "@/lib/tasks";
 import { weekObjectiveSchema, weekStartSchema } from "@/lib/week-objective-schema";
 import { getWeekObjectives, setWeekObjective } from "@/lib/week-objectives";
 
@@ -132,6 +133,9 @@ const GoalDetailSchema = z
       objective: z.string().nullable(),
       lastWeek: z.string().nullable(),
     }),
+    tasks: z.array(TaskSchema).openapi({ description: "Open tasks in their order (checked-off ones move to the activity)." }),
+    suggestions: z.array(SuggestionSchema).openapi({ description: "The latest read's suggestions still to handle." }),
+    clock: z.enum(CLOCKS).nullable().openapi({ description: "The person's clock; null follows the device." }),
   })
   .openapi("GoalDetail");
 
@@ -258,7 +262,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const today = todayIn(timeZone);
     const weekStart = weekStartOf(today);
     const lastWeekStart = addDays(weekStart, -7);
-    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts] = await Promise.all([
+    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
       getReadStatus(userId, id),
@@ -267,6 +271,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listSources(userId, id),
       listTasks(userId, id),
       listPosts(userId, id, 1),
+      listTaskSchedules(userId, id),
+      getSettings(userId),
     ]);
     const trajectory = trajectories.get(id);
 
@@ -290,6 +296,9 @@ export const goals = new OpenAPIHono<ApiEnv>()
           objective: objectives.get(weekStart) ?? null,
           lastWeek: objectives.get(lastWeekStart) ?? null,
         },
+        tasks: tasks.filter((task) => !task.doneAt).map((task) => asTask(task, schedules.get(task.id) ?? null)),
+        suggestions: read?.suggestions ?? [],
+        clock: settings.clock,
       },
       200,
     );

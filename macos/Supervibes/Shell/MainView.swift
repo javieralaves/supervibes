@@ -214,8 +214,21 @@ private struct GoalScreen: View {
                         onUpdateStatus: model.updateStatus,
                         onEdit: { edit(detail.goal) },
                         onDelete: confirmDelete,
-                        onSaveWeek: model.saveWeek
-                    ) { EmptyView() }
+                        onSaveWeek: model.saveWeek,
+                        onBackgroundTap: model.backgroundTapped
+                    ) {
+                        TasksSection(
+                            tasks: detail.tasks,
+                            suggestions: detail.suggestions,
+                            hasRead: detail.read != nil,
+                            reading: detail.readPending || model.requestingRead,
+                            clock: detail.clock ?? .device,
+                            today: detail.today,
+                            error: model.taskError,
+                            closeSignal: model.closeSignal,
+                            actions: model.taskActions
+                        )
+                    }
                 }
             }
         }

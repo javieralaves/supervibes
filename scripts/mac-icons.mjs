@@ -18,7 +18,7 @@ const ICONS = {
   Logout01Icon: [1.5],
   Moon02Icon: [1.5],
   Sun03Icon: [1.5],
-  Tick02Icon: [1.5],
+  Tick02Icon: [1.5, 2.5],
   ArrowDown01Icon: [1.5],
   MoreHorizontalIcon: [1.5],
   Refresh01Icon: [1.5],
@@ -33,6 +33,11 @@ const ICONS = {
   PencilEdit02Icon: [1.5],
   Note01Icon: [1.5],
   CheckListIcon: [1.5],
+  Clock01Icon: [1.5],
+  DashedLineCircleIcon: [1.5],
+  DragDropVerticalIcon: [1.5],
+  ViewIcon: [1.5],
+  Flag02Icon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

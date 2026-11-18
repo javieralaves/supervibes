@@ -8,6 +8,7 @@ import { connections } from "@/lib/api/routes/connections";
 import { goals } from "@/lib/api/routes/goals";
 import { me } from "@/lib/api/routes/me";
 import { settings } from "@/lib/api/routes/settings";
+import { tasks } from "@/lib/api/routes/tasks";
 import { today } from "@/lib/api/routes/today";
 import { usage } from "@/lib/api/routes/usage";
 
@@ -53,6 +54,7 @@ api.route("/", connections);
 api.route("/", goals);
 api.route("/", me);
 api.route("/", settings);
+api.route("/", tasks);
 api.route("/", today);
 api.route("/", usage);
 

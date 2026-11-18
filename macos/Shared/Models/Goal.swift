@@ -184,6 +184,12 @@ struct GoalDetail: Hashable, Sendable {
     /// There's a source, task or note to read.
     let canRead: Bool
     var week: Week
+    /// Open tasks, in their order.
+    var tasks: [TaskItem] = []
+    /// The latest read's suggestions still to handle.
+    var suggestions: [TaskSuggestion] = []
+    /// The person's clock; nil follows this Mac.
+    var clock: Clock? = nil
 }
 
 extension CalendarDay {
@@ -224,4 +230,55 @@ extension Date {
         let days = Int((Double(hours) / 24).rounded())
         return "\(days) \(days == 1 ? "day" : "days") ago"
     }
+}
+
+// MARK: - Tasks
+
+/// A goal's task (src/lib/tasks.ts), as the Tasks section shows it.
+struct TaskItem: Identifiable, Hashable, Sendable {
+    let id: String
+    var title: String
+    var description: String?
+    /// The estimate: 15, 30, 60 or 120.
+    var minutes: Int
+    var done = false
+    /// The day they mean to do it, "YYYY-MM-DD".
+    var plannedFor: String?
+    /// The day it's due, "YYYY-MM-DD".
+    var dueOn: String?
+    /// When it's next on the calendar, if it is.
+    var scheduledAt: Date?
+    /// Saving; shown faded until the server has it.
+    var isPending = false
+
+    static let estimates = [15, 30, 60, 120]
+    static let defaultMinutes = 30
+    static let maxTitle = 200
+    static let maxDescription = 2000
+
+    /// "30 min", "1 hr", "2 hr".
+    static func minutesLabel(_ minutes: Int) -> String {
+        minutes >= 60 ? "\(minutes / 60) hr" : "\(minutes) min"
+    }
+
+    /// The description's first line with something on it, for the closed row.
+    var firstLine: String? {
+        description?.split(separator: "\n").map(String.init).first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+}
+
+/// A change to a task. Only set fields are sent; an empty string clears a day or the description.
+struct TaskPatch: Hashable, Sendable {
+    var title: String?
+    var description: String?
+    var minutes: Int?
+    var plannedFor: String?
+    var dueOn: String?
+}
+
+/// Something the latest read suggests doing next.
+struct TaskSuggestion: Hashable, Sendable {
+    let title: String
+    let why: String
+    let minutes: Int
 }

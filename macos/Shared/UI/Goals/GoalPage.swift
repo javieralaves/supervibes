@@ -22,6 +22,8 @@ struct GoalPage<Sections: View>: View {
     var onEdit: () -> Void = {}
     var onDelete: () -> Void = {}
     var onSaveWeek: (String) -> Void = { _ in }
+    /// A click on the page outside its controls, e.g. to close an open task.
+    var onBackgroundTap: () -> Void = {}
     @ViewBuilder var sections: Sections
 
     private var reading: Bool { detail.readPending || requestingRead }
@@ -50,6 +52,7 @@ struct GoalPage<Sections: View>: View {
             .padding(.top, 56)
             .padding(.bottom, 80)
             .frame(maxWidth: .infinity)
+            .background(Color.clear.contentShape(.rect).onTapGesture(perform: onBackgroundTap))
         }
         .scrollContentBackground(.hidden)
     }

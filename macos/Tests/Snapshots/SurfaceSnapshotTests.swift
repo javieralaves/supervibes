@@ -139,6 +139,32 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testTasksSection() {
+        assertAppearances(
+            TasksSection(
+                tasks: Fixtures.tasks, suggestions: Fixtures.suggestions, hasRead: true, reading: false,
+                clock: .twelveHour, today: "2026-11-18", now: now
+            )
+            .padding(.horizontal, 32)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Theme.background),
+            width: 832, height: 820
+        )
+    }
+
+    func testTasksSectionWithOpenTask() {
+        assertAppearances(
+            TasksSection(
+                tasks: Fixtures.tasks, suggestions: [], hasRead: true, reading: false,
+                clock: .twentyFourHour, today: "2026-11-18", initiallyOpen: "t1", now: now
+            )
+            .padding(.horizontal, 32)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Theme.background),
+            width: 832, height: 640
+        )
+    }
+
     func testTrajectoryHoverCard() {
         let days = Fixtures.goals[1].trajectory
         assertAppearances(

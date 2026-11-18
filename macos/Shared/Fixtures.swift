@@ -128,4 +128,21 @@ enum Fixtures {
             week: .init(start: "2026-11-16", objective: "Ship the goal page natively.", lastWeek: "Get sign-in working in the Mac app.")
         )
     }
+
+    static let tasks: [TaskItem] = [
+        TaskItem(id: "t1", title: "Rebuild the goal page’s tasks natively",
+                 description: "Drag to reorder, day pills, suggestions.\nThen notes and sources.",
+                 minutes: 120, plannedFor: "2026-11-18", dueOn: "2026-11-19"),
+        TaskItem(id: "t2", title: "Write the API sketch for the calendar", minutes: 60,
+                 scheduledAt: referenceNow.addingTimeInterval(4 * 3600)),
+        TaskItem(id: "t3", title: "Review the onboarding copy with Pablo", minutes: 30,
+                 plannedFor: "2026-11-15", dueOn: "2026-11-16"),
+        TaskItem(id: "t4", title: "Try the Mac app for a full day", minutes: 15, dueOn: "2026-11-24"),
+    ]
+
+    static let suggestions: [TaskSuggestion] = [
+        TaskSuggestion(title: "Sketch the native calendar’s week view",
+                       why: "The calendar is the biggest screen left, and nothing’s been planned for it yet.", minutes: 60),
+        TaskSuggestion(title: "Ask two people to try the Mac app", why: "", minutes: 30),
+    ]
 }
