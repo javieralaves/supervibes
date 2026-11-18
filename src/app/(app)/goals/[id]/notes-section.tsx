@@ -339,6 +339,11 @@ function NoteCard({
 
       {completion && <CompletedTitle kind="suggestion">{note.completedSuggestion}</CompletedTitle>}
       {session && <SessionLine session={session} clock={clock} />}
+      {session?.aim && (
+        <p className="mt-1.5 text-[13px] leading-snug text-muted [text-wrap:pretty]">
+          <span className="font-medium text-foreground/70">Aim:</span> {session.aim}
+        </p>
+      )}
 
       {editing ? (
         <div className={completion ? "mt-1" : session ? "mt-2" : "mt-3"}>

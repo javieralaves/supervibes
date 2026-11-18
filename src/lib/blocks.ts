@@ -16,6 +16,8 @@ export type BlockDTO = {
   id: string;
   goalId: string;
   title: string | null;
+  /** For protected time: what the person wants out of the session. */
+  description: string | null;
   startsAt: Date;
   endsAt: Date;
   fromSuggestion: string | null;
@@ -35,6 +37,7 @@ const columns = {
   id: calendarBlocks.id,
   goalId: calendarBlocks.goalId,
   title: calendarBlocks.title,
+  description: calendarBlocks.description,
   startsAt: calendarBlocks.startsAt,
   endsAt: calendarBlocks.endsAt,
   fromSuggestion: calendarBlocks.fromSuggestion,
@@ -116,7 +119,7 @@ export async function getBlock(userId: string, blockId: string): Promise<BlockDT
 export async function updateBlock(
   userId: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "startsAt" | "endsAt" | "agenda" | "recap">>,
+  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "description" | "startsAt" | "endsAt" | "agenda" | "recap">>,
 ): Promise<BlockDTO | null> {
   if (patch.goalId && !(await ownsGoal(userId, patch.goalId))) return null;
   const [block] = await db.update(calendarBlocks).set(patch).where(mine(userId, blockId)).returning(columns);

@@ -177,7 +177,7 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
                   : n.completedTask
                     ? `[Completed task: ${n.completedTask}] `
                     : n.session
-                      ? `[Recap of a session, "${n.session.title}", confirmed by the person] `
+                      ? `[Recap of a session, "${n.session.title}"${n.session.aim ? `, aimed at: ${n.session.aim.replace(/\s+/g, " ")}` : ""}, confirmed by the person] `
                       : ""
               }${n.body.replace(/\s+/g, " ")}${
                 n.breadcrumbs?.length ? ` (Linked: ${n.breadcrumbs.map((b) => b.title).join("; ")})` : ""

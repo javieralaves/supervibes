@@ -234,6 +234,8 @@ export const calendarBlocks = pgTable(
       .notNull()
       .references(() => goals.id, { onDelete: "cascade" }),
     title: text(),
+    /** For protected time: what the person wants out of the session, in their words. Steers its agenda and recap. */
+    description: text(),
     startsAt: timestamp({ withTimezone: true }).notNull(),
     endsAt: timestamp({ withTimezone: true }).notNull(),
     /** Title of the suggestion this block commits to, making it an intention. Kept for history. */

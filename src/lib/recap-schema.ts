@@ -29,7 +29,13 @@ export type BlockRecap = {
 };
 
 /** A snapshot of the session a recap post covers, so it still reads right if the block is deleted. */
-export type RecapSession = { title: string; startsAt: string; endsAt: string };
+export type RecapSession = {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  /** What the person wanted out of the session, if they said. */
+  aim?: string | null;
+};
 
 /** What the block panel sends when posting a recap. Breadcrumbs are picked by URL from the draft. */
 export const postRecapSchema = z.object({

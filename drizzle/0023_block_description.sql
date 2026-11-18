@@ -1,0 +1,1 @@
+ALTER TABLE "calendar_blocks" ADD COLUMN "description" text;

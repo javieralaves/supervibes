@@ -2,23 +2,24 @@
 
 import { Cancel01Icon, CircleIcon, PencilEdit02Icon, Refresh01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import { GoalBadge } from "@/components/goal-badge";
-import type { BlockAgenda, BlockView } from "@/lib/block-schema";
+import { agendaIsStale, MAX_BLOCK_DESCRIPTION, type BlockAgenda, type BlockView } from "@/lib/block-schema";
 import { goalColorStyle } from "@/lib/goal-colors";
 import { minutesLabel } from "@/lib/task-schema";
 
 import { setTaskDoneAction } from "../goals/[id]/actions";
-import { prepareAgendaAction } from "./actions";
+import { prepareAgendaAction, setBlockDescriptionAction } from "./actions";
 import type { CalendarGoal } from "./calendar-items";
 import { RecapSection } from "./recap-section";
 
 /**
  * The block you clicked, beside the calendar on the right. Protected time can
- * get an agenda: a short plan for the session from the goal's tasks, notes and
- * latest read, with the tasks it draws on listed below as context. An intention
- * shows the task it schedules. Once a block has ended, it can be recapped.
+ * say what the person wants out of it, and get an agenda: a short plan for the
+ * session steered by that, from the goal's tasks, notes and latest read, with the
+ * tasks it draws on listed below as context. An intention shows the task it
+ * schedules. Once a block has ended, it can be recapped against what was wanted.
  */
 export function BlockPanel({
   block,
@@ -49,6 +50,10 @@ export function BlockPanel({
   const intention = Boolean(block.fromSuggestion || block.taskId);
   const kind = intention ? (block.taskDone ? "Done" : "Intention") : "Protected time";
   const title = block.title ?? goal?.title ?? "Protected time";
+  // The description as last saved here, ahead of the calendar catching up.
+  const [description, setDescription] = useState(block.description);
+  // A save in flight, so preparing an agenda right after writing goes by what was written.
+  const saving = useRef<Promise<unknown> | null>(null);
 
   return (
     <aside
@@ -73,6 +78,16 @@ export function BlockPanel({
         <h2 className="mt-3 text-[17px] font-semibold leading-snug tracking-[-0.01em] text-foreground [text-wrap:pretty]">{title}</h2>
         <p className="mt-1 text-sm tabular-nums text-muted">{timeLabel}</p>
 
+        {!intention && (!block.recapped || description) && (
+          <SessionAim
+            blockId={block.id}
+            saved={description}
+            readOnly={block.recapped}
+            onSaving={(p) => (saving.current = p)}
+            onSaved={setDescription}
+          />
+        )}
+
         {ended && <RecapSection block={block} />}
 
         {intention ? (
@@ -87,22 +102,105 @@ export function BlockPanel({
             </button>
           )
         ) : (
-          <Agenda key={block.id} blockId={block.id} saved={block.agenda} when={when} ended={ended} openTaskIds={openTaskIds} />
+          <Agenda
+            blockId={block.id}
+            saved={block.agenda}
+            steer={{ title: block.title, description }}
+            beforePrepare={() => saving.current}
+            when={when}
+            ended={ended}
+            openTaskIds={openTaskIds}
+          />
         )}
       </div>
     </aside>
   );
 }
 
+/**
+ * What the person wants out of a session, in their own words. Saved when the field loses focus;
+ * the agenda is steered by it and the recap judges the session against it.
+ */
+function SessionAim({
+  blockId,
+  saved,
+  readOnly,
+  onSaving,
+  onSaved,
+}: {
+  blockId: string;
+  saved: string | null;
+  /** Once the session is recapped, it's kept for reference. */
+  readOnly: boolean;
+  onSaving: (save: Promise<unknown>) => void;
+  onSaved: (description: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(saved ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  function save() {
+    const value = draft.trim();
+    if (value === (saved ?? "")) return;
+    setError(null);
+    onSaving(
+      setBlockDescriptionAction(blockId, value).then((result) => {
+        if (result.ok) onSaved(value || null);
+        else setError(result.error);
+      }),
+    );
+  }
+
+  return (
+    <section aria-label="Aim" className="mt-6">
+      <h3 className="text-[13px] font-semibold text-foreground">Aim</h3>
+      {readOnly ? (
+        <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-foreground/90 [text-wrap:pretty]">{saved}</p>
+      ) : (
+        <textarea
+          aria-label="What you want out of this session"
+          value={draft}
+          maxLength={MAX_BLOCK_DESCRIPTION}
+          rows={1}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.blur();
+            if (e.key === "Escape") {
+              // Undo the edit; the panel's own Escape handling shouldn't close it mid-thought.
+              e.stopPropagation();
+              setDraft(saved ?? "");
+              requestAnimationFrame(() => (e.target as HTMLTextAreaElement).blur());
+            }
+          }}
+          placeholder="What do you want out of this session?"
+          title="Steers the agenda, and the recap checks the session against it"
+          className="-mx-2 mt-1 block w-[calc(100%+1rem)] resize-none rounded-lg bg-transparent px-2 py-1.5 text-sm leading-relaxed text-foreground/90 outline-none transition-colors [field-sizing:content] placeholder:text-muted/70 hover:bg-wash/60 focus:bg-wash/60"
+        />
+      )}
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function Agenda({
   blockId,
   saved,
+  steer,
+  beforePrepare,
   when,
   ended,
   openTaskIds,
 }: {
   blockId: string;
   saved: BlockAgenda | null;
+  /** What the person has said about the session; the agenda is out of date once it changes. */
+  steer: Pick<BlockView, "title" | "description">;
+  /** A description save that's still in flight, to wait for before preparing. */
+  beforePrepare: () => Promise<unknown> | null;
   when: string;
   /** Once the session is over, an agenda is only kept for reference. */
   ended: boolean;
@@ -117,10 +215,12 @@ function Agenda({
 
   // Whichever is newer: what's saved on the block, or what was just prepared here.
   const agenda = fresh && (!saved || fresh.preparedAt > saved.preparedAt) ? fresh : saved;
+  const stale = Boolean(agenda && !ended && !preparing && agendaIsStale(agenda, steer));
 
   function prepare() {
     setError(null);
     startPreparing(async () => {
+      await beforePrepare();
       const result = await prepareAgendaAction(blockId, when);
       if (result.ok) setFresh(result.agenda);
       else setError(result.error);
@@ -178,6 +278,12 @@ function Agenda({
           </p>
         )}
 
+        {stale && (
+          <p className="mt-2 text-xs text-muted [text-wrap:pretty]">
+            You&rsquo;ve changed what this session is for since this was prepared.
+          </p>
+        )}
+
         {ended ? null : agenda ? (
           <button
             type="button"
@@ -186,7 +292,7 @@ function Agenda({
             className="mt-3 flex h-7 items-center gap-1.5 rounded-lg px-2 -ml-2 text-xs font-medium text-muted transition-colors hover:bg-wash hover:text-foreground disabled:opacity-60"
           >
             <HugeiconsIcon icon={Refresh01Icon} size={13} className={preparing ? "animate-spin" : undefined} />
-            {preparing ? "Preparing…" : "Prepare again"}
+            {preparing ? "Preparing…" : stale ? "Update agenda" : "Prepare again"}
           </button>
         ) : (
           <button

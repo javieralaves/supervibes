@@ -6,7 +6,13 @@ import * as z from "zod";
 import { AgendaError, prepareAgenda } from "@/lib/agenda";
 import { requestRead } from "@/lib/background-read";
 import { createBlock, deleteBlock, getBlock, updateBlock } from "@/lib/blocks";
-import { blockDetailsSchema, blockTimesSchema, newBlockSchema, type BlockAgenda } from "@/lib/block-schema";
+import {
+  blockDescriptionSchema,
+  blockDetailsSchema,
+  blockTimesSchema,
+  newBlockSchema,
+  type BlockAgenda,
+} from "@/lib/block-schema";
 import { createRecapPost } from "@/lib/posts";
 import { postBodySchema } from "@/lib/post-schema";
 import { discardRecap, prepareRecap, RecapError } from "@/lib/recap";
@@ -83,6 +89,23 @@ export async function updateBlockAction(blockId: unknown, input: unknown): Promi
     ...(parsed.data.goalId !== before.goalId ? { agenda: null, recap: null } : {}),
   });
   if (!block) return { ok: false, error: GONE };
+  refresh();
+  return { ok: true };
+}
+
+/** What the person wants out of a block of protected time, written in the block panel. */
+export async function setBlockDescriptionAction(blockId: unknown, description: unknown): Promise<BlockResult> {
+  const user = await requireUser();
+  const id = idSchema.safeParse(blockId);
+  const parsed = blockDescriptionSchema.safeParse(description);
+  if (!id.success) return { ok: false, error: GONE };
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const before = await getBlock(user.id, id.data);
+  if (!before) return { ok: false, error: GONE };
+  // An intention's task already says what it's for.
+  if (before.fromSuggestion || before.taskId) return { ok: false, error: "This block already schedules a task." };
+  if (before.description === parsed.data) return { ok: true };
+  if (!(await updateBlock(user.id, id.data, { description: parsed.data }))) return { ok: false, error: GONE };
   refresh();
   return { ok: true };
 }
@@ -175,6 +198,7 @@ export async function postRecapAction(blockId: unknown, input: unknown): Promise
       title: block.title ?? block.fromSuggestion ?? "Protected time",
       startsAt: block.startsAt.toISOString(),
       endsAt: block.endsAt.toISOString(),
+      aim: block.description,
     },
     breadcrumbs: (block.recap?.breadcrumbs ?? []).filter((b) => keep.has(b.url)),
   });

@@ -5,6 +5,7 @@ import type { BlockRecap } from "@/lib/recap-schema";
 /* Client-safe shapes for calendar blocks. Storage lives in blocks.ts. */
 
 export const MAX_BLOCK_TITLE = 120;
+export const MAX_BLOCK_DESCRIPTION = 1000;
 /** Shortest block, and the drag-snapping step. */
 export const BLOCK_STEP = 15;
 
@@ -28,6 +29,13 @@ export const blockDetailsSchema = z.object({
   title: titleSchema,
 });
 
+/** What the block panel sends when the person writes what they want out of a session. Empty means none. */
+export const blockDescriptionSchema = z
+  .string()
+  .trim()
+  .max(MAX_BLOCK_DESCRIPTION, `Keep it under ${MAX_BLOCK_DESCRIPTION} characters.`)
+  .transform((d) => d || null);
+
 export const newBlockSchema = z.intersection(blockDetailsSchema, timesSchema);
 export const blockTimesSchema = timesSchema;
 
@@ -38,6 +46,8 @@ export type BlockView = {
   id: string;
   goalId: string;
   title: string | null;
+  /** For protected time: what the person wants out of the session, in their words. */
+  description: string | null;
   startsAt: string;
   endsAt: string;
   /** The suggestion it was made from, if any. Kept for history. */
@@ -60,4 +70,17 @@ export type BlockAgenda = {
   tasks: { id: string; title: string; minutes: number }[];
   /** ISO time. */
   preparedAt: string;
+  /**
+   * The block's title and description when this was prepared, so the panel can tell when they've
+   * changed since. Missing on agendas prepared before they were kept.
+   */
+  title?: string | null;
+  description?: string | null;
 };
+
+/** Whether the person has changed what steers the agenda (title or description) since it was prepared. */
+export function agendaIsStale(agenda: BlockAgenda, block: Pick<BlockView, "title" | "description">): boolean {
+  // Older agendas didn't keep the title; they had no description to keep.
+  const titleChanged = agenda.title !== undefined && agenda.title !== block.title;
+  return titleChanged || (agenda.description ?? null) !== block.description;
+}
