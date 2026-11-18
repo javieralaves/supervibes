@@ -16,7 +16,6 @@ import { getSettings } from "@/lib/settings";
 import { listTasks, listTaskSchedules } from "@/lib/tasks";
 
 import { GoalOverview } from "./goal-overview";
-import { SourcesSection } from "./sources-section";
 
 export const metadata: Metadata = { title: "Goal · Supervibes" };
 
@@ -44,7 +43,6 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
   return (
     <GoalOverview
       goal={goal}
-      hasSources={sources.length > 0}
       read={read && { ...read, createdAt: read.createdAt.toISOString() }}
       notes={posts.map((p) => ({
         id: p.id,
@@ -66,14 +64,8 @@ async function GoalDetail({ params }: { params: Promise<{ id: string }> }) {
         scheduledAt: schedules.get(t.id)?.toISOString() ?? null,
       }))}
       clock={settings.clock}
-      sources={
-        <SourcesSection
-          goalId={goal.id}
-          goal={{ title: goal.title, icon: goal.icon, color: goal.color }}
-          sources={sources}
-          connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
-        />
-      }
+      sources={sources}
+      connections={connections.filter((c) => c.status === "connected").map((c) => ({ id: c.id, provider: c.provider }))}
     />
   );
 }
