@@ -149,6 +149,7 @@ enum Icon: String {
     case tickHeavy = "Tick02-3"
     case reopen = "ArrowTurnBackward-1_5"
     case arrowForward = "ArrowRight02-1_5"
+    case circle = "Circle-1_5"
     case refresh = "Refresh01-1_5"
     case unlink = "Unlink04-1_5"
     case linearMark = "LinearMark"

@@ -264,7 +264,10 @@ struct TaskItem: Identifiable, Hashable, Sendable {
 
     /// "30 min", "1 hr", "2 hr".
     static func minutesLabel(_ minutes: Int) -> String {
-        minutes >= 60 ? "\(minutes / 60) hr" : "\(minutes) min"
+        guard minutes >= 60 else { return "\(minutes) min" }
+        // As JavaScript prints minutes / 60: "1 hr", "1.5 hr", "1.25 hr".
+        let hours = Double(minutes) / 60
+        return hours == hours.rounded() ? "\(Int(hours)) hr" : "\(hours.formatted(.number.precision(.fractionLength(0...4)).locale(Locale(identifier: "en_US")))) hr"
     }
 
     /// The description's first line with something on it, for the closed row.

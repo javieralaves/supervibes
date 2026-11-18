@@ -208,6 +208,9 @@ enum Fixtures {
             CalendarTask(id: "t1", goalId: "g1", title: "Write the API sketch", minutes: 60, plannedFor: "2026-11-18"),
             CalendarTask(id: "t2", goalId: "g2", title: "Book the restaurant", minutes: 15, plannedFor: "2026-11-16"),
             CalendarTask(id: "t4", goalId: "g3", title: "Reply to Jorge", minutes: 30, dueOn: "2026-11-17"),
+            CalendarTask(id: "t9", goalId: "g1", title: "Rebuild the calendar natively", minutes: 90),
+            CalendarTask(id: "t5", goalId: "g1", title: "Sketch the week view", minutes: 45, plannedFor: "2026-11-19", dueOn: "2026-11-20"),
+            CalendarTask(id: "t6", goalId: "g2", title: "Plan the weekend", minutes: 30),
         ]
         return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
                             clock: .twelveHour, objectives: [])

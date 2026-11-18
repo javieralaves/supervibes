@@ -310,6 +310,8 @@ private struct GoalScreen: View {
 /// The calendar with its data, in the app's window.
 private struct CalendarScreen: View {
     @State private var model: CalendarModel
+    /// The task panel beside the day: closed unless opened, remembered.
+    @AppStorage("sv-calendar-task-panel") private var showsTasks = false
 
     init(auth: AuthModel) {
         _model = State(initialValue: CalendarModel(auth: auth))
@@ -343,8 +345,12 @@ private struct CalendarScreen: View {
                         moveToTomorrow: model.moveToTomorrow,
                         toggleDone: model.toggleDone,
                         remove: model.remove,
+                        place: model.place(_:day:start:minutes:),
+                        plan: model.plan(_:day:),
                         defaultGoalId: { model.defaultGoalId }
-                    )
+                    ),
+                    showsTasks: showsTasks,
+                    onToggleTasks: { showsTasks.toggle() }
                 )
                 .focusable()
                 .focusEffectDisabled()

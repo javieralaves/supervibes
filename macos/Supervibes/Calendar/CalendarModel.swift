@@ -182,6 +182,70 @@ final class CalendarModel {
         }
     }
 
+    // MARK: - Tasks on the calendar
+
+    /// A task dropped on `day` at `start`: a new intention, or its next block moved there.
+    func place(_ taskId: String, day: Int, start: Int, minutes: Int) {
+        let clockNow = Date()
+        guard let task = data.tasks.first(where: { $0.id == taskId }) else { return }
+        let startsAt = CalendarDayMath.midnight(day, from: now).addingTimeInterval(Double(start) * 60)
+        let endsAt = startsAt.addingTimeInterval(Double(minutes) * 60)
+        if let block = data.nextBlocks(now: clockNow)[taskId] {
+            if block.startsAt != startsAt { setTimes(block, startsAt: startsAt, endsAt: endsAt) }
+            return
+        }
+        let pending = CalendarBlock(
+            id: "pending-\(UUID().uuidString)",
+            goalId: task.goalId,
+            title: task.title,
+            startsAt: startsAt,
+            endsAt: endsAt,
+            taskId: task.id,
+            isPending: true
+        )
+        data.blocks.append(pending)
+        write(undo: { [weak self] in self?.data.blocks.removeAll { $0.id == pending.id } }) { client in
+            let body = Components.Schemas.BlockTimes(startsAt: startsAt, endsAt: endsAt)
+            switch try await client.scheduleTask(path: .init(taskId: taskId), body: .json(body)) {
+            case .created(let created):
+                let block = CalendarBlock(api: try created.body.json)
+                return .apply { $0.replace(pending.id, with: block) }
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t schedule that task.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That task doesn’t exist anymore.")
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t schedule that task (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Plan a task for `day` without a time, or take it off its day (nil). A time it had that
+    /// hasn't started yet goes: the day is now the plan.
+    func plan(_ taskId: String, day: Int?) {
+        let clockNow = Date()
+        guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+        let before = data.tasks[index]
+        let dayISO = day.map { CalendarDay.today(CalendarDayMath.midnight($0, from: now)) }
+        let unschedule = data.nextBlocks(now: clockNow)[taskId].flatMap { $0.startsAt > clockNow ? $0 : nil }
+        if before.plannedFor == dayISO, unschedule == nil { return }
+        let blockIndex = unschedule.flatMap { block in data.blocks.firstIndex { $0.id == block.id } }
+        data.tasks[index].plannedFor = dayISO
+        if let unschedule { data.blocks.removeAll { $0.id == unschedule.id } }
+        write(undo: { [weak self] in
+            guard let self else { return }
+            if let i = self.data.tasks.firstIndex(where: { $0.id == taskId }) { self.data.tasks[i] = before }
+            if let unschedule, let blockIndex { self.data.blocks.insert(unschedule, at: min(blockIndex, self.data.blocks.count)) }
+        }) { client in
+            let body = Components.Schemas.PlanTask(day: dayISO ?? "", unscheduleBlockId: unschedule?.id)
+            switch try await client.planTask(path: .init(taskId: taskId), body: .json(body)) {
+            case .noContent: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t plan that task.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That task doesn’t exist anymore.")
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t plan that task (the server answered \(status)).")
+            }
+        }
+    }
+
     /// Mark an intention's task done, or reopen it.
     func toggleDone(_ blockId: String) {
         guard let before = block(blockId), before.taskId != nil else { return }

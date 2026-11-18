@@ -40,6 +40,7 @@ const ICONS = {
   Flag02Icon: [1.5],
   ArrowTurnBackwardIcon: [1.5],
   ArrowRight02Icon: [1.5],
+  CircleIcon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

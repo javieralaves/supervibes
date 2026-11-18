@@ -129,6 +129,62 @@ struct DaySegment: Identifiable, Hashable, Sendable {
     }
 }
 
+/// An open task as the task panel lists it, with its next block that hasn't ended: dragging the
+/// task moves that block rather than adding another.
+struct PanelTask: Identifiable, Hashable, Sendable {
+    let task: CalendarTask
+    let block: CalendarBlock?
+    var id: String { task.id }
+
+    /// How long it lands when dropped on a day: its block's length, else its estimate.
+    var minutes: Int {
+        guard let block else { return task.minutes }
+        return min(CalendarDayMath.dayMinutes, Int((block.endsAt.timeIntervalSince(block.startsAt) / 60).rounded()))
+    }
+
+    var isPending: Bool { block?.isPending ?? false }
+}
+
+/// A goal's open tasks in the panel.
+struct PanelGroup: Identifiable, Hashable, Sendable {
+    let goal: CalendarGoal
+    let tasks: [PanelTask]
+    var id: String { goal.id }
+}
+
+extension CalendarData {
+    /// Each open task's next block that hasn't ended.
+    func nextBlocks(now: Date) -> [String: CalendarBlock] {
+        var next: [String: CalendarBlock] = [:]
+        for block in blocks {
+            guard let taskId = block.taskId, block.endsAt > now else { continue }
+            if let seen = next[taskId], seen.startsAt <= block.startsAt { continue }
+            next[taskId] = block
+        }
+        return next
+    }
+
+    func panelTask(_ taskId: String, now: Date) -> PanelTask? {
+        tasks.first { $0.id == taskId }.map { PanelTask(task: $0, block: nextBlocks(now: now)[taskId]) }
+    }
+
+    /// The panel: each goal's open tasks in your order. Those planned for the shown day come first,
+    /// ready to drag in; those already on the calendar last.
+    func panelGroups(day: Int, now: Date) -> [PanelGroup] {
+        let next = nextBlocks(now: now)
+        let shown = CalendarDay.today(CalendarDayMath.midnight(day, from: now))
+        func rank(_ t: PanelTask) -> Int { t.block != nil ? 2 : t.task.plannedFor == shown ? 0 : 1 }
+        return goals.compactMap { goal in
+            let mine = tasks.filter { $0.goalId == goal.id }.map { PanelTask(task: $0, block: next[$0.id]) }
+            guard !mine.isEmpty else { return nil }
+            let sorted = mine.enumerated().sorted { a, b in
+                rank(a.element) != rank(b.element) ? rank(a.element) < rank(b.element) : a.offset < b.offset
+            }.map(\.element)
+            return PanelGroup(goal: goal, tasks: sorted)
+        }
+    }
+}
+
 /// A task on a day's strip: planned for that day without a time, or due that day.
 struct StripItem: Identifiable, Hashable, Sendable {
     var id: String { task.id }

@@ -227,6 +227,13 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testDayViewWithTasks() {
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, showsTasks: true, onToggleTasks: {}).background(Theme.background),
+            width: 1180, height: 560
+        )
+    }
+
     func testDayViewTop() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now).background(Theme.background),

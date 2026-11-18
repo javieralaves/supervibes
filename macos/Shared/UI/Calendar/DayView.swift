@@ -33,6 +33,12 @@ struct DayView: View {
     var actions: CalendarActions?
     /// Opens with this block being named, for previews and snapshots.
     var editing: BlockEditing?
+    /// The task panel beside the day.
+    var showsTasks = false
+    /// Shows or hides it; without it there's no toggle.
+    var onToggleTasks: (() -> Void)?
+
+    @State private var drag = TaskDragState()
 
     private var clock: Clock { data.clock ?? .device }
     private var isToday: Bool { offset == 0 }
@@ -41,6 +47,8 @@ struct DayView: View {
     var body: some View {
         VStack(spacing: 0) {
             CalendarTopBar(
+                showsTasks: onToggleTasks == nil ? nil : showsTasks,
+                onToggleTasks: { onToggleTasks?() },
                 title: shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
                 relative: Self.dayLabel(offset),
                 showsToday: !isToday,
@@ -49,26 +57,65 @@ struct DayView: View {
                 onNext: { onStep(1) }
             )
 
-            VStack(spacing: 0) {
-                if let error {
-                    Text(error).appText(.sm).foregroundStyle(Theme.danger)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Rectangle().fill(Theme.cardBorder).frame(height: 1)
+            HStack(spacing: 16) {
+                if showsTasks {
+                    TaskPanel(groups: data.panelGroups(day: offset, now: now), clock: clock, now: now)
+                        .frame(width: 288)
                 }
-                let strip = data.strip(day: offset, today: now)
-                if !strip.isEmpty {
-                    DayStrip(items: strip, goals: data.goals, today: CalendarDay.today(now))
-                }
-                TimelineScroll(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing)
+                day
             }
-            .background(Theme.card, in: .rect(cornerRadius: 16))
-            .clipShape(.rect(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
-            .frame(maxWidth: 768)
+            .frame(maxWidth: showsTasks ? 1072 : 768)
             .padding(16)
             .frame(maxWidth: .infinity)
         }
+        .coordinateSpace(.calendar)
+        .overlay(alignment: .topLeading) {
+            // The task under the pointer, until it's over the timeline and the preview takes over.
+            if let placing = drag.placing, placing.moved {
+                DragChip(title: placing.title, color: data.goal(placing.goalId)?.color ?? "slate")
+                    .offset(x: placing.location.x + 14, y: placing.location.y + 10)
+                    .opacity(placing.start == nil ? 1 : 0)
+            }
+        }
+        .pointerStyle(drag.placing?.moved == true ? .grabActive : nil)
+        .environment(\.taskDrag, actions == nil ? nil : drag)
+        .onChange(of: offset, initial: true) {
+            // Let go on the timeline: a time on the shown day; on the strip: the day itself.
+            drag.onDrop = { [offset, actions] placing in
+                if placing.onStrip {
+                    actions?.plan(placing.taskId, offset)
+                } else if let start = placing.start {
+                    actions?.place(placing.taskId, offset, start, placing.minutes)
+                }
+            }
+        }
+    }
+
+    private var day: some View {
+        VStack(spacing: 0) {
+            if let error {
+                Text(error).appText(.sm).foregroundStyle(Theme.danger)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Rectangle().fill(Theme.cardBorder).frame(height: 1)
+            }
+            let strip = data.strip(day: offset, today: now)
+            // With nothing on it, the strip only shows when there are tasks beside it to drop in.
+            if !strip.isEmpty || showsTasks {
+                DayStrip(
+                    items: strip,
+                    goals: data.goals,
+                    blocks: data.nextBlocks(now: now),
+                    today: CalendarDay.today(now),
+                    dayName: Self.dayLabel(offset) ?? shownDay.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US"))),
+                    onUnplan: actions.map { actions in { actions.plan($0, nil) } }
+                )
+            }
+            TimelineScroll(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing)
+        }
+        .background(Theme.card, in: .rect(cornerRadius: 16))
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
     }
 
     /// "Today", "Tomorrow" or "Yesterday"; nil further away.
@@ -86,6 +133,9 @@ struct DayView: View {
 
 /// `h-14 bg-background shadow-[inset_0_-1px_0_var(--card-border)]`: the date, then Today and the arrows.
 struct CalendarTopBar: View {
+    /// Whether the task panel is open; nil hides its toggle.
+    var showsTasks: Bool?
+    var onToggleTasks: () -> Void = {}
     let title: String
     var relative: String?
     var showsToday: Bool
@@ -95,6 +145,11 @@ struct CalendarTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            if let showsTasks {
+                ToggleButton(isOn: showsTasks, action: onToggleTasks)
+                    .help(showsTasks ? "Hide tasks" : "Show tasks to drag onto the day")
+                    .accessibilityLabel("Tasks")
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title).font(.app(15, .semibold)).tracking(-0.15).foregroundStyle(Theme.foreground).lineLimit(1)
                 if let relative {
@@ -118,6 +173,30 @@ struct CalendarTopBar: View {
         .frame(height: 56)
         .background(Theme.background)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
+    }
+
+    /// The task panel's toggle: pressed, or a card button like the arrows.
+    private struct ToggleButton: View {
+        let isOn: Bool
+        let action: () -> Void
+        @State private var isHovered = false
+
+        var body: some View {
+            Button(action: action) {
+                Icon.checklist.image(size: 16)
+                    .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
+                    .frame(width: 32, height: 32)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8).fill(isOn ? Theme.foreground(0.06) : Theme.card)
+                            .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: isOn ? 0 : 0.05)), radius: 1, y: 1)
+                    }
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isOn || isHovered ? Theme.lineStrong : Theme.cardBorder))
+                    .contentShape(.rect(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+            .accessibilityAddTraits(isOn ? .isSelected : [])
+        }
     }
 
     /// `h-8 rounded-lg border bg-card shadow`, muted until hovered.
@@ -146,37 +225,75 @@ struct CalendarTopBar: View {
 
 // MARK: - Anytime strip
 
-/// The top of a day: tasks meant for it without a time, and tasks due then.
+/// The top of a day: tasks meant for it without a time, and tasks due then. Drop a task here to
+/// plan it for the day; drag one from here onto the timeline to give it a time.
 struct DayStrip: View {
     let items: [StripItem]
     let goals: [CalendarGoal]
+    /// Each task's next block, for dragging it.
+    var blocks: [String: CalendarBlock] = [:]
     /// Today, "YYYY-MM-DD", for "from Mon" and "Overdue since Mon".
     let today: String
+    /// "Today" or "Friday", for the drop hint.
+    var dayName = ""
+    /// Takes a task off this day; without it the chips have no ×.
+    var onUnplan: ((String) -> Void)?
+    @Environment(\.taskDrag) private var drag
 
     var body: some View {
+        let placing = drag?.placing.flatMap { $0.moved ? $0 : nil }
+        let dropping = placing?.onStrip ?? false
         HStack(alignment: .top, spacing: 0) {
             Text("Anytime").font(.app(11, .medium)).foregroundStyle(Theme.muted)
                 .frame(width: DayGrid.gutter, alignment: .trailing)
                 .padding(.trailing, 8)
                 .padding(.top, 12)
             FlowLayout(spacing: 6) {
+                if items.isEmpty {
+                    Text(placing != nil ? "Drop to plan it for \(dayName)" : "Drag a task here to plan it for the day, without a time.")
+                        .appText(.xs).foregroundStyle(dropping ? Theme.foreground : Theme.muted)
+                        .padding(.horizontal, 4)
+                        .frame(minHeight: 28)
+                }
                 ForEach(items) { item in
-                    StripChip(item: item, color: goals.first { $0.id == item.task.goalId }?.color ?? "slate", today: today)
+                    StripChip(
+                        item: item,
+                        block: blocks[item.task.id],
+                        color: goals.first { $0.id == item.task.goalId }?.color ?? "slate",
+                        today: today,
+                        isDragging: placing?.taskId == item.task.id,
+                        onUnplan: onUnplan.map { unplan in { unplan(item.task.id) } }
+                    )
+                }
+                if dropping, !items.isEmpty {
+                    Text("Drop to plan it for \(dayName)").appText(.xs).foregroundStyle(Theme.foreground)
+                        .padding(.horizontal, 4)
+                        .frame(minHeight: 28)
                 }
             }
             .padding(.vertical, 8)
             .padding(.trailing, 12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
+        .background(dropping ? Theme.foreground(0.05) : .clear)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.stripFrame = $0 }
+        .onDisappear { drag?.stripFrame = .zero }
     }
 }
 
-/// A task on the strip, tinted with its goal: why it's here (a calendar or a flag), the title, its estimate.
+/// A task on the strip, tinted with its goal: why it's here (a calendar or a flag), the title, its
+/// estimate; on hover, an × to take it off the day.
 private struct StripChip: View {
     let item: StripItem
+    let block: CalendarBlock?
     let color: String
     let today: String
+    var isDragging = false
+    var onUnplan: (() -> Void)?
+    @State private var isHovered = false
+
+    private var isPending: Bool { block?.isPending ?? false }
 
     var body: some View {
         let carried = item.carriedFrom.map { "from \(CalendarDay.relativeLabel($0, today: today))" }
@@ -193,9 +310,34 @@ private struct StripChip: View {
         .padding(.trailing, 10)
         .padding(.vertical, 4)
         .frame(maxWidth: 272, alignment: .leading)
-        .background(GoalPalette.tintBackground(color), in: .rect(cornerRadius: 8))
-        .background(Theme.card, in: .rect(cornerRadius: 8))
+        .background(GoalPalette.mix(color, light: 0.13, dark: 0.18), in: .rect(cornerRadius: 8))
+        .overlay(alignment: .trailing) {
+            // Takes no room: it fades in over the end of the chip on hover.
+            if item.planned, !isPending, let onUnplan {
+                Button(action: onUnplan) {
+                    UnplanMark()
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 16)
+                .padding(.trailing, 4)
+                .frame(maxHeight: .infinity)
+                .background(LinearGradient(
+                    stops: [.init(color: GoalPalette.mix(color, light: 0.13, dark: 0.18).opacity(0), location: 0),
+                            .init(color: GoalPalette.mix(color, light: 0.13, dark: 0.18), location: 0.45)],
+                    startPoint: .leading, endPoint: .trailing
+                ))
+                .opacity(isHovered ? 1 : 0)
+                .help("Take it off this day")
+                .accessibilityLabel("Take “\(item.task.title)” off this day")
+            }
+        }
+        .clipShape(.rect(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
+        .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.05)), radius: 1, y: 1)
+        .opacity(isDragging || isPending ? 0.5 : 1)
+        .onHover { isHovered = $0 }
+        .pointerStyle(isPending ? nil : .grabIdle)
+        .modifier(TaskDragSource(task: PanelTask(task: item.task, block: block)))
         .help(helpText)
     }
 
@@ -205,7 +347,22 @@ private struct StripChip: View {
         else if item.planned { lines.append("Planned for this day") }
         if item.due == .overdue, let due = item.task.dueOn { lines.append("Overdue since \(CalendarDay.relativeLabel(due, today: today))") }
         else if item.due == .due { lines.append("Due this day") }
+        if onUnplan != nil { lines.append("Drag onto the timeline to give it a time") }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// The × on a strip chip.
+private struct UnplanMark: View {
+    @State private var isHovered = false
+
+    var body: some View {
+        Icon.close.image(size: 12)
+            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+            .frame(width: 20, height: 20)
+            .background(isHovered ? Theme.foreground(0.1) : .clear, in: .rect(cornerRadius: 6))
+            .contentShape(.rect)
+            .onHover { isHovered = $0 }
     }
 }
 
@@ -264,14 +421,53 @@ private struct TimelineScroll: View {
     let clock: Clock
     let actions: CalendarActions?
     let editing: BlockEditing?
+    @Environment(\.taskDrag) private var drag
+    @State private var position = ScrollPosition()
+    @State private var scrollY: CGFloat = 0
+    @State private var maxScrollY: CGFloat = 0
+
+    /// How close to the top or bottom edge a dragged task starts it scrolling.
+    private static let scrollEdge: CGFloat = 56
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 DayTimeline(data: data, offset: offset, now: now, clock: clock, actions: actions, editing: editing, proxy: proxy)
             }
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: [CGFloat].self) {
+                [$0.contentOffset.y, $0.contentSize.height - $0.containerSize.height]
+            } action: { _, value in
+                scrollY = value[0]
+                maxScrollY = max(value[1], 0)
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.viewportFrame = $0 }
+            .task(id: drag?.placing?.moved == true) { await scrollWhileDragging() }
             .onAppear { scrollToNow(proxy) }
             .onChange(of: offset) { scrollToNow(proxy) }
+        }
+    }
+
+    /// While a task is dragged near the top or bottom edge, scroll that way.
+    private func scrollWhileDragging() async {
+        while !Task.isCancelled {
+            guard let drag, let placing = drag.placing, placing.moved else { return }
+            let view = drag.viewportFrame
+            let p = placing.location
+            if p.x >= view.minX, p.x <= view.maxX {
+                let above = view.minY + Self.scrollEdge - p.y
+                let below = p.y - (view.maxY - Self.scrollEdge)
+                var step: CGFloat = 0
+                if above > 0, above < Self.scrollEdge * 2 { step = -min(18, (above / 4).rounded(.up)) }
+                else if below > 0, below < Self.scrollEdge * 2 { step = min(18, (below / 4).rounded(.up)) }
+                let target = min(max(scrollY + step, 0), maxScrollY)
+                if target != scrollY {
+                    position.scrollTo(y: target)
+                    scrollY = target
+                }
+            }
+            drag.update()
+            try? await Task.sleep(for: .milliseconds(16))
         }
     }
 
@@ -290,6 +486,10 @@ struct CalendarActions {
     var moveToTomorrow: (_ blockId: String) -> Void
     var toggleDone: (_ blockId: String) -> Void
     var remove: (_ blockId: String) -> Void
+    /// A task dropped on `day` at `start`: a new intention, or its next block moved there.
+    var place: (_ taskId: String, _ day: Int, _ start: Int, _ minutes: Int) -> Void
+    /// Plan a task for `day` without a time, or take it off its day (nil).
+    var plan: (_ taskId: String, _ day: Int?) -> Void
     /// The goal a new block starts with.
     var defaultGoalId: () -> String?
 }
@@ -333,6 +533,7 @@ struct DayTimeline: View {
     @State private var dragging: BlockDrag?
     @State private var width: CGFloat = 0
     @Environment(\.overlays) private var overlays
+    @Environment(\.taskDrag) private var drag
 
     init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil, editing: BlockEditing? = nil, proxy: ScrollViewProxy? = nil) {
         self.data = data
@@ -459,6 +660,17 @@ struct DayTimeline: View {
                     .zIndex(2)
             }
 
+            // Where a dragged task would land
+            if let placing = drag?.placing, placing.moved, let start = placing.start {
+                let end = start + placing.minutes
+                DropPreview(title: placing.title, color: data.goal(placing.goalId)?.color ?? "slate", start: start, end: end, clock: clock)
+                    .frame(height: max(DayGrid.y(end) - DayGrid.y(start) - 2, 14))
+                    .padding(.leading, DayGrid.gutter + 4)
+                    .padding(.trailing, 8)
+                    .offset(y: DayGrid.y(start) + 1)
+                    .zIndex(2)
+            }
+
             // Now
             if isToday {
                 NowLine(label: clock.format(minutes: nowMinutes)).offset(y: DayGrid.y(nowMinutes))
@@ -473,6 +685,7 @@ struct DayTimeline: View {
         .frame(height: DayGrid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.timelineFrame = $0 }
         .onChange(of: offset) { editing = nil }
     }
 
