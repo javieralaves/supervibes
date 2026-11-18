@@ -11,7 +11,7 @@ import { requestRead } from "@/lib/background-read";
 import { completeSuggestion, getLatestRead, passOnSuggestion } from "@/lib/progress";
 import { requireUser } from "@/lib/session";
 import { taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
-import { createTask, deleteTask, markTaskDone, updateTask } from "@/lib/tasks";
+import { createTask, deleteTask, markTaskDone, reorderTasks, updateTask } from "@/lib/tasks";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -161,6 +161,20 @@ export async function editTaskAction(taskId: unknown, patch: unknown): Promise<A
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the task." };
   const task = await updateTask(user.id, id.data, parsed.data);
   if (!task) return { ok: false, error: TASK_GONE };
+  refresh();
+  return { ok: true };
+}
+
+/** Dragging tasks around on the goal page: the goal's open tasks, in their new order. */
+export async function reorderTasksAction(goalId: unknown, taskIds: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const goal = idSchema.safeParse(goalId);
+  const ids = z.array(idSchema).max(500).safeParse(taskIds);
+  if (!goal.success || !ids.success) return { ok: false, error: "Couldn't reorder these tasks." };
+  if (!(await reorderTasks(user.id, goal.data, ids.data))) {
+    refresh();
+    return { ok: false, error: "Your tasks changed since this page loaded. Try again." };
+  }
   refresh();
   return { ok: true };
 }

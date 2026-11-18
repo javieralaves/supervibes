@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, gt, gte, isNotNull, isNull, max, min, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, max, min, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { calendarBlocks, goals, goalTasks } from "@/db/schema";
@@ -138,6 +138,30 @@ export async function createTask(
     })
     .returning(columns);
   return task;
+}
+
+/**
+ * Puts a goal's open tasks in the given order. `ids` must be exactly the goal's
+ * open tasks, so a list from a page that's out of date can't drop or invent any;
+ * returns false when it isn't. Renumbers them 0…n in one statement.
+ */
+export async function reorderTasks(userId: string, goalId: string, ids: string[]): Promise<boolean> {
+  const open = await db
+    .select({ id: goalTasks.id })
+    .from(goalTasks)
+    .where(and(eq(goalTasks.userId, userId), eq(goalTasks.goalId, goalId), isNull(goalTasks.doneAt)));
+  const openIds = new Set(open.map((t) => t.id));
+  if (ids.length !== openIds.size || new Set(ids).size !== ids.length || !ids.every((id) => openIds.has(id))) return false;
+  if (ids.length === 0) return true;
+  const cases = sql.join(
+    ids.map((id, i) => sql`when ${goalTasks.id} = ${id} then ${i}::integer`),
+    sql` `,
+  );
+  await db
+    .update(goalTasks)
+    .set({ position: sql`case ${cases} end` })
+    .where(and(eq(goalTasks.userId, userId), eq(goalTasks.goalId, goalId), inArray(goalTasks.id, ids)));
+  return true;
 }
 
 export async function updateTask(

@@ -7,13 +7,14 @@ import {
   Clock01Icon,
   DashedLineCircleIcon,
   Delete02Icon,
+  DragDropVerticalIcon,
   Refresh01Icon,
   Tick02Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { startTransition, useEffect, useId, useOptimistic, useRef, useState } from "react";
+import { startTransition, useEffect, useId, useLayoutEffect, useOptimistic, useRef, useState } from "react";
 
 import { MoreMenu, MoreMenuItem } from "@/components/more-menu";
 import { formatTime, useClock } from "@/lib/clock";
@@ -34,6 +35,7 @@ import {
   deleteTaskAction,
   editTaskAction,
   passOnSuggestionAction,
+  reorderTasksAction,
   setTaskDoneAction,
   type ActionResult,
 } from "./actions";
@@ -65,6 +67,32 @@ function applyOp(tasks: TaskView[], op: Op): TaskView[] {
   }
 }
 
+/** Tasks with the given ids first, in that order; the rest (done ones, new ones) after. */
+function inOrder(tasks: TaskView[], ids: string[]): TaskView[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ordered = ids.flatMap((id) => byId.get(id) ?? []);
+  const placed = new Set(ids);
+  return [...ordered, ...tasks.filter((t) => !placed.has(t.id))];
+}
+
+/** How long a dropped or moved row takes to settle into its place. */
+const SETTLE_MS = 180;
+
+/** A task being dragged: where it started and would land among the open tasks, and how far it's moved. */
+type Drag = { id: string; from: number; to: number; dy: number; /** How far the rows it passes slide to make room. */ shift: number };
+
+/** How far the pointer moves before a press on a row becomes a drag rather than a click. */
+const DRAG_THRESHOLD = 4;
+
+/** Where a row sits while a task is dragged: the dragged one follows the pointer, the ones it passes slide aside. */
+function dragOffset(drag: Drag | null, index: number, id: string): number {
+  if (!drag) return 0;
+  if (id === drag.id) return drag.dy;
+  if (drag.from < drag.to && index > drag.from && index <= drag.to) return -drag.shift;
+  if (drag.to < drag.from && index >= drag.to && index < drag.from) return drag.shift;
+  return 0;
+}
+
 /** The task open for editing, with what's been typed so far. */
 type Draft = { id: string; title: string; description: string };
 
@@ -81,8 +109,10 @@ const PILL =
 
 /**
  * A goal's open tasks. Click one to open it in place and add a description;
- * it saves when it closes (click elsewhere, Esc, or open another). Checked-off
- * tasks move to the goal's Activity.
+ * it saves when it closes (click elsewhere, Esc, or open another). Drag a row
+ * (or its grip, on touch screens) to reorder, or press ⌥↑ / ⌥↓ on it. The order
+ * is the person's priority: reads, agendas and the calendar follow it.
+ * Checked-off tasks move to the goal's Activity.
  *
  * Under the list, the latest read's suggestions: candidates you can add as tasks
  * or pass on. Once they're all handled, you can ask for new ones.
@@ -117,7 +147,24 @@ export function TasksSection({
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
 
-  const open = list.filter((t) => !t.doneAt);
+  /*
+   * A new order, shown at once, until the page's tasks come back from the server with it saved.
+   * Plain state rather than an optimistic update: those (and anything else set in the same
+   * transition) only commit once the save finishes, so the drop would lag a round trip.
+   */
+  const [localOrder, setLocalOrder] = useState<{ ids: string[]; base: TaskView[] } | null>(null);
+  const ordered = localOrder && localOrder.base === tasks ? inOrder(list, localOrder.ids) : list;
+
+  const open = ordered.filter((t) => !t.doneAt);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const listRef = useRef<HTMLUListElement>(null);
+  /** A task moved from the keyboard, to keep focus on once the list re-renders. */
+  const refocus = useRef<string | null>(null);
+  /** Where each row was on screen just before a drop or move, so it can glide to its new place. */
+  const settleFrom = useRef<Map<string, number> | null>(null);
+  // Not while a task is open for editing, or while a new one is still saving (its id isn't real yet).
+  const canReorder = !draft && open.length > 1 && !open.some((t) => t.id.startsWith("pending-"));
   // The list is a flex column, not a grid: grid rows would widen to fit a long description line.
 
   function run(op: Op, action: () => Promise<ActionResult>) {
@@ -162,6 +209,152 @@ export function TasksSection({
       },
       () => addTaskAction(goalId, parsed.data),
     );
+  }
+
+  /** Notes where every row is on screen now, for the next render to animate from. */
+  function measureRows() {
+    const tops = new Map<string, number>();
+    listRef.current?.querySelectorAll<HTMLElement>("[data-task-row]").forEach((r) => {
+      tops.set(r.dataset.taskRow!, r.getBoundingClientRect().top);
+    });
+    settleFrom.current = tops;
+  }
+
+  /** Shows the new order at once and saves it in the background. */
+  function reorder(ids: string[], movedId: string) {
+    const to = ids.indexOf(movedId);
+    const title = open.find((t) => t.id === movedId)?.title ?? "Task";
+    setAnnouncement(`${title} moved to position ${to + 1} of ${ids.length}.`);
+    setError(null);
+    measureRows();
+    // Same render: the drag ends and the new order lands together, so nothing jumps.
+    setDrag(null);
+    setLocalOrder({ ids, base: tasks });
+    startTransition(async () => {
+      const result = await reorderTasksAction(goalId, ids);
+      if (!result.ok) {
+        setError(result.error);
+        setLocalOrder(null);
+      }
+    });
+  }
+
+  /** ⌥↑ / ⌥↓ on a task: one place up or down. */
+  function moveBy(id: string, by: -1 | 1) {
+    if (!canReorder) return;
+    const ids = open.map((t) => t.id);
+    const from = ids.indexOf(id);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    refocus.current = id;
+    reorder(ids, id);
+  }
+
+  // After a drop or move: each row glides from where it was to where it now is (FLIP),
+  // and a task moved from the keyboard keeps focus, which moving it in the DOM can drop.
+  useLayoutEffect(() => {
+    const from = settleFrom.current;
+    if (from) {
+      settleFrom.current = null;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      listRef.current?.querySelectorAll<HTMLElement>("[data-task-row]").forEach((r) => {
+        const before = from.get(r.dataset.taskRow!);
+        const delta = before === undefined ? 0 : before - r.getBoundingClientRect().top;
+        if (reduce || Math.abs(delta) < 1) return;
+        r.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
+          duration: SETTLE_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        });
+      });
+    }
+    const id = refocus.current;
+    if (id) {
+      refocus.current = null;
+      listRef.current?.querySelector<HTMLElement>(`[data-task-row="${id}"] [data-task-open]`)?.focus();
+    }
+  });
+
+  /**
+   * A press on a row: past a few pixels it becomes a drag. With a mouse, anywhere on the
+   * row but its controls; on touch screens, only the grip, so the list still scrolls.
+   */
+  function startDrag(e: React.PointerEvent<HTMLLIElement>, id: string) {
+    if (!canReorder || e.button !== 0 || !e.isPrimary) return;
+    const target = e.target as Element;
+    if (target.closest('[role="checkbox"], [aria-haspopup], [role="menu"]')) return;
+    if (e.pointerType !== "mouse" && !target.closest("[data-task-grip]")) return;
+
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-task-row]") ?? [])];
+    const from = rows.findIndex((r) => r.dataset.taskRow === id);
+    if (from < 0) return;
+    // Page coordinates, so scrolling the page mid-drag doesn't throw the positions off.
+    const boxes = rows.map((r) => {
+      const b = r.getBoundingClientRect();
+      return { top: b.top + window.scrollY, height: b.height };
+    });
+    const gap = boxes.length > 1 ? boxes[1].top - (boxes[0].top + boxes[0].height) : 0;
+    const shift = boxes[from].height + gap;
+    const center = boxes[from].top + boxes[from].height / 2;
+    const ids = open.map((t) => t.id);
+    const startY = e.pageY;
+    const pointerId = e.pointerId;
+    let started = false;
+    let to = from;
+
+    function onMove(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return;
+      const dy = ev.pageY - startY;
+      if (!started) {
+        if (Math.abs(dy) < DRAG_THRESHOLD) return;
+        started = true;
+        document.body.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
+        window.getSelection()?.removeAllRanges();
+      }
+      // Its landing spot: past every other row whose middle it's crossed.
+      const c = center + dy;
+      to = boxes.reduce((n, b, i) => (i !== from && b.top + b.height / 2 < c ? n + 1 : n), 0);
+      setDrag({ id, from, to, dy, shift });
+    }
+
+    function end(drop: boolean) {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      if (!started) return;
+      // The click that ends a drag shouldn't also open the task.
+      const swallow = (ev: MouseEvent) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+      };
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+      if (drop && to !== from) {
+        ids.splice(to, 0, ...ids.splice(from, 1));
+        reorder(ids, id);
+      } else {
+        // Back to where it started, gliding rather than snapping.
+        measureRows();
+        setDrag(null);
+      }
+    }
+    function onUp(ev: PointerEvent) {
+      if (ev.pointerId === pointerId) end(true);
+    }
+    function onCancel(ev: PointerEvent) {
+      if (ev.pointerId === pointerId) end(false);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") end(false);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
   }
 
   /** Saves whatever changed in the open task. An emptied title keeps the old one. */
@@ -215,11 +408,18 @@ export function TasksSection({
 
       <div className="rounded-2xl border border-card-border bg-card p-1.5">
         {open.length > 0 && (
-          <ul className="flex flex-col gap-0.5">
-            {open.map((task) => (
+          <ul ref={listRef} className="flex flex-col gap-0.5">
+            {open.map((task, index) => (
               <TaskRow
                 key={task.id}
                 task={task}
+                offset={dragOffset(drag, index, task.id)}
+                dragging={drag?.id === task.id}
+                // Rows slide aside only mid-drag; on drop they take their new places at once.
+                sliding={drag !== null}
+                reorderable={canReorder}
+                onDragStart={(e) => startDrag(e, task.id)}
+                onMove={(by) => moveBy(task.id, by)}
                 clock={clock}
                 draft={draft?.id === task.id ? draft : null}
                 onDraft={setDraft}
@@ -238,6 +438,9 @@ export function TasksSection({
             ))}
           </ul>
         )}
+        <p aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
 
         {/* New task, at the end of the list. Enter adds it and keeps the cursor here for the next. */}
         <form
@@ -385,6 +588,12 @@ function scheduleLabel(iso: string, clock: Clock) {
 
 function TaskRow({
   task,
+  offset,
+  dragging,
+  sliding,
+  reorderable,
+  onDragStart,
+  onMove,
   clock,
   draft,
   onDraft,
@@ -395,6 +604,16 @@ function TaskRow({
   onDelete,
 }: {
   task: TaskView;
+  /** How far it's moved while a task is dragged, in pixels. */
+  offset: number;
+  /** Whether it's the task being dragged. */
+  dragging: boolean;
+  /** Whether a drag is under way, so rows slide rather than jump. */
+  sliding: boolean;
+  /** Whether it can be dragged or moved from the keyboard right now. */
+  reorderable: boolean;
+  onDragStart: (e: React.PointerEvent<HTMLLIElement>) => void;
+  onMove: (by: -1 | 1) => void;
   clock: Clock;
   /** Set while this task is open. */
   draft: Draft | null;
@@ -521,14 +740,46 @@ function TaskRow({
   }
 
   return (
-    <li className={`group relative flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 transition-colors hover:bg-wash/50 ${pending ? "opacity-60" : ""}`}>
+    <li
+      data-task-row={task.id}
+      onPointerDown={onDragStart}
+      style={offset ? { transform: `translateY(${offset}px)` } : undefined}
+      className={`group relative flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 ${
+        dragging
+          ? "z-10 bg-card shadow-[0_10px_28px_-10px_rgb(0_0_0/0.35)] ring-1 ring-card-border"
+          : `hover:bg-wash/50 ${sliding ? "transition-[transform,background-color] duration-150 ease-out" : "transition-colors"}`
+      } ${pending ? "opacity-60" : ""}`}
+    >
+      {/* A grip in the left margin: a hint on hover, and the only place a drag starts on touch screens. */}
+      {reorderable && (
+        <span
+          data-task-grip
+          aria-hidden="true"
+          className={`absolute -left-1.5 top-1.5 flex w-[18px] cursor-grab touch-none justify-center py-1.5 text-muted ${LINE}`}
+        >
+          <span
+            className={`flex h-[1lh] items-center transition-opacity ${
+              dragging ? "opacity-60" : "opacity-0 group-hover:opacity-50 [@media(hover:none)]:opacity-50"
+            }`}
+          >
+            <HugeiconsIcon icon={DragDropVerticalIcon} size={12} />
+          </span>
+        </span>
+      )}
       {checkbox}
       <div className="min-w-0 flex-1 pb-2">
         <button
           type="button"
+          data-task-open
           onClick={onOpen}
+          onKeyDown={(e) => {
+            if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+            e.preventDefault();
+            onMove(e.key === "ArrowUp" ? -1 : 1);
+          }}
           disabled={pending}
           aria-label={`Open “${task.title}”`}
+          aria-keyshortcuts={reorderable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className="block w-full cursor-pointer pt-1.5 text-left outline-none focus-visible:underline"
         >
           <span className={`block text-foreground [overflow-wrap:anywhere] ${LINE}`}>{task.title}</span>
