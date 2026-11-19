@@ -140,6 +140,12 @@ const GoalDetailSchema = z
       objective: z.string().nullable(),
       lastWeek: z.string().nullable(),
       protectedMinutes: z.int().openapi({ description: "Time on the calendar for this goal this week, in minutes." }),
+      protectedBlocks: z
+        .array(z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock"))
+        .openapi({
+          description:
+            "The goal's time on the calendar this week and next, clipped to those two weeks, earliest first. For weighing what's planned against it.",
+        }),
       done: z.array(TaskSchema).openapi({ description: "Tasks checked off this week, most recently first." }),
     }),
     tasks: z.array(TaskSchema).openapi({ description: "Open tasks in their order (checked-off ones move to the activity)." }),
@@ -289,6 +295,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
     // Without a saved zone, "today" is the server's own day, which runs in UTC.
     const zone = timeZone ?? "UTC";
     const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
+    // This week and next, for the planning board's capacity.
+    const twoWeeksEnd = startOfDayIn(addDays(weekStart, 14), zone);
     const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
@@ -301,11 +309,16 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listTaskSchedules(userId, id),
       getSettings(userId),
       listConnections(userId),
-      listBlocks(userId, weekBounds.start, weekBounds.end),
+      listBlocks(userId, weekBounds.start, twoWeeksEnd),
     ]);
     const trajectory = trajectories.get(id);
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
-    const weekBlocks = blocks.filter((b) => b.goalId === id);
+    const goalBlocks = blocks.filter((b) => b.goalId === id);
+    const weekBlocks = goalBlocks.filter((b) => b.startsAt < weekBounds.end);
+    const protectedBlocks = goalBlocks.map((b) => ({
+      startsAt: new Date(Math.max(b.startsAt.getTime(), weekBounds.start.getTime())).toISOString(),
+      endsAt: new Date(Math.min(b.endsAt.getTime(), twoWeeksEnd.getTime())).toISOString(),
+    }));
     const protectedMinutes = Math.round(
       weekBlocks.reduce(
         (sum, b) => sum + Math.max(0, Math.min(b.endsAt.getTime(), weekBounds.end.getTime()) - Math.max(b.startsAt.getTime(), weekBounds.start.getTime())),
@@ -333,6 +346,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
           objective: objectives.get(weekStart) ?? null,
           lastWeek: objectives.get(lastWeekStart) ?? null,
           protectedMinutes,
+          protectedBlocks,
           done: tasks.filter((task) => task.doneAt && task.doneAt >= weekBounds.start).map((task) => asTask(task)),
         },
         tasks: tasks.filter((task) => !task.doneAt).map((task) => asTask(task, schedules.get(task.id) ?? null)),
