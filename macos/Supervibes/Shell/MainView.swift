@@ -360,6 +360,7 @@ private struct CalendarScreen: View {
                     actions: CalendarActions(
                         create: model.create(day:start:end:goalId:title:),
                         saveDetails: model.saveDetails(_:goalId:title:),
+                        setReserved: model.setReserved,
                         move: model.move(_:edge:delta:days:),
                         moveToTomorrow: model.moveToTomorrow,
                         toggleDone: model.toggleDone,
@@ -372,6 +373,7 @@ private struct CalendarScreen: View {
                     onToggleTasks: { showsTasks.toggle() },
                     selectedId: $selectedId,
                     panel: BlockPanelActions(
+                        setReserved: model.setReserved,
                         setDescription: model.setDescription,
                         prepareAgenda: model.prepareAgenda(_:when:),
                         suggestFocus: model.suggestFocus(_:when:instead:),

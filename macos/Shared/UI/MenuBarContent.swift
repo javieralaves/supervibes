@@ -38,16 +38,21 @@ struct MenuBarContent: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
+                // Reserved time is kept for itself: no aim to set or plan to follow.
                 if let current {
                     CurrentBlockView(block: current, now: now)
-                    Divider()
-                    SessionPlanView(block: current, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
-                        .id(current.id)
+                    if !current.isReserved {
+                        Divider()
+                        SessionPlanView(block: current, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
+                            .id(current.id)
+                    }
                 } else if let soon {
                     StartingSoonView(block: soon, now: now)
-                    Divider()
-                    SessionPlanView(block: soon, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
-                        .id(soon.id)
+                    if !soon.isReserved {
+                        Divider()
+                        SessionPlanView(block: soon, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
+                            .id(soon.id)
+                    }
                 } else {
                     NoBlockView(next: upcoming.first, nextIsListed: true)
                 }

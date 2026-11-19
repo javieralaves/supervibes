@@ -55,6 +55,8 @@ export type BlockView = {
   fromSuggestion: string | null;
   /** The task it schedules: an intention. */
   taskId: string | null;
+  /** Protected time kept for its own sake: not a session, and no room for tasks. */
+  reserved: boolean;
   /** Whether that task is done. */
   taskDone: boolean;
   /** A plan for the session, if one has been prepared. */

@@ -764,6 +764,8 @@ private struct TimelineScroll: View {
 struct CalendarActions {
     var create: (_ day: Int, _ start: Int, _ end: Int, _ goalId: String, _ title: String?) -> Void
     var saveDetails: (_ blockId: String, _ goalId: String, _ title: String?) -> Void
+    /// Make protected time reserved (kept for its own sake) or a session again.
+    var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
     /// By `delta` minutes and, moving it whole, `days` days.
     var move: (_ blockId: String, _ edge: BlockEdge, _ delta: Int, _ days: Int) -> Void
     var moveToTomorrow: (_ blockId: String) -> Void
@@ -1116,6 +1118,12 @@ struct DayTimeline: View {
                         actions.toggleDone(block.id)
                     }
                 }
+                if !block.isIntention {
+                    MenuItem(icon: block.reserved ? .target : .clock, title: block.reserved ? "Make it a session" : "Reserve this time") {
+                        overlays.dismiss()
+                        actions.setReserved(block.id, !block.reserved)
+                    }
+                }
                 MenuItem(icon: .arrowForward, title: "Move to tomorrow") {
                     overlays.dismiss()
                     actions.moveToTomorrow(block.id)
@@ -1338,11 +1346,14 @@ struct BlockCardView: View {
         GeometryReader { geometry in
             let filled = geometry.size.height * elapsed
             ZStack(alignment: .topLeading) {
-                // The block, drawn filled: solid for an intention, hatched for protected time.
+                // The block, drawn filled: solid for an intention, hatched for a session of protected
+                // time, plain and quieter for reserved time, which isn't there to be worked in.
                 Rectangle().fill(block.isIntention
                     ? GoalPalette.mix(color, light: 0.18, dark: 0.24)
-                    : GoalPalette.mix(color, light: 0.10, dark: 0.13))
-                if !block.isIntention {
+                    : block.reserved
+                        ? GoalPalette.mix(color, light: 0.07, dark: 0.09)
+                        : GoalPalette.mix(color, light: 0.10, dark: 0.13))
+                if !block.isIntention, !block.reserved {
                     Hatch(color: GoalPalette.color(color).opacity(0.26))
                 }
                 // A veil in the card colour over the part that hasn't happened yet.
@@ -1373,7 +1384,7 @@ struct BlockCardView: View {
         .opacity(block.isPending ? 0.6 : 1)
         .help(compact ? "\(title)\n\(time)" : "\(title) · \(time)")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(block.isIntention ? (block.taskDone ? "Done" : "Intention") : "Protected time"): \(title), \(time)")
+        .accessibilityLabel("\(block.kindLabel): \(title), \(time)")
     }
 
     /// In the week: the title clamped to what fits, and the time once there's room.

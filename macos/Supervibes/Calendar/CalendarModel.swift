@@ -154,6 +154,30 @@ final class CalendarModel {
         }
     }
 
+    /// Make protected time reserved (kept for its own sake) or a session again. Reserving it drops
+    /// the session's agenda and draft recap, as the server does.
+    func setReserved(_ blockId: String, _ reserved: Bool) {
+        guard let before = block(blockId), !before.isIntention, before.reserved != reserved else { return }
+        update(blockId) { block in
+            block.reserved = reserved
+            if reserved {
+                block.hasAgenda = false
+                block.agenda = nil
+                block.hasRecapDraft = false
+                block.recap = nil
+            }
+        }
+        write(undo: { [weak self] in self?.replace(blockId, with: before) }) { client in
+            switch try await client.setBlockReserved(path: .init(blockId: blockId), body: .json(.init(reserved: reserved))) {
+            case .noContent: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that block.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t save that block (the server answered \(status)).")
+            }
+        }
+    }
+
     /// Move a block, or change its length, by `delta` minutes (and, moving it, `days` days):
     /// `edge` says which end moves.
     func move(_ blockId: String, edge: BlockEdge, delta: Int, days: Int = 0) {
@@ -544,6 +568,7 @@ extension CalendarBlock {
             endsAt: block.endsAt,
             fromSuggestion: block.fromSuggestion,
             taskId: block.taskId,
+            reserved: block.reserved,
             taskDone: block.taskDone,
             hasAgenda: block.hasAgenda,
             hasRecapDraft: block.hasRecapDraft,

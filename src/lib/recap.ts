@@ -347,6 +347,8 @@ export async function listAutoRecapCandidates(userId: string, limit: number): Pr
         isNull(calendarBlocks.autoRecap),
         isNull(calendarBlocks.recap),
         isNull(goalPosts.id),
+        // Reserved time is kept for its own sake: there's no session to recap.
+        eq(calendarBlocks.reserved, false),
         // Its margin has passed, so work finished just after counts.
         lte(calendarBlocks.endsAt, new Date(now - AFTER_MS)),
         gte(calendarBlocks.endsAt, new Date(now - AUTO_WITHIN_MS)),

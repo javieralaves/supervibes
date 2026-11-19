@@ -306,6 +306,7 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
               return `- ${when}: planned to do "${b.title ?? b.fromSuggestion}" (already planned, don't suggest it again)`;
             }
             const what = b.title ? `"${b.title}"` : "untitled";
+            if (b.reserved) return `- ${when}: time reserved for this goal, ${what} (kept for its own sake, not for working through tasks)`;
             return `- ${when}: time protected for this goal, ${what}`;
           }),
           "",

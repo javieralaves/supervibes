@@ -19,10 +19,13 @@ import { getTask, markTaskDone, planTaskForBlock, updateTask } from "@/lib/tasks
 /*
  * Changing the calendar, as app/(app)/calendar/actions.ts does: protected time drawn on a day,
  * blocks moved, resized, renamed or removed, intentions marked done, and tasks given a time or a
- * day; and the block panel's: a session's aim, its agenda, and its recap. Same rules and messages.
+ * day; and the block panel's: whether protected time is a session or reserved, a session's aim,
+ * its agenda, and its recap. Same rules and messages.
  */
 
 const GONE = "That block doesn’t exist anymore.";
+/** Reserved time is kept for its own sake: it has no aim, agenda or recap. */
+const RESERVED = "This time is reserved, not a session. Make it a session first.";
 const TASK_GONE = "That task doesn’t exist anymore.";
 const notFound = { description: "Not found.", content: { "application/json": { schema: ErrorSchema } } };
 const blockParam = z.object({ blockId: z.uuid().openapi({ param: { name: "blockId", in: "path" } }) });
@@ -122,6 +125,23 @@ const planRoute = createRoute({
     },
   },
   responses: { 204: { description: "Planned" }, ...errorResponses, 404: notFound },
+});
+
+const reservedRoute = createRoute({
+  method: "put",
+  path: "/blocks/{blockId}/reserved",
+  operationId: "setBlockReserved",
+  summary: "Make protected time reserved (kept for its own sake, no room for tasks) or a session again",
+  description: "Reserving it clears a session's agenda and draft recap. An intention can't be reserved.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: blockParam,
+    body: {
+      required: true,
+      content: { "application/json": { schema: z.object({ reserved: z.boolean() }).openapi("BlockReserved") } },
+    },
+  },
+  responses: { 204: { description: "Saved" }, ...errorResponses, 404: notFound },
 });
 
 const descriptionRoute = createRoute({
@@ -339,6 +359,19 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     if (!(await updateTask(userId, taskId, { plannedFor: plannedFor.data }))) return c.json(apiError("not_found", TASK_GONE), 404);
     return c.body(null, 204);
   })
+  .openapi(reservedRoute, async (c) => {
+    const userId = c.var.user.id;
+    const { blockId } = c.req.valid("param");
+    const { reserved } = c.req.valid("json");
+    const before = await getBlock(userId, blockId);
+    if (!before) return c.json(apiError("not_found", GONE), 404);
+    if (before.fromSuggestion || before.taskId) return c.json(apiError("invalid_request", "This block schedules a task, so it’s a session."), 400);
+    if (before.reserved === reserved) return c.body(null, 204);
+    // A session's plan and draft recap don't belong to time kept for its own sake.
+    const block = await updateBlock(userId, blockId, reserved ? { reserved, agenda: null, recap: null } : { reserved });
+    if (!block) return c.json(apiError("not_found", GONE), 404);
+    return c.body(null, 204);
+  })
   .openapi(descriptionRoute, async (c) => {
     const userId = c.var.user.id;
     const { blockId } = c.req.valid("param");
@@ -348,6 +381,7 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     if (!before) return c.json(apiError("not_found", GONE), 404);
     // An intention's task already says what it's for.
     if (before.fromSuggestion || before.taskId) return c.json(apiError("invalid_request", "This block already schedules a task."), 400);
+    if (before.reserved) return c.json(apiError("invalid_request", RESERVED), 400);
     if (before.description !== parsed.data && !(await updateBlock(userId, blockId, { description: parsed.data }))) {
       return c.json(apiError("not_found", GONE), 404);
     }
@@ -356,6 +390,9 @@ export const blocks = new OpenAPIHono<ApiEnv>()
   .openapi(agendaRoute, async (c) => {
     const label = z.string().trim().min(1).max(120).safeParse(c.req.valid("json").when);
     if (!label.success) return c.json(apiError("invalid_request", "Couldn't tell when this block is."), 400);
+    const block = await getBlock(c.var.user.id, c.req.valid("param").blockId);
+    if (!block) return c.json(apiError("not_found", GONE), 404);
+    if (block.reserved) return c.json(apiError("invalid_request", RESERVED), 400);
     try {
       const agenda = await prepareAgenda(c.var.user.id, c.req.valid("param").blockId, label.data);
       return c.json(asAgenda(agenda), 200);
@@ -369,6 +406,9 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     const { when, instead } = c.req.valid("json");
     const label = z.string().trim().min(1).max(120).safeParse(when);
     if (!label.success) return c.json(apiError("invalid_request", "Couldn't tell when this block is."), 400);
+    const block = await getBlock(c.var.user.id, c.req.valid("param").blockId);
+    if (!block) return c.json(apiError("not_found", GONE), 404);
+    if (block.reserved) return c.json(apiError("invalid_request", RESERVED), 400);
     try {
       const focus = await suggestFocus(c.var.user.id, c.req.valid("param").blockId, label.data, instead ?? []);
       return c.json(focus, 200);
@@ -379,6 +419,9 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     }
   })
   .openapi(recapRoute, async (c) => {
+    const block = await getBlock(c.var.user.id, c.req.valid("param").blockId);
+    if (!block) return c.json(apiError("not_found", GONE), 404);
+    if (block.reserved) return c.json(apiError("invalid_request", RESERVED), 400);
     try {
       const recap = await prepareRecap(c.var.user.id, c.req.valid("param").blockId);
       return c.json(asRecap(recap), 200);

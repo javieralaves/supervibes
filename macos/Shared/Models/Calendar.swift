@@ -5,7 +5,8 @@ import Foundation
  * src/app/(app)/calendar and src/lib/day.ts. Times on a day are minutes from local midnight.
  */
 
-/// An intention (it schedules a task) or protected time (held for a goal).
+/// An intention (it schedules a task) or protected time (held for a goal): a session to work in,
+/// or reserved time kept for its own sake.
 struct CalendarBlock: Identifiable, Hashable, Sendable {
     let id: String
     var goalId: String
@@ -17,6 +18,9 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     var endsAt: Date
     var fromSuggestion: String?
     var taskId: String?
+    /// Protected time kept for its own sake (lunch, family, an event): no aim, agenda or recap,
+    /// and no room for the goal's tasks.
+    var reserved = false
     var taskDone = false
     var hasAgenda = false
     var hasRecapDraft = false
@@ -31,6 +35,14 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     var isPending = false
 
     var isIntention: Bool { fromSuggestion != nil || taskId != nil }
+
+    /// Time to work in: an intention, or protected time that isn't reserved.
+    var isSession: Bool { !reserved }
+
+    /// How the block names its kind: "Intention" (or "Done"), "Session" or "Reserved".
+    var kindLabel: String {
+        isIntention ? (taskDone ? "Done" : "Intention") : reserved ? "Reserved" : "Session"
+    }
 
     /// A recap waiting to be read and posted, or one drafting itself.
     var recapWaiting: Bool { !hasRecapPost && (hasRecapDraft || recapDrafting) }

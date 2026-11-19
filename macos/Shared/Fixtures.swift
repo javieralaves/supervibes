@@ -288,6 +288,16 @@ enum Fixtures {
         ]
     }
 
+    /// Protected time ahead, as a session and as reserved time, for the panel's switch.
+    static var kindPanelBlocks: [CalendarBlock] {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        return [
+            CalendarBlock(id: "k1", goalId: "g1", title: nil, startsAt: at(15), endsAt: at(16, 30)),
+            CalendarBlock(id: "k2", goalId: "g2", title: "Lunch with family", startsAt: at(13), endsAt: at(14, 30), reserved: true),
+        ]
+    }
+
     /// A calendar day around `referenceNow` (10:18): sessions behind, one under way, more ahead.
     static var calendar: CalendarData {
         let day = Calendar.current.startOfDay(for: referenceNow)
@@ -305,7 +315,7 @@ enum Fixtures {
             CalendarBlock(id: "b4", goalId: "g3", title: "User research call", startsAt: at(12, 0), endsAt: at(12, 30)),
             CalendarBlock(id: "b5", goalId: "g1", title: "Review the onboarding copy", startsAt: at(7, 0), endsAt: at(7, 45),
                           taskId: "t3", taskDone: true),
-            CalendarBlock(id: "b6", goalId: "g2", title: "Lunch", startsAt: at(13, 0), endsAt: at(14, 0), hasRecapDraft: true),
+            CalendarBlock(id: "b6", goalId: "g2", title: "Lunch", startsAt: at(13, 0), endsAt: at(14, 0), reserved: true),
         ]
         let tasks = [
             CalendarTask(id: "t1", goalId: "g1", title: "Write the API sketch", minutes: 60, plannedFor: "2026-11-18"),

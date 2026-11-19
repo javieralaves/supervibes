@@ -224,7 +224,9 @@ export const userSettings = pgTable("user_settings", {
 /**
  * Time on the calendar held for a goal. One table for both kinds:
  * - an intention: a task (or, earlier, a suggestion) committed to a time (`taskId` or `fromSuggestion` set);
- * - protected time: made by dragging on the calendar, with an optional title and agenda.
+ * - protected time: made by dragging on the calendar, with an optional title. It's a session (time to
+ *   work on the goal, with an aim, agenda and recap) unless it's `reserved`: kept for its own sake
+ *   (lunch, family, an event), with nothing planned into it.
  */
 export const calendarBlocks = pgTable(
   "calendar_blocks",
@@ -245,6 +247,11 @@ export const calendarBlocks = pgTable(
     fromSuggestion: text(),
     /** The task this block schedules, making it an intention. */
     taskId: uuid().references(() => goalTasks.id, { onDelete: "set null" }),
+    /**
+     * Protected time kept for its own sake rather than to work in: no aim, agenda or recap, and it
+     * doesn't count as room for the goal's tasks. Never set on an intention.
+     */
+    reserved: boolean().notNull().default(false),
     /** A plan for the session, prepared on request from the goal's tasks and latest read. */
     agenda: jsonb().$type<BlockAgenda>(),
     /** A draft recap of the session, until it's posted to the goal's activity or discarded. */

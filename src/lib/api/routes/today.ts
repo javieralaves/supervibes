@@ -45,6 +45,9 @@ const TodayBlockSchema = z
     }),
     title: z.string().nullable().openapi({ description: "null for protected time without a name; show the goal's title." }),
     description: z.string().nullable().openapi({ description: "For protected time: what the session is for." }),
+    reserved: z.boolean().openapi({
+      description: "Protected time kept for its own sake rather than a session: it has no aim or agenda to show.",
+    }),
     startsAt: z.iso.datetime(),
     endsAt: z.iso.datetime(),
     taskId: z.string().nullable(),
@@ -111,6 +114,7 @@ export const today = new OpenAPIHono<ApiEnv>().openapi(getToday, async (c) => {
             kind: block.taskId ? ("intention" as const) : ("protected" as const),
             title: block.title,
             description: block.description,
+            reserved: block.reserved,
             startsAt: block.startsAt.toISOString(),
             endsAt: block.endsAt.toISOString(),
             taskId: block.taskId,

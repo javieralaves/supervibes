@@ -311,19 +311,21 @@ extension Block {
         self.init(
             id: block.id,
             title: block.title ?? block.goal.title,
-            goal: block.title == nil ? "Protected time" : block.goal.title,
+            goal: block.title == nil ? (block.reserved ? "Reserved" : "Protected time") : block.goal.title,
             start: block.startsAt,
             end: block.endsAt,
             tint: Tint(light: block.goal.color.light, dark: block.goal.color.dark),
-            aim: block.description.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
-            agenda: block.agenda.map { agenda in
+            // Reserved time has no aim or plan, even one kept from when it was a session.
+            aim: block.reserved ? nil : block.description.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+            agenda: block.reserved ? nil : block.agenda.map { agenda in
                 SessionAgenda(
                     text: agenda.text,
                     tasks: agenda.tasks.map { .init(id: $0.id, title: $0.title, minutes: $0.minutes, done: $0.done) }
                 )
             },
             taskId: block.taskId,
-            untitled: block.title == nil
+            untitled: block.title == nil,
+            reserved: block.reserved
         )
     }
 }

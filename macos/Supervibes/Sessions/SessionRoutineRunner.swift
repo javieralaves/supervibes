@@ -126,7 +126,8 @@ final class SessionRoutineRunner {
 
     /// Today's blocks, as the app last fetched them.
     func blocksChanged(_ blocks: [Block]) {
-        self.blocks = blocks
+        // Reserved time isn't a session: lunch or family time shouldn't turn on Do Not Disturb or quit apps.
+        self.blocks = blocks.filter { !$0.isReserved }
         tick(now: Date())
     }
 

@@ -407,6 +407,43 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testSessionAndReservedPanels() {
+        // With actions, so the switch between a session and reserved time shows.
+        let data = Fixtures.calendar
+        let now = now
+        let actions = BlockPanelActions(
+            setDescription: { _, _ in nil }, prepareAgenda: { _, _ in nil },
+            suggestFocus: { _, _, _ in .failed("") }, prepareRecap: { _ in nil },
+            postRecap: { _, _, _, _ in nil }, discardRecap: { _ in nil }, setTaskDone: { _, _ in nil },
+            toggleDone: { _ in }, openGoal: { _ in }
+        )
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(Fixtures.kindPanelBlocks) { block in
+                    BlockPanel(
+                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 1:00–2:30 PM",
+                        when: "Wednesday, November 18 (today), 1:00–2:30 PM", openTaskIds: [],
+                        ended: false, now: now, actions: actions
+                    )
+                    .frame(width: 320, height: 300)
+                }
+            }
+            .padding(16)
+            .background(Theme.background),
+            width: 688, height: 332
+        )
+    }
+
+    func testMenuBarDuringReservedTime() {
+        // Reserved time shows what it is and when it ends, with no aim to set or plan to follow.
+        let lunch = Block(id: "lunch", title: "Lunch with family", goal: "Run a calm week",
+                          start: now.addingTimeInterval(-20 * 60), end: now.addingTimeInterval(40 * 60), tint: Fixtures.pink, reserved: true)
+        assertAppearances(
+            MenuBarContent(current: lunch, upcoming: Fixtures.upcoming(at: now), now: now, sessionActions: nil),
+            width: 300
+        )
+    }
+
     func testFocusSuggestion() {
         assertAppearances(
             FocusSuggestionCard(suggestion: Fixtures.focusSuggestion, onUse: {}, onAnother: {}, onDismiss: {})

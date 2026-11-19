@@ -2,7 +2,9 @@ import SwiftUI
 
 /*
  * The block you clicked, beside the calendar on the right, as block-panel.tsx and
- * recap-section.tsx. Protected time can say what the person wants out of it and get an agenda
+ * recap-section.tsx. Protected time is a session (time to work on the goal) or reserved (kept for
+ * its own sake: lunch, family, an event); a switch under its time changes which, and reserved time
+ * shows none of what follows. A session can say what the person wants out of it and get an agenda
  * steered by that, with the tasks it draws on below. An intention's task is its aim, so it can be
  * planned too, and checked off. Aim and agenda are optional and offered quietly: a
  * block can just be time. With nothing saying what it's for, the offer is to suggest a focus,
@@ -13,6 +15,7 @@ import SwiftUI
 
 /// What the panel can do, each returning an error to show, or nil.
 struct BlockPanelActions {
+    var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
     var setDescription: (_ blockId: String, _ text: String) async -> String?
     var prepareAgenda: (_ blockId: String, _ when: String) async -> String?
     var suggestFocus: (_ blockId: String, _ when: String, _ instead: [String]) async -> FocusOutcome
@@ -42,9 +45,7 @@ struct BlockPanel: View {
 
     private var title: String { block.title ?? goal?.title ?? "Protected time" }
     private var recapped: Bool { block.recapPost != nil }
-    private var kind: String {
-        (block.isIntention ? (block.taskDone ? "Done" : "Intention") : "Protected time") + (recapped ? " · Recapped" : "")
-    }
+    private var kind: String { block.kindLabel + (recapped ? " · Recapped" : "") }
 
     var body: some View {
         ScrollView {
@@ -64,17 +65,24 @@ struct BlockPanel: View {
                     .padding(.top, 12)
                 Text(timeLabel).appText(.sm).monospacedDigit().foregroundStyle(Theme.muted).padding(.top, 4)
 
-                if !block.isIntention, !recapped || block.description != nil {
+                if !block.isIntention {
+                    ProtectedKind(block: block, actions: actions).padding(.top, 16)
+                }
+
+                if block.isSession, !block.isIntention, !recapped || block.description != nil {
                     SessionAim(block: block, readOnly: recapped, actions: actions)
                         .padding(.top, block.description == nil ? 16 : 24)
                 }
 
-                if ended {
+                // Reserved time has no recap to write; one posted while it was a session still shows.
+                if ended, block.isSession || recapped {
                     RecapSection(block: block, actions: actions).padding(.top, 24)
                 }
 
                 // An intention's task is its aim, so it can be planned like protected time with one.
-                AgendaSection(block: block, color: goal?.color ?? "slate", when: when, ended: ended, now: now, openTaskIds: openTaskIds, actions: actions)
+                if block.isSession {
+                    AgendaSection(block: block, color: goal?.color ?? "slate", when: when, ended: ended, now: now, openTaskIds: openTaskIds, actions: actions)
+                }
 
                 if block.isIntention, block.taskId != nil {
                     OutlineButton(icon: block.taskDone ? .refresh : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
@@ -93,6 +101,31 @@ struct BlockPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(kind): \(title)")
+    }
+}
+
+// MARK: - Session or reserved
+
+/// Whether protected time is a session or reserved, as a switch, with a line on what that means.
+private struct ProtectedKind: View {
+    let block: CalendarBlock
+    let actions: BlockPanelActions?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let actions {
+                ToggleGroup(
+                    selection: Binding(get: { block.reserved }, set: { actions.setReserved(block.id, $0) }),
+                    options: [.init(value: false, label: "Session"), .init(value: true, label: "Reserved")]
+                )
+                .accessibilityLabel("Kind of time")
+            }
+            Text(block.reserved
+                ? "Kept for itself. Nothing gets planned into it."
+                : "Time to work on this goal. Tasks you plan for the day go here.")
+                .appText(.sm).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

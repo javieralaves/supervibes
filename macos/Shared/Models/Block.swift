@@ -6,7 +6,7 @@ import SwiftUI
 struct Block: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let title: String
-    /// The goal's title, or "Protected time" when the block is the goal's own time.
+    /// The goal's title, or "Protected time" ("Reserved" for reserved time) when it's untitled.
     let goal: String
     let start: Date
     let end: Date
@@ -20,11 +20,15 @@ struct Block: Identifiable, Hashable, Sendable, Codable {
     /// Protected time nobody has titled, so it shows the goal's title. Optional so blocks the
     /// widget saved before this existed still load.
     var untitled: Bool? = nil
+    /// Protected time kept for its own sake (lunch, family, an event), not a session: there's no
+    /// aim or plan to show. Optional so blocks the widget saved before this existed still load.
+    var reserved: Bool? = nil
 
     var isTask: Bool { taskId != nil }
+    var isReserved: Bool { reserved == true }
 
-    /// Nothing says yet what the session is for: no task, no title, no aim.
-    var needsFocus: Bool { !isTask && untitled == true && aim == nil }
+    /// Nothing says yet what the session is for: no task, no title, no aim. Reserved time is for itself.
+    var needsFocus: Bool { !isTask && !isReserved && untitled == true && aim == nil }
 
     func progress(at now: Date) -> Double {
         let total = end.timeIntervalSince(start)

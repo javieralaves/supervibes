@@ -62,6 +62,9 @@ export const CalendarBlockSchema = z
     endsAt: z.iso.datetime(),
     fromSuggestion: z.string().nullable(),
     taskId: z.string().nullable().openapi({ description: "The task it schedules: an intention." }),
+    reserved: z.boolean().openapi({
+      description: "Protected time kept for its own sake (lunch, family, an event) rather than a session to work in.",
+    }),
     taskDone: z.boolean(),
     hasAgenda: z.boolean(),
     hasRecapDraft: z.boolean().openapi({ description: "A recap waiting to be read and posted." }),
@@ -152,6 +155,7 @@ export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer
     endsAt: block.endsAt.toISOString(),
     fromSuggestion: block.fromSuggestion,
     taskId: block.taskId,
+    reserved: block.reserved,
     taskDone: block.taskDone ?? false,
     hasAgenda: block.agenda !== null,
     hasRecapDraft: block.recap !== null,

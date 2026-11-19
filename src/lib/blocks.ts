@@ -23,6 +23,8 @@ export type BlockDTO = {
   fromSuggestion: string | null;
   /** The task this block schedules, making it an intention. */
   taskId: string | null;
+  /** Protected time kept for its own sake: not a session, and no room for tasks. */
+  reserved: boolean;
   /** Whether that task is done; only filled when listing. */
   taskDone?: boolean;
   /** A plan for the session, if one has been prepared. */
@@ -44,6 +46,7 @@ const columns = {
   endsAt: calendarBlocks.endsAt,
   fromSuggestion: calendarBlocks.fromSuggestion,
   taskId: calendarBlocks.taskId,
+  reserved: calendarBlocks.reserved,
   agenda: calendarBlocks.agenda,
   recap: calendarBlocks.recap,
 };
@@ -137,7 +140,7 @@ export async function getBlock(userId: string, blockId: string): Promise<BlockDT
 export async function updateBlock(
   userId: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "description" | "startsAt" | "endsAt" | "agenda" | "recap">>,
+  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "description" | "startsAt" | "endsAt" | "reserved" | "agenda" | "recap">>,
 ): Promise<BlockDTO | null> {
   if (patch.goalId && !(await ownsGoal(userId, patch.goalId))) return null;
   const [block] = await db.update(calendarBlocks).set(patch).where(mine(userId, blockId)).returning(columns);

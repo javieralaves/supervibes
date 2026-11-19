@@ -144,7 +144,7 @@ const GoalDetailSchema = z
         .array(z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock"))
         .openapi({
           description:
-            "The goal's time on the calendar this week and next, clipped to those two weeks, earliest first. For weighing what's planned against it.",
+            "The goal's time on the calendar this week and next that tasks can go in (not reserved time), clipped to those two weeks, earliest first. For weighing what's planned against it.",
         }),
       done: z.array(TaskSchema).openapi({ description: "Tasks checked off this week, most recently first." }),
     }),
@@ -315,7 +315,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
     const goalBlocks = blocks.filter((b) => b.goalId === id);
     const weekBlocks = goalBlocks.filter((b) => b.startsAt < weekBounds.end);
-    const protectedBlocks = goalBlocks.map((b) => ({
+    // Reserved time is kept for its own sake, so it's no room for tasks.
+    const protectedBlocks = goalBlocks.filter((b) => !b.reserved).map((b) => ({
       startsAt: new Date(Math.max(b.startsAt.getTime(), weekBounds.start.getTime())).toISOString(),
       endsAt: new Date(Math.min(b.endsAt.getTime(), twoWeeksEnd.getTime())).toISOString(),
     }));

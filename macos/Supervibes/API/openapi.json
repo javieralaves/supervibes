@@ -49,6 +49,10 @@
             "nullable": true,
             "description": "The task it schedules: an intention."
           },
+          "reserved": {
+            "type": "boolean",
+            "description": "Protected time kept for its own sake (lunch, family, an event) rather than a session to work in."
+          },
           "taskDone": {
             "type": "boolean"
           },
@@ -103,6 +107,7 @@
           "endsAt",
           "fromSuggestion",
           "taskId",
+          "reserved",
           "taskDone",
           "hasAgenda",
           "hasRecapDraft",
@@ -351,6 +356,17 @@
         },
         "required": [
           "day"
+        ]
+      },
+      "BlockReserved": {
+        "type": "object",
+        "properties": {
+          "reserved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reserved"
         ]
       },
       "BlockDescription": {
@@ -978,7 +994,7 @@
                 "items": {
                   "$ref": "#/components/schemas/ProtectedBlock"
                 },
-                "description": "The goal's time on the calendar this week and next, clipped to those two weeks, earliest first. For weighing what's planned against it."
+                "description": "The goal's time on the calendar this week and next that tasks can go in (not reserved time), clipped to those two weeks, earliest first. For weighing what's planned against it."
               },
               "done": {
                 "type": "array",
@@ -1710,6 +1726,10 @@
             "nullable": true,
             "description": "For protected time: what the session is for."
           },
+          "reserved": {
+            "type": "boolean",
+            "description": "Protected time kept for its own sake rather than a session: it has no aim or agenda to show."
+          },
           "startsAt": {
             "type": "string",
             "format": "date-time"
@@ -1756,6 +1776,7 @@
           "kind",
           "title",
           "description",
+          "reserved",
           "startsAt",
           "endsAt",
           "taskId",
@@ -2347,6 +2368,74 @@
         "responses": {
           "204": {
             "description": "Planned"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/reserved": {
+      "put": {
+        "operationId": "setBlockReserved",
+        "summary": "Make protected time reserved (kept for its own sake, no room for tasks) or a session again",
+        "description": "Reserving it clears a session's agenda and draft recap. An intention can't be reserved.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockReserved"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
           },
           "400": {
             "description": "The request didn't make sense.",
