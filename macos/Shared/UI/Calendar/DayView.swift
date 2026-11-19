@@ -216,7 +216,7 @@ struct DayView: View {
                 blockPanel(selected).frame(width: 320)
             }
         }
-        .frame(maxWidth: 1536)
+        // The week takes the whole width, however wide the window: more room for each day.
         .padding(16)
         .frame(maxWidth: .infinity)
     }
