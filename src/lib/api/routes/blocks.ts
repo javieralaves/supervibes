@@ -30,9 +30,11 @@ const taskParam = z.object({ taskId: z.uuid().openapi({ param: { name: "taskId",
 const blockResponse = { description: "OK", content: { "application/json": { schema: CalendarBlockSchema } } };
 
 const TimesSchema = z.object({ startsAt: z.iso.datetime({ offset: true }), endsAt: z.iso.datetime({ offset: true }) }).openapi("BlockTimes");
-const DetailsSchema = z.object({ goalId: z.string(), title: z.string().nullable() }).openapi("BlockDetails");
+/** A title left out means none, like null: the Mac app's client leaves out a nil one. */
+const blockTitle = z.string().nullable().optional().openapi({ description: "Left out or null: no title." });
+const DetailsSchema = z.object({ goalId: z.string(), title: blockTitle }).openapi("BlockDetails");
 const NewBlockSchema = z
-  .object({ goalId: z.string(), title: z.string().nullable(), startsAt: z.string(), endsAt: z.string() })
+  .object({ goalId: z.string(), title: blockTitle, startsAt: z.string(), endsAt: z.string() })
   .openapi("NewBlock");
 
 const firstIssue = (error: z.ZodError) => error.issues[0]?.message ?? "Check the details.";

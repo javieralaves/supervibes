@@ -61,8 +61,9 @@ const GoalsSchema = z
 const GoalInputSchema = z
   .object({
     title: z.string(),
-    description: z.string().nullable(),
-    targetDate: z.string().nullable().openapi({ description: "YYYY-MM-DD, or null." }),
+    // Left out means null: the Mac app's client leaves out nil fields.
+    description: z.string().nullable().optional().openapi({ description: "Left out or null: none." }),
+    targetDate: z.string().nullable().optional().openapi({ description: "YYYY-MM-DD; left out or null: none." }),
     icon: z.enum(GOAL_ICON_NAMES),
     color: z.enum(GOAL_COLOR_KEYS),
   })

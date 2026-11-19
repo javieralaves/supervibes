@@ -16,11 +16,12 @@ const timesSchema = z
   .refine(({ startsAt, endsAt }) => Date.parse(endsAt) - Date.parse(startsAt) >= BLOCK_STEP * MINUTE, "Make it at least 15 minutes.")
   .refine(({ startsAt, endsAt }) => Date.parse(endsAt) - Date.parse(startsAt) <= 24 * 60 * MINUTE, "Keep it within a day.");
 
+/** Empty, null or left out (as the Mac app's client leaves out a nil title) all mean no title. */
 const titleSchema = z
   .string()
   .trim()
   .max(MAX_BLOCK_TITLE, `Keep the title under ${MAX_BLOCK_TITLE} characters.`)
-  .nullable()
+  .nullish()
   .transform((t) => t || null);
 
 /** What the popover sends when making or editing protected time. */
