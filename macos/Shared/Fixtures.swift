@@ -145,16 +145,33 @@ enum Fixtures {
         )
     }
 
-    /// The first goal's page for planning: its tasks, 4 hours protected this week, two already done.
+    /// The first goal's page for planning: its tasks, its protected time this week and next, two
+    /// tasks already done.
     static var planningDetail: GoalDetail {
         var detail = goalDetail
         detail.tasks = tasks
-        detail.week.protectedMinutes = 240
+        detail.week.protectedBlocks = protectedBlocks
         detail.week.done = [
             TaskItem(id: "d1", title: "Sign in with a one-time code", minutes: 60, done: true, plannedFor: "2026-11-18", plannedWeek: "2026-11-16"),
             TaskItem(id: "d2", title: "Draft the menu bar’s copy", minutes: 30, done: true, plannedWeek: "2026-11-16"),
         ]
         return detail
+    }
+
+    /// The goal's protected time around `referenceNow` (Wednesday 10:18): Monday's and Tuesday's
+    /// gone by; today one block over and one ahead, with more planned than both (over capacity);
+    /// none tomorrow; Friday with time to spare; Saturday's long block making the week fit, 1 h to
+    /// spare; and two blocks next week.
+    static var protectedBlocks: [ProtectedBlock] {
+        func at(_ day: Int, _ hour: Int) -> Date {
+            var components = DateComponents(year: 2026, month: 11, day: day, hour: hour)
+            components.calendar = Calendar(identifier: .gregorian)
+            components.timeZone = TimeZone(identifier: "Europe/Madrid")
+            return components.date!
+        }
+        return [
+            (16, 9, 12), (17, 14, 16), (18, 9, 10), (18, 16, 17), (20, 9, 11), (21, 10, 15), (23, 9, 11), (25, 9, 11),
+        ].map { ProtectedBlock(start: at($0.0, $0.1), end: at($0.0, $0.2)) }
     }
 
     /// Open tasks as of Wednesday 2026-11-18 (the week of Nov 16): planned for days, for this week

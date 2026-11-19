@@ -45,6 +45,10 @@ struct GoalTaskRow: View {
     let isDragging: Bool
     let isReorderable: Bool
     let actions: TaskActions
+    /// The first line of its description, under the title. The planning board leaves it out.
+    var showsNotes = true
+    /// The plan pill. The planning board leaves it out where the column already says as much.
+    var showsPlan = true
     let onOpen: () -> Void
 
     @State private var isHovered = false
@@ -60,7 +64,7 @@ struct GoalTaskRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(task.title).font(.app(15.2)).foregroundStyle(Theme.foreground)
                             .fixedSize(horizontal: false, vertical: true)
-                        if let line = task.firstLine {
+                        if showsNotes, let line = task.firstLine {
                             Text(line).appText(.sm).foregroundStyle(Theme.muted).lineLimit(1)
                         }
                     }
@@ -125,7 +129,7 @@ struct GoalTaskRow: View {
         FlowLayout(spacing: 8) {
             EstimatePill(minutes: task.minutes, isPending: task.isPending, owner: task.id) { actions.edit(task, TaskPatch(minutes: $0)) }
             if horizon.carriedWeeks > 0 {
-                TaskPill(icon: .refresh, text: horizon.carriedWeeks == 1 ? "Carried over" : "Carried over ×\(horizon.carriedWeeks)", tone: Self.amber)
+                TaskPill(icon: .refresh, text: horizon.carriedWeeks == 1 ? "Carried over" : "Carried over ×\(horizon.carriedWeeks)", tone: Theme.amber)
                     .help("Planned for an earlier week and not done yet")
             }
             if let at = task.scheduledAt {
@@ -137,7 +141,7 @@ struct GoalTaskRow: View {
             }
             // A time on the calendar says when already; the planned day follows it.
             // Set pills first and empty ones after, so a hidden empty pill never leaves a gap.
-            let plan = task.scheduledAt == nil ? planPill : nil
+            let plan = task.scheduledAt == nil && showsPlan ? planPill : nil
             if task.plannedFor == nil, task.dueOn != nil {
                 duePill
                 plan
@@ -147,9 +151,6 @@ struct GoalTaskRow: View {
             }
         }
     }
-
-    /// As a planned day that slipped (TaskDayKind.describe).
-    private static let amber = Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24))
 
     private var planPill: TaskPlanPill {
         TaskPlanPill(task: task, today: today, isQuiet: !isEngaged, owner: task.id) { actions.edit(task, $0) }
