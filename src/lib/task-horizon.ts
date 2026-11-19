@@ -5,7 +5,7 @@ import { addDays, daysUntil, weekStartOf } from "@/lib/target-date";
  * against today, so nothing has to roll over as days and weeks pass. Pure and client-safe.
  *
  * People plan at the precision they have: a day, a week (this one or next, never further),
- * or not yet (Later). A missed day falls back to its week; a week that's gone by carries
+ * or not yet (Unplanned). A missed day falls back to its week; a week that's gone by carries
  * into this one, counting how many times it has.
  */
 
@@ -47,8 +47,8 @@ export type PlacementPatch = { plannedFor?: string | null; plannedWeek?: string 
 /**
  * Applies a placement change, keeping the day and week in step:
  * - Picking a day plans it for that day's week too.
- * - Clearing the day keeps the week, so it's still meant for that week (or Later, if it was further out than next week).
- * - Picking another week drops a day that isn't in it; clearing the week (with no day) moves it to Later.
+ * - Clearing the day keeps the week, so it's still meant for that week (or Unplanned, if it was further out than next week).
+ * - Picking another week drops a day that isn't in it; clearing the week (with no day) moves it to Unplanned.
  */
 export function resolvePlacement(current: Placed, patch: PlacementPatch, today: string): Placed {
   if (patch.plannedFor) return { plannedFor: patch.plannedFor, plannedWeek: weekStartOf(patch.plannedFor) };
@@ -70,12 +70,12 @@ export function weekProblem(week: string, today: string): string | null {
   return monday === thisWeek || monday === nextWeek ? null : "Plan it for this week or next.";
 }
 
-/** The groups in plan order: days, then this week, next week and Later. */
+/** The groups in plan order: days, then this week, next week and Unplanned. */
 export const TASK_GROUPS: readonly TaskGroup[] = ["day", "thisWeek", "nextWeek", "later"];
 
 /**
  * Open tasks in plan order, each with where it stands: planned days soonest first, then this
- * week, next week and Later. Within a group they keep the order they came in (the person's).
+ * week, next week and Unplanned. Within a group they keep the order they came in (the person's).
  */
 export function inPlanOrder<T extends Placed>(tasks: readonly T[], today: string): (T & { horizon: TaskHorizon })[] {
   // Array.prototype.sort is stable, so ties keep the person's order.

@@ -208,8 +208,15 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testPlanningBoard() {
         assertAppearances(
-            PlanningBoard(detail: Fixtures.planningDetail).background(Theme.background),
-            width: 1100, height: 860
+            PlanningBoard(detail: Fixtures.planningDetail, now: now).background(Theme.background),
+            width: 1500, height: 760
+        )
+    }
+
+    func testPlanningBoardWithOpenCard() {
+        assertAppearances(
+            PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyOpen: "t5").background(Theme.background),
+            width: 1500, height: 760
         )
     }
 
@@ -225,11 +232,11 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    func testTasksSectionWithLater() {
+    func testTasksSectionWithUnplanned() {
         assertAppearances(
             TasksSection(
                 tasks: Fixtures.tasks, suggestions: [], hasRead: false, reading: false,
-                clock: .twelveHour, today: "2026-11-18", initiallyShowsLater: true, now: now
+                clock: .twelveHour, today: "2026-11-18", initiallyShowsUnplanned: true, now: now
             )
             .padding(.horizontal, 32)
             .frame(maxHeight: .infinity, alignment: .top)

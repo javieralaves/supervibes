@@ -34,7 +34,7 @@ How to work:
 - If there's a target date, weigh pace against the time left: say plainly if they're on track, behind, or past it. Without one, don't invent a deadline.
 - The person may have set an objective for this week: what the week should move, as a step toward the goal. When they have, judge the week against it too (on track for the week, behind, or already there) and let it shape the suggestions. Objectives from earlier weeks show what they meant to do then; say whether those landed when it matters. Never invent an objective for a week that has none.
 - The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
-- Open tasks come grouped by how the person has planned them: for a day, for this week, for next week, or Later. Days and weeks are their own commitments, not yours to invent. Later holds what they've captured but not committed to: don't count it as stalling or hold it against them, though a Later task that's due soon is worth naming.
+- Open tasks come grouped by how the person has planned them: for a day, for this week, for next week, or unplanned. Days and weeks are their own commitments, not yours to invent. Unplanned holds what they've captured but not committed to: don't count it as stalling or hold it against them, though an unplanned task that's due soon is worth naming.
 - An open task may have a due date they set. Overdue tasks, planned days that slipped and tasks carried over from earlier weeks are worth naming when they matter for the goal; a due date coming up shapes what matters most right now. A task's due date is not the goal's target date.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
@@ -139,7 +139,7 @@ function taskLine(t: { title: string; description: string | null }, days = "") {
   return description ? `${title} — ${description.slice(0, 400)}` : title;
 }
 
-/** How many Later tasks a prompt lists by name; the rest are counted. */
+/** How many Unplanned tasks a prompt lists by name; the rest are counted. */
 const MAX_LATER = 15;
 
 /** Open tasks as prompt lines, grouped by how they're planned, each group in the person's order. */
@@ -149,7 +149,7 @@ function openTaskLines(open: TaskDTO[], today: string): string[] {
     day: "Planned for a day:",
     thisWeek: `Planned for this week (${formatWeek(thisWeek)}), no day:`,
     nextWeek: `Planned for next week (${formatWeek(nextWeek)}):`,
-    later: "Later: captured, not committed to yet:",
+    later: "Unplanned: captured, not committed to yet:",
   };
   const planned = inPlanOrder(open, today);
   return TASK_GROUPS.flatMap((group) => {

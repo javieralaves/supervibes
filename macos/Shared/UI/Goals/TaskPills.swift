@@ -81,7 +81,21 @@ struct TaskDayPill: View {
     var isQuiet = false
     /// Who opened the menu (the task's id), so its row stays active while it's open.
     var owner: String?
+    /// A plan pill's week (its Monday), shown when there's no day: "This week" or "Next week".
+    var week: String?
+    /// For a plan pill, offers this week and next above the days.
+    var onWeek: ((String) -> Void)?
     var onChange: (String?) -> Void
+
+    private var thisWeek: String { CalendarDay.weekStart(today) }
+    private var nextWeek: String { CalendarDay.addDays(thisWeek, 7) }
+
+    /// "This week" or "Next week" for a week-only plan (a carried-over week counts as this one).
+    private var weekLabel: String? {
+        guard value == nil, onWeek != nil, let week else { return nil }
+        if week <= thisWeek { return "This week" }
+        return week == nextWeek ? "Next week" : nil
+    }
 
     @Environment(\.overlays) private var overlays
     @State private var anchor = CGRect.zero
@@ -92,7 +106,7 @@ struct TaskDayPill: View {
     private var isMenuOpen: Bool { menuOwner != nil && overlays?.presented?.owner == menuOwner }
 
     var body: some View {
-        let shown = value.map { kind.describe($0, today: today) }
+        let shown = value.map { kind.describe($0, today: today) } ?? weekLabel.map { (text: $0, tone: Theme.muted) }
         TaskPill(
             icon: kind.icon,
             text: shown?.text ?? kind.empty,
@@ -103,6 +117,7 @@ struct TaskDayPill: View {
         )
         .modifier(AnchorReader(frame: $anchor))
         .opacity(shown == nil && isQuiet && !isMenuOpen ? 0 : 1)
+        .layoutValue(key: FlowOptional.self, value: shown == nil && isQuiet && !isMenuOpen)
     }
 
     private func openMenu() {
@@ -115,6 +130,17 @@ struct TaskDayPill: View {
         overlays.showMenu(anchor: menuAnchor, owner: menuOwner) {
             MenuPanel(width: 208) {
                 MenuLabel(kind.menuTitle)
+                if let onWeek {
+                    DayRow(title: "This week", detail: CalendarDay.formatWeek(thisWeek), isSelected: weekLabel == "This week") {
+                        overlays.dismiss()
+                        onWeek(thisWeek)
+                    }
+                    DayRow(title: "Next week", detail: CalendarDay.formatWeek(nextWeek), isSelected: weekLabel == "Next week") {
+                        overlays.dismiss()
+                        onWeek(nextWeek)
+                    }
+                    MenuSeparator()
+                }
                 ForEach(Array(week.enumerated()), id: \.offset) { index, day in
                     DayRow(
                         title: index == 0 ? "Today" : index == 1 ? "Tomorrow" : CalendarDay.weekday(day),
@@ -133,7 +159,7 @@ struct TaskDayPill: View {
                 ) {
                     pickAnotherDay(overlays, anchor: menuAnchor)
                 }
-                if value != nil {
+                if value != nil || weekLabel != nil {
                     DayRow(title: kind.clearTitle, isDestructive: true) {
                         overlays.dismiss()
                         onChange(nil)

@@ -279,7 +279,8 @@
           },
           "title": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Left out or null: no title."
           },
           "startsAt": {
             "type": "string"
@@ -290,7 +291,6 @@
         },
         "required": [
           "goalId",
-          "title",
           "startsAt",
           "endsAt"
         ]
@@ -303,12 +303,12 @@
           },
           "title": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Left out or null: no title."
           }
         },
         "required": [
-          "goalId",
-          "title"
+          "goalId"
         ]
       },
       "BlockTimes": {
@@ -821,12 +821,13 @@
           },
           "description": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Left out or null: none."
           },
           "targetDate": {
             "type": "string",
             "nullable": true,
-            "description": "YYYY-MM-DD, or null."
+            "description": "YYYY-MM-DD; left out or null: none."
           },
           "icon": {
             "type": "string",
@@ -916,8 +917,6 @@
         },
         "required": [
           "title",
-          "description",
-          "targetDate",
           "icon",
           "color"
         ]
@@ -1207,7 +1206,7 @@
             "type": "string",
             "nullable": true,
             "format": "date",
-            "description": "The Monday of the week they mean to do it (a planned day sets its week). Null with no planned day: not planned yet, Later."
+            "description": "The Monday of the week they mean to do it (a planned day sets its week). Null with no planned day: not planned yet, Unplanned."
           },
           "dueOn": {
             "type": "string",
@@ -1514,13 +1513,12 @@
               "24h",
               null
             ],
-            "description": "null follows the device."
+            "description": "Null or left out follows the device."
           }
         },
         "required": [
           "sleepStart",
-          "wakeTime",
-          "clock"
+          "wakeTime"
         ]
       },
       "SourceInput": {
@@ -1591,7 +1589,7 @@
           },
           "plannedWeek": {
             "type": "string",
-            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Later."
+            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Unplanned."
           },
           "dueOn": {
             "type": "string",
@@ -1608,7 +1606,7 @@
           },
           "plannedWeek": {
             "type": "string",
-            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Later."
+            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Unplanned."
           },
           "before": {
             "type": "string",
@@ -3927,7 +3925,7 @@
     "/api/v1/goals/{id}/tasks": {
       "post": {
         "operationId": "addTask",
-        "summary": "Add a task at the end of the goal's open tasks, in Later unless given a day or week",
+        "summary": "Add a task at the end of the goal's open tasks, in Unplanned unless given a day or week",
         "security": [
           {
             "bearerAuth": []
@@ -4187,7 +4185,7 @@
     "/api/v1/tasks/{taskId}/place": {
       "put": {
         "operationId": "placeTask",
-        "summary": "Move an open task to a day, a week or Later, and to a spot among the goal's open tasks",
+        "summary": "Move an open task to a day, a week or Unplanned, and to a spot among the goal's open tasks",
         "security": [
           {
             "bearerAuth": []

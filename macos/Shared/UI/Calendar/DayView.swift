@@ -588,6 +588,12 @@ private struct UnplanMark: View {
     }
 }
 
+/// A view a FlowLayout may leave out when it would start a new row, such as a pill that's
+/// invisible until hover: it keeps its place on a row that has room, without adding a blank one.
+struct FlowOptional: LayoutValueKey {
+    static let defaultValue = false
+}
+
 /// Lays children out in rows, wrapping when the next doesn't fit.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
@@ -599,7 +605,13 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for row in arrange(subviews, width: bounds.width) {
+        let rows = arrange(subviews, width: bounds.width)
+        let placed = Set(rows.flatMap(\.indices))
+        // Left out: placed at the corner with no size, so they take no room.
+        for index in subviews.indices where !placed.contains(index) {
+            subviews[index].place(at: bounds.origin, proposal: .zero)
+        }
+        for row in rows {
             for (index, x) in zip(row.indices, row.xs) {
                 let size = subviews[index].sizeThatFits(.unspecified)
                 subviews[index].place(
@@ -619,6 +631,7 @@ struct FlowLayout: Layout {
             let size = view.sizeThatFits(.unspecified)
             let w = min(size.width, width)
             if x > 0, x + w > width {
+                if view[FlowOptional.self] { continue }
                 let last = rows[rows.count - 1]
                 rows.append(Row(y: last.y + last.height + spacing))
                 x = 0

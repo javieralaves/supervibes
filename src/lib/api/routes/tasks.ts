@@ -24,7 +24,7 @@ export const TaskSchema = z
     plannedFor: z.iso.date().nullable().openapi({ description: "The day they mean to do it." }),
     plannedWeek: z.iso.date().nullable().openapi({
       description:
-        "The Monday of the week they mean to do it (a planned day sets its week). Null with no planned day: not planned yet, Later.",
+        "The Monday of the week they mean to do it (a planned day sets its week). Null with no planned day: not planned yet, Unplanned.",
     }),
     dueOn: z.iso.date().nullable().openapi({ description: "The day it's due." }),
     scheduledAt: z.iso.datetime().nullable().openapi({ description: "When it's next on the calendar, if it is." }),
@@ -64,7 +64,7 @@ const taskResponse = { description: "OK", content: { "application/json": { schem
  * kept in step: see src/lib/task-horizon.ts.
  */
 const PLANNED_FOR = "YYYY-MM-DD; also plans it for that day's week. Empty clears the day and keeps the week.";
-const PLANNED_WEEK = "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Later.";
+const PLANNED_WEEK = "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Unplanned.";
 
 const TaskPatchSchema = z
   .object({
@@ -95,7 +95,7 @@ const addRoute = createRoute({
   method: "post",
   path: "/goals/{id}/tasks",
   operationId: "addTask",
-  summary: "Add a task at the end of the goal's open tasks, in Later unless given a day or week",
+  summary: "Add a task at the end of the goal's open tasks, in Unplanned unless given a day or week",
   security: [{ bearerAuth: [] }],
   request: {
     params: goalParam,
@@ -144,7 +144,7 @@ const placeRoute = createRoute({
   method: "put",
   path: "/tasks/{taskId}/place",
   operationId: "placeTask",
-  summary: "Move an open task to a day, a week or Later, and to a spot among the goal's open tasks",
+  summary: "Move an open task to a day, a week or Unplanned, and to a spot among the goal's open tasks",
   security: [{ bearerAuth: [] }],
   request: { params: taskParam, body: { required: true, content: { "application/json": { schema: TaskPlacementSchema } } } },
   responses: { 200: taskResponse, ...errorResponses, 404: notFound },

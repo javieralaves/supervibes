@@ -2,14 +2,14 @@ import SwiftUI
 
 /// What the Tasks section asks of whoever owns the data.
 struct TaskActions {
-    /// A new task's title, and the week it's for (its Monday), or nil for Later.
-    var add: (String, String?) -> Void = { _, _ in }
+    /// A new task's title, and where it's planned (a day or week; an empty patch leaves it unplanned).
+    var add: (String, TaskPatch) -> Void = { _, _ in }
     var toggle: (TaskItem) -> Void = { _ in }
     var edit: (TaskItem, TaskPatch) -> Void = { _, _ in }
     var delete: (TaskItem) -> Void = { _ in }
     /// The open tasks' ids in their new order.
     var reorder: ([String]) -> Void = { _ in }
-    /// Moves a task to a day, week or Later (the patch's planned day and week, an empty string
+    /// Moves a task to a day, a week or Unplanned (the patch's planned day and week, an empty string
     /// clearing), just before another task, or after them all when that's nil.
     var place: (TaskItem, TaskPatch, String?) -> Void = { _, _, _ in }
     /// Opens the planning board, when there is one.
@@ -21,11 +21,11 @@ struct TaskActions {
 }
 
 /// A goal's open tasks, grouped by how they're planned: for a day, for this week, for next week, or
-/// Later (captured, not committed to yet, and folded away). Click one to open it in place and add a
+/// Unplanned (captured, not committed to yet, and folded away). Click one to open it in place and add a
 /// description; it saves when it closes (Esc, ⌘Return, a click elsewhere, or opening another).
-/// Within a week or Later, drag a row, or press ⌥↑ / ⌥↓ on it, to reorder: that order is what reads
+/// Within a week or Unplanned, drag a row, or press ⌥↑ / ⌥↓ on it, to reorder: that order is what reads
 /// and agendas follow. A row's plan pill gives it a day; its ⋯ menu moves it to another week or
-/// Later. Under the list, the latest read's suggestions to add or pass on.
+/// Unplanned. Under the list, the latest read's suggestions to add or pass on.
 struct TasksSection: View {
     let tasks: [TaskItem]
     let suggestions: [TaskSuggestion]
@@ -40,26 +40,20 @@ struct TasksSection: View {
     var closeSignal = 0
     /// Opens with this task open, for snapshot tests.
     var initiallyOpen: String?
-    /// Opens with Later unfolded, for snapshot tests.
-    var initiallyShowsLater = false
+    /// Opens with Unplanned unfolded, for snapshot tests.
+    var initiallyShowsUnplanned = false
     /// For "Today 2:00 PM"; fixed in snapshots.
     var now = Date()
     var actions = TaskActions()
 
-    @State private var draft: Draft?
+    @State private var draft: TaskDraft?
     @State private var newTitles: [TaskHorizon.Group: String] = [:]
-    @State private var showsLater = false
+    @State private var showsUnplanned = false
     @State private var drag: Drag?
     /// After a drop: how far the dropped row still is from its new slot, gliding to zero.
     @State private var settle: Settle?
     @State private var heights: [String: CGFloat] = [:]
     @FocusState private var focus: Field?
-
-    struct Draft: Equatable {
-        let id: String
-        var title: String
-        var description: String
-    }
 
     struct Drag: Equatable {
         let id: String
@@ -75,7 +69,7 @@ struct TasksSection: View {
     }
 
     enum Field: Hashable {
-        case row(String), title, description, new(TaskHorizon.Group)
+        case row(String), new(TaskHorizon.Group)
     }
 
     /// The space between rows (`gap-0.5`).
@@ -94,7 +88,7 @@ struct TasksSection: View {
         return groups
     }
 
-    /// Planned days follow their dates; weeks and Later can be put in order.
+    /// Planned days follow their dates; weeks and Unplanned can be put in order.
     private func canReorder(_ rows: [TaskItem], in group: TaskHorizon.Group) -> Bool {
         group != .day && draft == nil && rows.count > 1 && !tasks.contains { $0.isPending }
     }
@@ -138,9 +132,9 @@ struct TasksSection: View {
         }
         .padding(.top, 48)
         .onAppear {
-            showsLater = initiallyShowsLater
+            showsUnplanned = initiallyShowsUnplanned
             if let id = initiallyOpen, let task = tasks.first(where: { $0.id == id }) {
-                draft = Draft(id: task.id, title: task.title, description: task.description ?? "")
+                draft = TaskDraft(task)
             }
         }
         .onChange(of: closeSignal) { closeTask() }
@@ -160,7 +154,7 @@ struct TasksSection: View {
             .padding(.horizontal, 6)
             .padding(.bottom, 6)
         }
-        if !rows.isEmpty, group != .later || showsLater {
+        if !rows.isEmpty, group != .later || showsUnplanned {
             VStack(spacing: Self.gap) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, task in
                     row(task, index: index, rows: rows, group: group)
@@ -182,11 +176,11 @@ struct TasksSection: View {
                 Text("Next week").appText(.xs, .medium).foregroundStyle(Theme.muted)
                 Text(CalendarDay.formatWeek(nextWeek)).appText(.xs).foregroundStyle(Theme.muted.opacity(0.7))
             case .later:
-                Text("Later").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                Text("Unplanned").appText(.xs, .medium).foregroundStyle(Theme.muted)
                 if count > 0 {
                     Text("\(count)").appText(.xs).foregroundStyle(Theme.muted.opacity(0.7)).monospacedDigit()
                     Icon.chevronDown.image(size: 12).foregroundStyle(Theme.muted)
-                        .rotationEffect(.degrees(showsLater ? 0 : -90))
+                        .rotationEffect(.degrees(showsUnplanned ? 0 : -90))
                 }
             }
             Spacer(minLength: 0)
@@ -196,9 +190,9 @@ struct TasksSection: View {
         .padding(.bottom, 4)
 
         if group == .later, count > 0 {
-            Button { withAnimation(.easeOut(duration: 0.15)) { showsLater.toggle() } } label: { label.contentShape(.rect) }
+            Button { withAnimation(.easeOut(duration: 0.15)) { showsUnplanned.toggle() } } label: { label.contentShape(.rect) }
                 .buttonStyle(.plain)
-                .accessibilityLabel(showsLater ? "Fold away Later" : "Show Later")
+                .accessibilityLabel(showsUnplanned ? "Fold away unplanned tasks" : "Show unplanned tasks")
         } else {
             label
         }
@@ -212,13 +206,12 @@ struct TasksSection: View {
                 task: task,
                 draft: Binding(get: { self.draft ?? draft }, set: { self.draft = $0 }),
                 today: today,
-                focus: $focus,
                 actions: actions,
                 onClose: closeTask
             )
         } else {
             let reorderable = canReorder(rows, in: group)
-            TaskRow(
+            GoalTaskRow(
                 task: task,
                 horizon: task.horizon(today: today),
                 clock: clock,
@@ -255,7 +248,7 @@ struct TasksSection: View {
         let placeholder = switch group {
         case .thisWeek: "Add to this week"
         case .nextWeek: "Add to next week"
-        default: "Add a task for later"
+        default: "Add a task"
         }
         return HStack(spacing: 12) {
             Icon.add.image(size: 16).foregroundStyle(Theme.muted).frame(width: 18)
@@ -282,14 +275,14 @@ struct TasksSection: View {
         let title = (newTitles[group] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         newTitles[group] = ""
-        let week: String? = switch group {
-        case .thisWeek: thisWeek
-        case .nextWeek: nextWeek
-        default: nil
+        let placement = switch group {
+        case .thisWeek: TaskPatch(plannedWeek: thisWeek)
+        case .nextWeek: TaskPatch(plannedWeek: nextWeek)
+        default: TaskPatch()
         }
-        actions.add(String(title.prefix(TaskItem.maxTitle)), week)
+        actions.add(String(title.prefix(TaskItem.maxTitle)), placement)
         // So what was just added shows.
-        if group == .later { showsLater = true }
+        if group == .later { showsUnplanned = true }
         // Enter adds it and keeps the cursor here for the next.
         focus = .new(group)
     }
@@ -297,8 +290,7 @@ struct TasksSection: View {
     private func open(_ task: TaskItem) {
         guard !task.isPending else { return }
         if let draft, draft.id != task.id { commit(draft) }
-        draft = Draft(id: task.id, title: task.title, description: task.description ?? "")
-        focus = .description
+        draft = TaskDraft(task)
     }
 
     private func closeTask() {
@@ -307,15 +299,10 @@ struct TasksSection: View {
         draft = nil
     }
 
-    /// Saves whatever changed in the open task. An emptied title keeps the old one.
-    private func commit(_ draft: Draft) {
-        guard let task = tasks.first(where: { $0.id == draft.id }) else { return }
-        var patch = TaskPatch()
-        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !title.isEmpty, title != task.title { patch.title = String(title.prefix(TaskItem.maxTitle)) }
-        let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if description != (task.description ?? "") { patch.description = String(description.prefix(TaskItem.maxDescription)) }
-        if patch != TaskPatch() { actions.edit(task, patch) }
+    /// Saves whatever changed in the open task.
+    private func commit(_ draft: TaskDraft) {
+        guard let task = tasks.first(where: { $0.id == draft.id }), let patch = draft.patch(for: task) else { return }
+        actions.edit(task, patch)
     }
 
     // MARK: Reordering
@@ -396,7 +383,7 @@ struct TasksSection: View {
     }
 }
 
-/// "This has carried over twice": keep it for this week, or let it go to Later.
+/// "This has carried over twice": keep it for this week, or leave it unplanned.
 private struct CarriedOverPrompt: View {
     let task: TaskItem
     let weeks: Int
@@ -412,274 +399,11 @@ private struct CarriedOverPrompt: View {
                 .lineLimit(2)
             Spacer(minLength: 8)
             SmallButton(icon: .tick, title: "Keep", action: keep)
-            SmallButton(icon: .dashedCircle, title: "Move to Later", action: later)
+            SmallButton(icon: .dashedCircle, title: "Unplan", action: later)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Theme.wash.opacity(0.6), in: .rect(cornerRadius: 12))
-    }
-}
-
-// MARK: - A closed row
-
-/// `group relative flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 hover:bg-wash/50`
-private struct TaskRow: View {
-    let task: TaskItem
-    let horizon: TaskHorizon
-    let clock: Clock
-    let today: String
-    /// The Mondays this week and next start on, for moving it.
-    let thisWeek: String
-    let nextWeek: String
-    let now: Date
-    let isDragging: Bool
-    let isReorderable: Bool
-    let actions: TaskActions
-    let onOpen: () -> Void
-
-    @State private var isHovered = false
-    @State private var moreAnchor = CGRect.zero
-    @Environment(\.overlays) private var overlays
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Checkbox(isDone: task.done, isDisabled: task.isPending) { actions.toggle(task) }
-                .padding(.top, 8)
-            VStack(alignment: .leading, spacing: 6) {
-                Button(action: onOpen) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(task.title).font(.app(15.2)).foregroundStyle(Theme.foreground)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let line = task.firstLine {
-                            Text(line).appText(.sm).foregroundStyle(Theme.muted).lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .inactive(task.isPending)
-                .padding(.top, 6)
-                .accessibilityLabel("Open “\(task.title)”")
-
-                pills
-            }
-            .padding(.bottom, 8)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(minHeight: 48, alignment: .top)
-        .background(background, in: .rect(cornerRadius: 12))
-        .overlay {
-            if isDragging { RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder) }
-        }
-        .shadow(color: isDragging ? .black.opacity(0.18) : .clear, radius: 14, y: 10)
-        .overlay(alignment: .topLeading) {
-            // A grip in the left margin: a hint on hover.
-            if isReorderable {
-                Icon.grip.image(size: 12).foregroundStyle(Theme.muted)
-                    .opacity(isDragging ? 0.6 : isEngaged ? 0.5 : 0)
-                    .frame(width: 18, height: 21)
-                    .offset(x: -6, y: 12)
-                    .allowsHitTesting(false)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            // Floats over the content's corner on hover, so the text keeps the full width.
-            if !task.isPending {
-                SmallMoreButton(isActive: menuIsOpen, action: openMenu)
-                    .modifier(AnchorReader(frame: $moreAnchor))
-                    .padding(.trailing, 8)
-                    .padding(.top, 10)
-                    .opacity(isEngaged ? 1 : 0)
-            }
-        }
-        .opacity(task.isPending ? 0.6 : 1)
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isEngaged)
-    }
-
-    /// One of this row's menus is open (its pills or ⋯): the pointer is off in the menu, but the row
-    /// stays as it was on hover, like the web's `group-has-[[data-state=open]]`.
-    private var menuIsOpen: Bool { overlays?.presented?.owner?.hasPrefix(task.id) == true }
-
-    /// Hovered, or one of its menus is open.
-    private var isEngaged: Bool { isHovered || menuIsOpen }
-
-    private var background: Color {
-        if isDragging { return Theme.card }
-        return isEngaged ? Theme.wash.opacity(0.5) : .clear
-    }
-
-    @ViewBuilder private var pills: some View {
-        HStack(spacing: 10) {
-            EstimatePill(minutes: task.minutes, isPending: task.isPending, owner: task.id) { actions.edit(task, TaskPatch(minutes: $0)) }
-            if horizon.carriedWeeks > 0 {
-                TaskPill(icon: .refresh, text: horizon.carriedWeeks == 1 ? "Carried over" : "Carried over ×\(horizon.carriedWeeks)", tone: Self.amber)
-                    .help("Planned for an earlier week and not done yet")
-            }
-            if let at = task.scheduledAt {
-                HStack(spacing: 4) {
-                    Icon.calendarSmall.image(size: 12)
-                    Text(Self.scheduleLabel(at, clock: clock, now: now)).appText(.xs)
-                }
-                .foregroundStyle(Theme.muted)
-            }
-            // A time on the calendar says when already; the planned day follows it.
-            // Set pills first and empty ones after, so a hidden empty pill never leaves a gap.
-            let plan = task.scheduledAt == nil ? planPill : nil
-            if task.plannedFor == nil, task.dueOn != nil {
-                duePill
-                plan
-            } else {
-                plan
-                duePill
-            }
-        }
-    }
-
-    /// As a planned day that slipped (TaskDayKind.describe).
-    private static let amber = Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24))
-
-    private var planPill: TaskDayPill {
-        TaskDayPill(kind: .plan, value: task.plannedFor, today: today, isQuiet: !isEngaged, owner: task.id) {
-            actions.edit(task, TaskPatch(plannedFor: $0 ?? ""))
-        }
-    }
-
-    private var duePill: TaskDayPill {
-        TaskDayPill(kind: .due, value: task.dueOn, today: today, isQuiet: !isEngaged, owner: task.id) {
-            actions.edit(task, TaskPatch(dueOn: $0 ?? ""))
-        }
-    }
-
-    private func openMenu() {
-        guard let overlays else { return }
-        overlays.showMenu(anchor: moreAnchor, owner: task.id) {
-            MenuPanel {
-                MenuItem(icon: .view, title: "Open") {
-                    overlays.dismiss()
-                    onOpen()
-                }
-                MenuSeparator()
-                // Moving to a week drops its day; Later clears both.
-                if horizon.group != .thisWeek {
-                    MenuItem(icon: .calendarSmall, title: "Move to this week") { move(week: thisWeek) }
-                }
-                if horizon.group != .nextWeek {
-                    MenuItem(icon: .arrowForward, title: "Move to next week") { move(week: nextWeek) }
-                }
-                if horizon.group != .later {
-                    MenuItem(icon: .dashedCircle, title: "Move to Later") { move(week: "") }
-                }
-                MenuSeparator()
-                MenuItem(icon: .delete, title: "Delete", isDestructive: true) {
-                    overlays.dismiss()
-                    actions.delete(task)
-                }
-            }
-        }
-    }
-
-    private func move(week: String) {
-        overlays?.dismiss()
-        actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week), nil)
-    }
-
-    /// "Today 2:00 PM", "Tomorrow 09:30" or "Thu 14:00", in this Mac's time zone.
-    static func scheduleLabel(_ at: Date, clock: Clock, now: Date) -> String {
-        let calendar = Calendar.current
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: at)).day ?? 0
-        let day = days == 0 ? "Today" : days == 1 ? "Tomorrow" : at.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "en_US")))
-        let parts = calendar.dateComponents([.hour, .minute], from: at)
-        return "\(day) \(clock.format(minutes: (parts.hour ?? 0) * 60 + (parts.minute ?? 0)))"
-    }
-}
-
-// MARK: - An open row
-
-/// The task being edited, in place: `rounded-xl bg-wash/70 px-3 pb-3 pt-1.5`.
-private struct OpenTaskRow: View {
-    let task: TaskItem
-    @Binding var draft: TasksSection.Draft
-    let today: String
-    var focus: FocusState<TasksSection.Field?>.Binding
-    let actions: TaskActions
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Checkbox(isDone: task.done, isDisabled: false) {
-                onClose()
-                actions.toggle(task)
-            }
-            .padding(.top, 8)
-            VStack(alignment: .leading, spacing: 2) {
-                TextField("", text: $draft.title)
-                    .textFieldStyle(.plain)
-                    .font(.app(15.2))
-                    .foregroundStyle(Theme.foreground)
-                    .focused(focus, equals: .title)
-                    .accessibilityLabel("Task")
-                    // Return moves on to the description, as on the web.
-                    .onSubmit { focus.wrappedValue = .description }
-                    .padding(.top, 6)
-                TextField("", text: $draft.description, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.app(14))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1...12)
-                    .focused(focus, equals: .description)
-                    .placeholder("Add a description…", when: draft.description.isEmpty, font: .app(14))
-                    .accessibilityLabel("Description")
-                HStack(spacing: 8) {
-                    EstimatePill(minutes: task.minutes) { actions.edit(task, TaskPatch(minutes: $0)) }
-                    TaskDayPill(kind: .plan, value: task.plannedFor, today: today) {
-                        actions.edit(task, TaskPatch(plannedFor: $0 ?? ""))
-                    }
-                    TaskDayPill(kind: .due, value: task.dueOn, today: today) {
-                        actions.edit(task, TaskPatch(dueOn: $0 ?? ""))
-                    }
-                }
-                .padding(.top, 6)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.wash.opacity(0.7), in: .rect(cornerRadius: 12))
-        .onExitCommand(perform: onClose)
-        .onKeyPress(.return, phases: .down) { press in
-            guard press.modifiers.contains(.command) else { return .ignored }
-            onClose()
-            return .handled
-        }
-    }
-}
-
-// MARK: - Pieces
-
-/// The round checkbox: `h-[18px] w-[18px] rounded-full border-[1.5px] border-foreground/30`,
-/// a faint tick on hover.
-private struct Checkbox: View {
-    let isDone: Bool
-    let isDisabled: Bool
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Icon.tickBold.image(size: 12)
-                .foregroundStyle(isDone ? Theme.foreground : isHovered ? Theme.foreground(0.4) : .clear)
-                .frame(width: 18, height: 18)
-                .overlay(Circle().strokeBorder(Theme.foreground(isHovered ? 0.6 : 0.3), lineWidth: 1.5))
-                .contentShape(.circle)
-        }
-        .buttonStyle(.plain)
-        .inactive(isDisabled)
-        .onHover { isHovered = $0 }
-        .accessibilityLabel("Mark as done")
     }
 }
 

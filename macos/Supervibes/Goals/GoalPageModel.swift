@@ -167,7 +167,7 @@ final class GoalPageModel {
     /// What the Tasks section can do, wired to this model.
     var taskActions: TaskActions {
         TaskActions(
-            add: { [weak self] in self?.addTask($0, week: $1) },
+            add: { [weak self] in self?.addTask($0, placement: $1) },
             toggle: { [weak self] in self?.toggle($0) },
             edit: { [weak self] in self?.edit($0, $1) },
             delete: { [weak self] in self?.deleteTask($0) },
@@ -179,14 +179,15 @@ final class GoalPageModel {
         )
     }
 
-    /// Adds a task at the end, planned for `week` (a Monday), or for Later when it's nil.
-    private func addTask(_ title: String, week: String?) {
-        let pending = TaskItem(
-            id: "pending-\(UUID().uuidString)", title: title, minutes: TaskItem.defaultMinutes, plannedWeek: week, isPending: true
-        )
+    /// Adds a task at the end, planned for the placement's day or week, or unplanned.
+    private func addTask(_ title: String, placement: TaskPatch) {
+        var pending = TaskItem(id: "pending-\(UUID().uuidString)", title: title, minutes: TaskItem.defaultMinutes, isPending: true)
+        if let today = detail?.today {
+            pending = pending.placed(plannedFor: placement.plannedFor, plannedWeek: placement.plannedWeek, today: today)
+        }
         detail?.tasks.append(pending)
         taskRequest(undo: { [weak self] in self?.detail?.tasks.removeAll { $0.id == pending.id } }) { client, id in
-            switch try await client.addTask(path: .init(id: id), body: .json(.init(title: title, plannedWeek: week))) {
+            switch try await client.addTask(path: .init(id: id), body: .json(.init(title: title, plannedFor: placement.plannedFor, plannedWeek: placement.plannedWeek))) {
             case .created(let created): .replace(pending.id, TaskItem(api: try created.body.json))
             case .badRequest(let bad): .failed((try? bad.body.json.error.message) ?? "Couldn’t add that task.")
             case .notFound: .gone
