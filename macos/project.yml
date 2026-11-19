@@ -7,6 +7,9 @@ options:
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
+  # Marks the project as checked against this Xcode, so it doesn't offer "Update to recommended
+  # settings" on every regenerate. Bump it when a new Xcode asks again, and put what it suggests here.
+  xcodeVersion: "27.2"
 
 configs:
   Debug: debug
@@ -21,8 +24,9 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
 
 packages:
   SnapshotTesting:
@@ -69,6 +73,8 @@ targets:
         # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.
         PRODUCT_NAME: $(SUPERVIBES_DISPLAY_NAME)
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID)
+        ENABLE_HARDENED_RUNTIME: YES
+        REGISTER_APP_GROUPS: YES
     dependencies:
       - target: SupervibesWidgets
       - package: OpenAPIRuntime
@@ -102,6 +108,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID).widgets
+        ENABLE_HARDENED_RUNTIME: YES
+        REGISTER_APP_GROUPS: YES
 
   # Runs without a host app, so tests never launch Supervibes itself.
   SupervibesTests:
