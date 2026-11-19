@@ -59,11 +59,10 @@ enum TaskDayKind {
     func describe(_ day: String, today: String) -> (text: String, tone: Color) {
         let days = CalendarDay.daysUntil(day, today: today)
         let label = CalendarDay.relativeLabel(day, today: today)
-        let amber = Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24))
         switch self {
         case .plan:
             // A planned day that's gone by without the task getting done.
-            return (label, days < 0 ? amber : Theme.muted)
+            return (label, days < 0 ? Theme.amber : Theme.muted)
         case .due:
             if days < 0 { return ("Overdue · \(label)", Theme.danger) }
             let text = label == "Today" || label == "Tomorrow" ? "Due \(label.lowercased())" : "Due \(label)"
@@ -202,13 +201,16 @@ struct EstimatePill: View {
     let onChange: (Int) -> Void
 
     @Environment(\.overlays) private var overlays
+    @Environment(\.shortHours) private var shortHours
     @State private var anchor = CGRect.zero
+
+    private func label(_ minutes: Int) -> String { shortHours ? BoardDuration.text(minutes) : TaskItem.minutesLabel(minutes) }
 
     var body: some View {
         let action: (() -> Void)? = isPending ? nil : { openMenu() }
-        return TaskPill(icon: .clock, text: TaskItem.minutesLabel(minutes), action: action)
+        return TaskPill(icon: .clock, text: label(minutes), action: action)
             .modifier(AnchorReader(frame: $anchor))
-            .accessibilityLabel("Estimate: \(TaskItem.minutesLabel(minutes))")
+            .accessibilityLabel("Estimate: \(label(minutes))")
     }
 
     private func openMenu() {
@@ -217,7 +219,7 @@ struct EstimatePill: View {
             MenuPanel(width: 144) {
                 MenuLabel("Estimate")
                 ForEach(TaskItem.estimates, id: \.self) { option in
-                    DayRow(title: TaskItem.minutesLabel(option), isSelected: option == minutes) {
+                    DayRow(title: label(option), isSelected: option == minutes) {
                         overlays.dismiss()
                         onChange(option)
                     }
@@ -225,6 +227,11 @@ struct EstimatePill: View {
             }
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Durations with hours as "h" ("2 h", "1 h 30 min"), as on the planning board.
+    @Entry var shortHours = false
 }
 
 // MARK: - Menu pieces

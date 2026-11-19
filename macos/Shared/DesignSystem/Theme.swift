@@ -23,6 +23,11 @@ enum Theme {
     static let viz1 = Color.adaptive(light: .rgb(0x2a78d6), dark: .rgb(0x3987e5))
     static let viz2 = Color.adaptive(light: .rgb(0xeb6834), dark: .rgb(0xd95926))
     static let viz3 = Color.adaptive(light: .rgb(0x1baf7a), dark: .rgb(0x199e70))
+    /// Amber-700 / amber-400: over capacity, or a planned day gone by.
+    static let amber = Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24))
+    /// Where an over-capacity ring starts (amber-800 / amber-600) and the tip it brightens to (amber-500 / amber-200).
+    static let amberDeep = Color.adaptive(light: .rgb(0x92400e), dark: .rgb(0xd97706))
+    static let amberBright = Color.adaptive(light: .rgb(0xf59e0b), dark: .rgb(0xfde68a))
     /// Tailwind red-600 / red-400, for errors.
     static let danger = Color.adaptive(light: .rgb(0xdc2626), dark: .rgb(0xf87171))
 

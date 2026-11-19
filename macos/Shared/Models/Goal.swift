@@ -174,8 +174,8 @@ struct GoalDetail: Hashable, Sendable {
         let start: String
         var objective: String?
         let lastWeek: String?
-        /// Time on the calendar for this goal this week, in minutes.
-        var protectedMinutes = 0
+        /// The goal's time on the calendar this week and next, clipped to those weeks, earliest first.
+        var protectedBlocks: [ProtectedBlock] = []
         /// Tasks checked off this week, most recently first.
         var done: [TaskItem] = []
     }

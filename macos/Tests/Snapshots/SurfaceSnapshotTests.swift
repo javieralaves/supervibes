@@ -206,16 +206,46 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// The planning board in the window's overlay layer, with Show completed as given.
+    private func board(_ board: PlanningBoard, showsCompleted: Bool = false) -> some View {
+        let defaults = UserDefaults(suiteName: "SurfaceSnapshotTests.board")!
+        defaults.set(showsCompleted, forKey: "planningBoard.showsCompleted")
+        return board.background(Theme.background).overlayHost(OverlayCenter()).defaultAppStorage(defaults)
+    }
+
     func testPlanningBoard() {
+        // The pointer over Unplanned, showing its add button.
         assertAppearances(
-            PlanningBoard(detail: Fixtures.planningDetail, now: now).background(Theme.background),
+            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyHovered: .unplanned)),
             width: 1500, height: 760
         )
     }
 
     func testPlanningBoardWithOpenCard() {
         assertAppearances(
-            PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyOpen: "t5").background(Theme.background),
+            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyOpen: "t5")),
+            width: 1500, height: 760
+        )
+    }
+
+    func testPlanningBoardShowingCompleted() {
+        assertAppearances(
+            board(PlanningBoard(detail: Fixtures.planningDetail, now: now), showsCompleted: true),
+            width: 1500, height: 760
+        )
+    }
+
+    func testPlanningBoardDayCapacity() {
+        // Today: over capacity, one block gone by and one ahead.
+        assertAppearances(
+            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initialCapacity: .day("2026-11-18"))),
+            width: 1500, height: 760
+        )
+    }
+
+    func testPlanningBoardWeekCapacity() {
+        assertAppearances(
+            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initialCapacity: .thisWeek)),
             width: 1500, height: 760
         )
     }

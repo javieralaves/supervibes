@@ -256,6 +256,9 @@ final class OverlayCenter {
         case menu(anchor: CGRect, leading: Bool)
         /// Centred over a dimmed window.
         case dialog
+        /// Below `anchor`, right edges lined up, while the pointer is over it: it takes no clicks
+        /// and no pointer, so the page under it keeps its hover.
+        case hoverCard(anchor: CGRect)
     }
 
     struct Presented {
@@ -271,6 +274,16 @@ final class OverlayCenter {
 
     func showMenu(anchor: CGRect, owner: String? = nil, alignLeading: Bool = false, @ViewBuilder content: () -> some View) {
         presented = Presented(placement: .menu(anchor: anchor, leading: alignLeading), content: AnyView(content()), owner: owner)
+    }
+
+    func showHoverCard(anchor: CGRect, owner: String, @ViewBuilder content: () -> some View) {
+        presented = Presented(placement: .hoverCard(anchor: anchor), content: AnyView(content()), owner: owner)
+    }
+
+    /// Hides the hover card `owner` opened, leaving anything else showing.
+    func dismissHoverCard(owner: String) {
+        guard let presented, presented.owner == owner, case .hoverCard = presented.placement else { return }
+        self.presented = nil
     }
 
     func showDialog(dismissible: Bool = true, @ViewBuilder content: () -> some View) {
@@ -300,6 +313,7 @@ extension View {
 
 private struct OverlayHost: ViewModifier {
     let center: OverlayCenter
+    @Environment(\.staticRendering) private var staticRendering
 
     func body(content: Content) -> some View {
         content
@@ -309,9 +323,14 @@ private struct OverlayHost: ViewModifier {
                 if let presented = center.presented {
                     GeometryReader { geometry in
                         ZStack(alignment: .topLeading) {
-                            Color.black.opacity(isDialog(presented) ? 0.4 : 0.001)
-                                .contentShape(.rect)
-                                .onTapGesture { if presented.dismissible { center.dismiss() } }
+                            if isHoverCard(presented) {
+                                // Fills the window so the card's guides measure from its corner, and takes no pointer.
+                                Color.clear.allowsHitTesting(false)
+                            } else {
+                                Color.black.opacity(isDialog(presented) ? 0.4 : 0.001)
+                                    .contentShape(.rect)
+                                    .onTapGesture { if presented.dismissible { center.dismiss() } }
+                            }
                             switch presented.placement {
                             case .menu(let anchor, let leading):
                                 presented.content
@@ -321,17 +340,28 @@ private struct OverlayHost: ViewModifier {
                             case .dialog:
                                 presented.content
                                     .frame(width: geometry.size.width, height: geometry.size.height)
+                            case .hoverCard(let anchor):
+                                presented.content
+                                    .fixedSize()
+                                    .alignmentGuide(.leading) { $0[.trailing] - anchor.maxX }
+                                    .alignmentGuide(.top) { _ in -(anchor.maxY + 6) }
+                                    .allowsHitTesting(false)
                             }
                         }
                     }
                     .transition(.opacity)
                 }
             }
-            .animation(.easeOut(duration: 0.14), value: center.presented != nil)
+            .animation(staticRendering ? nil : .easeOut(duration: 0.14), value: center.presented != nil)
     }
 
     private func isDialog(_ presented: OverlayCenter.Presented) -> Bool {
         if case .dialog = presented.placement { return true }
+        return false
+    }
+
+    private func isHoverCard(_ presented: OverlayCenter.Presented) -> Bool {
+        if case .hoverCard = presented.placement { return true }
         return false
     }
 }

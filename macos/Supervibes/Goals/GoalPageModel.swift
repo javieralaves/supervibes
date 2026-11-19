@@ -614,7 +614,8 @@ extension GoalDetail {
             canRead: body.canRead,
             week: Week(
                 start: body.week.start, objective: body.week.objective, lastWeek: body.week.lastWeek,
-                protectedMinutes: body.week.protectedMinutes, done: body.week.done.map(TaskItem.init(api:))
+                protectedBlocks: body.week.protectedBlocks.map { ProtectedBlock(start: $0.startsAt, end: $0.endsAt) },
+                done: body.week.done.map(TaskItem.init(api:))
             ),
             tasks: body.tasks.map { TaskItem(api: $0) },
             suggestions: body.suggestions.map { TaskSuggestion(title: $0.title, why: $0.why, minutes: $0.minutes) },
