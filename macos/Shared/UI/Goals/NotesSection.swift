@@ -202,6 +202,14 @@ private struct NoteCard: View {
         return parts.joined(separator: " · ")
     }
 
+    // Kept out of `body` so the type-checker doesn't time out on the arithmetic.
+    private var bodyFontSize: CGFloat { isCompletion ? 14 : 15.2 }
+    private var bodyLineSpacing: CGFloat { bodyFontSize * 0.625 - bodyFontSize * 0.2 }
+    private var bodyTopPadding: CGFloat {
+        if isCompletion { return 4 }
+        return note.session != nil ? 8 : 12
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Byline(author: author, detail: detail) {
@@ -225,15 +233,15 @@ private struct NoteCard: View {
             }
 
             if isEditing {
-                editor.padding(.top, isCompletion ? 4 : note.session != nil ? 8 : 12)
+                editor.padding(.top, bodyTopPadding)
             } else {
                 Text(note.body)
-                    .font(.app(isCompletion ? 14 : 15.2))
-                    .lineSpacing(isCompletion ? 14 * 0.625 - 14 * 0.2 : 15.2 * 0.625 - 15.2 * 0.2)
+                    .font(.app(bodyFontSize))
+                    .lineSpacing(bodyLineSpacing)
                     .foregroundStyle(isCompletion ? Theme.muted : Theme.foreground)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, isCompletion ? 4 : note.session != nil ? 8 : 12)
+                    .padding(.top, bodyTopPadding)
                 if !note.breadcrumbs.isEmpty {
                     BreadcrumbList(items: note.breadcrumbs).padding(.top, 10)
                 }
