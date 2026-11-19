@@ -48,10 +48,24 @@ final class SessionRoutineRunner {
     }
 
     func change(_ new: SessionRoutine) {
+        let switchedFocus = new.doNotDisturb != routine.doNotDisturb
         routine = new
         new.save()
         Log.routine.info("Routine: do not disturb \(new.doNotDisturb), quit \(new.quitApps.map(\.name), privacy: .public), start \(new.start ?? "none", privacy: .public), end \(new.end ?? "none", privacy: .public)")
+        // Switching Do Not Disturb during a session takes effect now, not at the next one. (Apps
+        // added to quit wait for the next session: quitting one while you're picking it would jar.)
+        if switchedFocus, inSession {
+            focusWaiting = new.doNotDisturb && !focusShortcutsAdded.on
+            run(new.doNotDisturb ? SessionRoutine.focusOn : SessionRoutine.focusOff)
+        }
     }
+
+    /// Whether a session (a stretch of them) is on and its routine has started.
+    private var inSession: Bool { !started.isEmpty }
+
+    /// Do Not Disturb was switched on during a session before its Shortcut was added; it's turned
+    /// on once the Shortcut shows up.
+    @ObservationIgnored private var focusWaiting = false
 
     // MARK: - Settings
 
@@ -197,6 +211,10 @@ final class SessionRoutineRunner {
         }.value
         if let names {
             shortcuts = names
+            if focusWaiting, names.contains(SessionRoutine.focusOn) {
+                focusWaiting = false
+                if inSession, routine.doNotDisturb { run(SessionRoutine.focusOn) }
+            }
         } else {
             Log.routine.error("Couldn't list Shortcuts")
             if shortcuts == nil { shortcuts = [] }
