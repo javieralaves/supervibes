@@ -6,6 +6,7 @@ import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { asNote, NoteSchema } from "@/lib/api/routes/notes";
 import { asSource, SourceSchema } from "@/lib/api/routes/sources";
+import { listBlocks } from "@/lib/blocks";
 import { listConnections } from "@/lib/connections";
 import { PROVIDER_KEYS, PROVIDERS } from "@/lib/providers";
 import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
@@ -25,6 +26,7 @@ import { addDays, todayIn, weekStartOf } from "@/lib/target-date";
 import { listTasks, listTaskSchedules } from "@/lib/tasks";
 import { weekObjectiveSchema, weekStartSchema } from "@/lib/week-objective-schema";
 import { getWeekObjectives, setWeekObjective } from "@/lib/week-objectives";
+import { startOfDayIn } from "@/lib/zoned-day";
 
 const TrajectoryDaySchema = z
   .object({
@@ -136,6 +138,8 @@ const GoalDetailSchema = z
       start: z.iso.date().openapi({ description: "The Monday this week starts on." }),
       objective: z.string().nullable(),
       lastWeek: z.string().nullable(),
+      protectedMinutes: z.int().openapi({ description: "Time on the calendar for this goal this week, in minutes." }),
+      done: z.array(TaskSchema).openapi({ description: "Tasks checked off this week, most recently first." }),
     }),
     tasks: z.array(TaskSchema).openapi({ description: "Open tasks in their order (checked-off ones move to the activity)." }),
     suggestions: z.array(SuggestionSchema).openapi({ description: "The latest read's suggestions still to handle." }),
@@ -281,7 +285,10 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const today = todayIn(timeZone);
     const weekStart = weekStartOf(today);
     const lastWeekStart = addDays(weekStart, -7);
-    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections] = await Promise.all([
+    // Without a saved zone, "today" is the server's own day, which runs in UTC.
+    const zone = timeZone ?? "UTC";
+    const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
+    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
       getReadStatus(userId, id),
@@ -293,8 +300,17 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listTaskSchedules(userId, id),
       getSettings(userId),
       listConnections(userId),
+      listBlocks(userId, weekBounds.start, weekBounds.end),
     ]);
     const trajectory = trajectories.get(id);
+    // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
+    const weekBlocks = blocks.filter((b) => b.goalId === id);
+    const protectedMinutes = Math.round(
+      weekBlocks.reduce(
+        (sum, b) => sum + Math.max(0, Math.min(b.endsAt.getTime(), weekBounds.end.getTime()) - Math.max(b.startsAt.getTime(), weekBounds.start.getTime())),
+        0,
+      ) / 60_000,
+    );
 
     return c.json(
       {
@@ -315,6 +331,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
           start: weekStart,
           objective: objectives.get(weekStart) ?? null,
           lastWeek: objectives.get(lastWeekStart) ?? null,
+          protectedMinutes,
+          done: tasks.filter((task) => task.doneAt && task.doneAt >= weekBounds.start).map((task) => asTask(task)),
         },
         tasks: tasks.filter((task) => !task.doneAt).map((task) => asTask(task, schedules.get(task.id) ?? null)),
         suggestions: read?.suggestions ?? [],

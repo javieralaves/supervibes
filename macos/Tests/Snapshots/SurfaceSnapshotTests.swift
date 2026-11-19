@@ -206,6 +206,25 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testPlanningBoard() {
+        assertAppearances(
+            PlanningBoard(detail: Fixtures.planningDetail).background(Theme.background),
+            width: 1100, height: 860
+        )
+    }
+
+    func testTasksSectionWithPlanButton() {
+        var actions = TaskActions()
+        actions.plan = {}
+        assertAppearances(
+            TasksSection(tasks: [], suggestions: [], hasRead: false, reading: false, clock: .twelveHour, today: "2026-11-18", now: now, actions: actions)
+                .padding(.horizontal, 32)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Theme.background),
+            width: 832, height: 360
+        )
+    }
+
     func testTasksSectionWithLater() {
         assertAppearances(
             TasksSection(

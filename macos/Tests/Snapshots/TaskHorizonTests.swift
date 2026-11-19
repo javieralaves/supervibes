@@ -52,3 +52,31 @@ final class TaskHorizonTests: XCTestCase {
         XCTAssertEqual(placed(task(nil, "2026-11-16")), [nil, "2026-11-16"])
     }
 }
+
+/// Which column of the planning board a task sits in, and what dropping it on one plans it for.
+final class BoardColumnTests: XCTestCase {
+    private let today = "2026-11-19" // Thursday
+
+    private func column(_ plannedFor: String?, _ plannedWeek: String?) -> BoardColumn {
+        BoardColumn.of(TaskItem(id: "t", title: "T", minutes: 30, plannedFor: plannedFor, plannedWeek: plannedWeek), today: today)
+    }
+
+    func testColumns() {
+        XCTAssertEqual(column("2026-11-19", "2026-11-16"), .day("2026-11-19"))
+        XCTAssertEqual(column("2026-11-21", "2026-11-16"), .day("2026-11-21"))
+        XCTAssertEqual(column("2026-11-22", "2026-11-16"), .thisWeek) // Sunday, past the three days
+        XCTAssertEqual(column("2026-11-25", "2026-11-23"), .nextWeek)
+        XCTAssertEqual(column("2026-12-20", "2026-12-14"), .later)
+        XCTAssertEqual(column("2026-11-17", "2026-11-16"), .thisWeek) // slipped
+        XCTAssertEqual(column(nil, "2026-11-02"), .thisWeek) // carried
+        XCTAssertEqual(column(nil, "2026-11-23"), .nextWeek)
+        XCTAssertEqual(column(nil, nil), .later)
+    }
+
+    func testDropPatches() {
+        XCTAssertEqual(BoardColumn.day("2026-11-20").patch(today: today), TaskPatch(plannedFor: "2026-11-20"))
+        XCTAssertEqual(BoardColumn.thisWeek.patch(today: today), TaskPatch(plannedFor: "", plannedWeek: "2026-11-16"))
+        XCTAssertEqual(BoardColumn.nextWeek.patch(today: today), TaskPatch(plannedFor: "", plannedWeek: "2026-11-23"))
+        XCTAssertEqual(BoardColumn.later.patch(today: today), TaskPatch(plannedFor: "", plannedWeek: ""))
+    }
+}

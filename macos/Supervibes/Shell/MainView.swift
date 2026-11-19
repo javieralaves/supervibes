@@ -164,6 +164,8 @@ private struct GoalsScreen: View {
 private struct GoalScreen: View {
     let shell: ShellModel
     @State private var model: GoalPageModel
+    /// Showing the planning board instead of the page; it works on the same data.
+    @State private var isPlanning = false
     @Environment(\.overlays) private var overlays
 
     init(id: String, auth: AuthModel, shell: ShellModel) {
@@ -193,7 +195,18 @@ private struct GoalScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                if let detail = model.detail {
+                if let detail = model.detail, isPlanning {
+                    PlanningBoard(detail: detail, actions: model.taskActions, onBack: { isPlanning = false })
+                        .overlay(alignment: .bottom) {
+                            if let error = model.taskError {
+                                Text(error).appText(.sm).foregroundStyle(Theme.danger)
+                                    .padding(.horizontal, 12).padding(.vertical, 8)
+                                    .background(Theme.card, in: .rect(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cardBorder))
+                                    .padding(.bottom, 24)
+                            }
+                        }
+                } else if let detail = model.detail {
                     GoalPage(
                         detail: detail,
                         requestingRead: model.requestingRead,
@@ -216,7 +229,7 @@ private struct GoalScreen: View {
                             today: detail.today,
                             error: model.taskError,
                             closeSignal: model.closeSignal,
-                            actions: model.taskActions
+                            actions: pageTaskActions
                         )
                         SourcesSection(
                             sources: detail.sources,
@@ -241,6 +254,13 @@ private struct GoalScreen: View {
         }
         .task { await model.refresh() }
         .onDisappear { model.stop() }
+    }
+
+    /// The page's task actions, with "Plan tasks" opening the board.
+    private var pageTaskActions: TaskActions {
+        var actions = model.taskActions
+        actions.plan = { isPlanning = true }
+        return actions
     }
 
     private func edit(_ goal: Goal) {

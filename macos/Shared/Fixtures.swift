@@ -145,6 +145,18 @@ enum Fixtures {
         )
     }
 
+    /// The first goal's page for planning: its tasks, 4 hours protected this week, two already done.
+    static var planningDetail: GoalDetail {
+        var detail = goalDetail
+        detail.tasks = tasks
+        detail.week.protectedMinutes = 240
+        detail.week.done = [
+            TaskItem(id: "d1", title: "Sign in with a one-time code", minutes: 60, done: true, plannedFor: "2026-11-18", plannedWeek: "2026-11-16"),
+            TaskItem(id: "d2", title: "Draft the menu bar’s copy", minutes: 30, done: true, plannedWeek: "2026-11-16"),
+        ]
+        return detail
+    }
+
     /// Open tasks as of Wednesday 2026-11-18 (the week of Nov 16): planned for days, for this week
     /// (one slipped and carried over, one carried twice), for next week, and in Later.
     static let tasks: [TaskItem] = [

@@ -9,8 +9,11 @@ struct TaskActions {
     var delete: (TaskItem) -> Void = { _ in }
     /// The open tasks' ids in their new order.
     var reorder: ([String]) -> Void = { _ in }
-    /// Moves a task to a day, week or Later: the patch's planned day and week, an empty string clearing.
-    var place: (TaskItem, TaskPatch) -> Void = { _, _ in }
+    /// Moves a task to a day, week or Later (the patch's planned day and week, an empty string
+    /// clearing), just before another task, or after them all when that's nil.
+    var place: (TaskItem, TaskPatch, String?) -> Void = { _, _, _ in }
+    /// Opens the planning board, when there is one.
+    var plan: (() -> Void)?
     var acceptSuggestion: (TaskSuggestion) -> Void = { _ in }
     var passOnSuggestion: (TaskSuggestion) -> Void = { _ in }
     /// Runs a new read, which brings new suggestions.
@@ -99,9 +102,16 @@ struct TasksSection: View {
     var body: some View {
         let groups = self.groups
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Tasks").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-                Text("What you’ve decided to do for this goal, and when.").appText(.sm).foregroundStyle(Theme.muted)
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Tasks").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
+                    Text("What you’ve decided to do for this goal, and when.").appText(.sm).foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 0)
+                if let plan = actions.plan {
+                    SmallButton(icon: .calendarSmall, title: "Plan tasks", action: plan)
+                        .help("Plan this goal’s tasks across days and weeks")
+                }
             }
             .padding(.bottom, 16)
 
@@ -144,8 +154,8 @@ struct TasksSection: View {
             CarriedOverPrompt(
                 task: carried,
                 weeks: carried.horizon(today: today).carriedWeeks,
-                keep: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: thisWeek)) },
-                later: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: "")) }
+                keep: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: thisWeek), nil) },
+                later: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: ""), nil) }
             )
             .padding(.horizontal, 6)
             .padding(.bottom, 6)
@@ -573,7 +583,7 @@ private struct TaskRow: View {
 
     private func move(week: String) {
         overlays?.dismiss()
-        actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week))
+        actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week), nil)
     }
 
     /// "Today 2:00 PM", "Tomorrow 09:30" or "Thu 14:00", in this Mac's time zone.

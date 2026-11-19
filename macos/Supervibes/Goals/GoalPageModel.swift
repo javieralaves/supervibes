@@ -172,7 +172,7 @@ final class GoalPageModel {
             edit: { [weak self] in self?.edit($0, $1) },
             delete: { [weak self] in self?.deleteTask($0) },
             reorder: { [weak self] in self?.reorder($0) },
-            place: { [weak self] in self?.place($0, $1) },
+            place: { [weak self] in self?.place($0, $1, before: $2) },
             acceptSuggestion: { [weak self] in self?.accept($0) },
             passOnSuggestion: { [weak self] in self?.passOn($0) },
             refresh: { [weak self] in self?.updateStatus() }
@@ -196,11 +196,28 @@ final class GoalPageModel {
         }
     }
 
-    /// Checking a task off moves it to the goal's activity, so it leaves the list.
+    /// Checking a task off moves it to the goal's activity, so it leaves the list (and joins this
+    /// week's done ones, which the planning board shows). Reopening one from the board brings it back.
     private func toggle(_ task: TaskItem) {
-        guard let index = detail?.tasks.firstIndex(where: { $0.id == task.id }) else { return }
-        detail?.tasks.remove(at: index)
-        taskRequest(undo: { [weak self] in self?.detail?.tasks.insert(task, at: min(index, self?.detail?.tasks.count ?? 0)) }) { client, _ in
+        guard let detail else { return }
+        let before = (tasks: detail.tasks, done: detail.week.done)
+        if task.done {
+            guard let index = detail.week.done.firstIndex(where: { $0.id == task.id }) else { return }
+            var reopened = task
+            reopened.done = false
+            self.detail?.week.done.remove(at: index)
+            self.detail?.tasks.append(reopened)
+        } else {
+            guard let index = detail.tasks.firstIndex(where: { $0.id == task.id }) else { return }
+            var done = task
+            done.done = true
+            self.detail?.tasks.remove(at: index)
+            self.detail?.week.done.insert(done, at: 0)
+        }
+        taskRequest(undo: { [weak self] in
+            self?.detail?.tasks = before.tasks
+            self?.detail?.week.done = before.done
+        }) { client, _ in
             switch try await client.setTaskDone(path: .init(taskId: task.id), body: .json(.init(done: !task.done))) {
             case .ok: .done
             case .badRequest(let bad): .failed((try? bad.body.json.error.message) ?? "Couldn’t check that off.")
@@ -266,15 +283,18 @@ final class GoalPageModel {
         }
     }
 
-    /// Moves a task to a day, a week or Later (the patch's planned day and week), at the end of its
-    /// new group. Shows it there at once and saves in the background.
-    private func place(_ task: TaskItem, _ patch: TaskPatch) {
+    /// Moves a task to a day, a week or Later (the patch's planned day and week), just before the
+    /// task `before`, or at the end. Shows it there at once and saves in the background.
+    private func place(_ task: TaskItem, _ patch: TaskPatch, before: String?) {
         guard let tasks = detail?.tasks, let index = tasks.firstIndex(where: { $0.id == task.id }), let today = detail?.today else { return }
+        guard before != task.id else { return }
         let after = tasks[index].placed(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, today: today)
-        detail?.tasks.remove(at: index)
-        detail?.tasks.append(after)
+        var next = tasks
+        next.remove(at: index)
+        next.insert(after, at: before.flatMap { id in next.firstIndex { $0.id == id } } ?? next.endIndex)
+        detail?.tasks = next
         taskRequest(undo: { [weak self] in self?.detail?.tasks = tasks }) { client, _ in
-            let body = Components.Schemas.TaskPlacement(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek)
+            let body = Components.Schemas.TaskPlacement(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, before: before)
             return switch try await client.placeTask(path: .init(taskId: task.id), body: .json(body)) {
             case .ok(let ok): .replace(task.id, TaskItem(api: try ok.body.json, keeping: after))
             case .badRequest(let bad): .failed((try? bad.body.json.error.message) ?? "Couldn’t move that task.")
@@ -591,7 +611,10 @@ extension GoalDetail {
             readPending: body.readPending,
             readError: body.readError,
             canRead: body.canRead,
-            week: Week(start: body.week.start, objective: body.week.objective, lastWeek: body.week.lastWeek),
+            week: Week(
+                start: body.week.start, objective: body.week.objective, lastWeek: body.week.lastWeek,
+                protectedMinutes: body.week.protectedMinutes, done: body.week.done.map(TaskItem.init(api:))
+            ),
             tasks: body.tasks.map { TaskItem(api: $0) },
             suggestions: body.suggestions.map { TaskSuggestion(title: $0.title, why: $0.why, minutes: $0.minutes) },
             clock: body.clock.flatMap { Clock(rawValue: $0.rawValue) },

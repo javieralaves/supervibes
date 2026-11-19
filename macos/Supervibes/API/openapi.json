@@ -969,12 +969,25 @@
               "lastWeek": {
                 "type": "string",
                 "nullable": true
+              },
+              "protectedMinutes": {
+                "type": "integer",
+                "description": "Time on the calendar for this goal this week, in minutes."
+              },
+              "done": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Task"
+                },
+                "description": "Tasks checked off this week, most recently first."
               }
             },
             "required": [
               "start",
               "objective",
-              "lastWeek"
+              "lastWeek",
+              "protectedMinutes",
+              "done"
             ]
           },
           "tasks": {
