@@ -43,6 +43,10 @@ struct WeekView: View {
     @State private var width: CGFloat = 0
     @State private var drawing: Drawing?
     @State private var dragging: WeekDrag?
+    @State private var position = ScrollPosition()
+    @State private var viewport: CGFloat = 0
+    /// The week it last opened on its focus, so it does so once the scroll view has a size.
+    @State private var focusedMonday: Int?
     @Environment(\.overlays) private var overlays
 
     private var days: [Int] { Array(monday...(monday + 6)) }
@@ -89,13 +93,15 @@ struct WeekView: View {
         VStack(spacing: 0) {
             header(strips: strips)
             if scrolls {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        grid
-                    }
-                    .onAppear { scrollToFocus(proxy) }
-                    .onChange(of: monday) { scrollToFocus(proxy) }
+                ScrollView {
+                    grid
                 }
+                .scrollPosition($position)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
+                    viewport = height
+                    if focusedMonday != monday { scrollToFocus() }
+                }
+                .onChange(of: monday) { scrollToFocus() }
             } else {
                 grid
             }
@@ -106,10 +112,14 @@ struct WeekView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    /// Open on the current time (or waking up, on other weeks), with about an hour above it.
-    private func scrollToFocus(_ proxy: ScrollViewProxy) {
+    /// Open on the current time (or waking up, on other weeks), with about an hour above it. By
+    /// position, as the day does: the hour lines are placed with `.offset`, which layout doesn't see.
+    private func scrollToFocus() {
+        guard viewport > 0 else { return }
+        focusedMonday = monday
         let focus = thisWeek ? CalendarDayMath.minutes(now) : data.wakeTime
-        proxy.scrollTo("week-hour-\(max(0, focus / 60 - 1))", anchor: .top)
+        let y = WeekGrid.y(max(0, focus / 60 - 1) * 60) - WeekGrid.pad
+        position.scrollTo(y: min(max(y, 0), max(WeekGrid.height - viewport, 0)))
     }
 
     // MARK: Header
@@ -168,7 +178,6 @@ struct WeekView: View {
                     Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.leading, WeekGrid.gutter)
                 }
                 .offset(y: WeekGrid.y(hour * 60))
-                .id("week-hour-\(hour)")
                 .allowsHitTesting(false)
             }
 

@@ -642,6 +642,9 @@ private struct TimelineScroll: View {
     @State private var position = ScrollPosition()
     @State private var scrollY: CGFloat = 0
     @State private var maxScrollY: CGFloat = 0
+    @State private var viewport: CGFloat = 0
+    /// The day it last opened on its focus, so it does so once the scroll view has a size.
+    @State private var focusedOffset: Int?
 
     /// How close to the top or bottom edge a dragged task starts it scrolling.
     private static let scrollEdge: CGFloat = 56
@@ -656,15 +659,16 @@ private struct TimelineScroll: View {
             }
             .scrollPosition($position)
             .onScrollGeometryChange(for: [CGFloat].self) {
-                [$0.contentOffset.y, $0.contentSize.height - $0.containerSize.height]
+                [$0.contentOffset.y, $0.contentSize.height - $0.containerSize.height, $0.containerSize.height]
             } action: { _, value in
                 scrollY = value[0]
                 maxScrollY = max(value[1], 0)
+                viewport = value[2]
+                if focusedOffset != offset { scrollToFocus() }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.viewportFrame = $0 }
             .task(id: drag?.placing?.moved == true) { await scrollWhileDragging() }
-            .onAppear { scrollToNow(proxy) }
-            .onChange(of: offset) { scrollToNow(proxy) }
+            .onChange(of: offset) { scrollToFocus() }
         }
     }
 
@@ -691,10 +695,15 @@ private struct TimelineScroll: View {
         }
     }
 
-    private func scrollToNow(_ proxy: ScrollViewProxy) {
-        // Open on the current time, with about an hour of the past above it.
-        let target = max(0, CalendarDayMath.minutes(now) / 60 - 1)
-        proxy.scrollTo("hour-\(offset == 0 ? target : 7)", anchor: .top)
+    /// Open on the current time (or waking up, on other days), with about an hour above it. By
+    /// position rather than by an hour line's id: the lines are placed with `.offset`, which
+    /// layout doesn't see, so scrolling to one landed on midnight.
+    private func scrollToFocus() {
+        guard viewport > 0 else { return }
+        focusedOffset = offset
+        let focus = offset == 0 ? CalendarDayMath.minutes(now) : data.wakeTime
+        let y = DayGrid.y(max(0, focus / 60 - 1) * 60) - DayGrid.pad
+        position.scrollTo(y: min(max(y, 0), max(DayGrid.height - viewport, 0)))
     }
 }
 
@@ -818,7 +827,6 @@ struct DayTimeline: View {
                     Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.leading, DayGrid.gutter)
                 }
                 .offset(y: DayGrid.y(hour * 60))
-                .id("hour-\(hour)")
                 .allowsHitTesting(false)
             }
 
