@@ -292,6 +292,26 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testFreshBlockPanels() {
+        let data = Fixtures.calendar
+        let now = now
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(Fixtures.freshPanelBlocks) { block in
+                    BlockPanel(
+                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
+                        when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: [],
+                        ended: block.endsAt <= now, now: now, actions: nil
+                    )
+                    .frame(width: 320, height: 260)
+                }
+            }
+            .padding(16)
+            .background(Theme.background),
+            width: 688, height: 292
+        )
+    }
+
     func testWeekView() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, isWeek: true, onSetWeek: { _ in },

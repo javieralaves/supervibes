@@ -235,6 +235,16 @@ enum Fixtures {
         ]
     }
 
+    /// Protected time ahead with nothing prepared: one untitled (offers a focus), one titled (offers a plan).
+    static var freshPanelBlocks: [CalendarBlock] {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        return [
+            CalendarBlock(id: "f1", goalId: "g1", title: nil, startsAt: at(15), endsAt: at(16, 30)),
+            CalendarBlock(id: "f2", goalId: "g3", title: "Follow up with the community", startsAt: at(17, 30), endsAt: at(18)),
+        ]
+    }
+
     /// A calendar day around `referenceNow` (10:18): sessions behind, one under way, more ahead.
     static var calendar: CalendarData {
         let day = Calendar.current.startOfDay(for: referenceNow)

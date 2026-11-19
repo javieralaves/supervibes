@@ -3,7 +3,9 @@ import SwiftUI
 /*
  * The block you clicked, beside the calendar on the right, as block-panel.tsx and
  * recap-section.tsx. Protected time can say what the person wants out of it and get an agenda
- * steered by that, with the tasks it draws on below. An intention shows the task it schedules.
+ * steered by that, with the tasks it draws on below. Both are optional and offered quietly: a
+ * block can just be time. With nothing saying what it's for, the offer is to suggest a focus;
+ * once a title or aim does, it's to plan the session. An intention shows the task it schedules.
  * Once a block has ended it can be recapped; then it reads as a record: the aim, the posted recap,
  * and the agenda folded away.
  */
@@ -62,7 +64,7 @@ struct BlockPanel: View {
 
                 if !block.isIntention, !recapped || block.description != nil {
                     SessionAim(block: block, readOnly: recapped, actions: actions)
-                        .padding(.top, 24)
+                        .padding(.top, block.description == nil ? 16 : 24)
                 }
 
                 if ended {
@@ -96,7 +98,8 @@ struct BlockPanel: View {
 // MARK: - Aim
 
 /// What the person wants out of a session, in their own words. Saved when the field loses focus;
-/// the agenda is steered by it and the recap judges the session against it.
+/// the agenda is steered by it and the recap judges the session against it. Optional, so until
+/// there is one it's a single quiet line, not a labelled field asking to be filled in.
 private struct SessionAim: View {
     let block: CalendarBlock
     /// Once the session is recapped, it's kept for reference.
@@ -117,7 +120,9 @@ private struct SessionAim: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Aim").font(.app(13, .semibold)).foregroundStyle(Theme.foreground)
+            if readOnly || block.description != nil {
+                Text("Aim").font(.app(13, .semibold)).foregroundStyle(Theme.foreground)
+            }
             if readOnly {
                 // The person's own words, set back a little so the recap below carries the weight.
                 Text(block.description ?? "").appText(.sm).lineSpacing(4).foregroundStyle(Theme.muted)
@@ -132,7 +137,7 @@ private struct SessionAim: View {
                     .lineSpacing(4)
                     .foregroundStyle(Theme.foreground(0.9))
                     .focused($isFocused)
-                    .placeholder("What do you want out of this session?", when: draft.isEmpty, font: .app(14))
+                    .placeholder("Add an aim", when: draft.isEmpty, font: .app(14))
                     .onKeyPress(.return, phases: .down) { press in
                         guard press.modifiers.contains(.command) else { return .ignored }
                         isFocused = false
@@ -149,8 +154,8 @@ private struct SessionAim: View {
                     .background(isHovered || isFocused ? Theme.wash.opacity(0.6) : .clear, in: .rect(cornerRadius: 8))
                     .onHover { isHovered = $0 }
                     .padding(.horizontal, -8)
-                    .padding(.top, 4)
-                    .help("Steers the agenda, and the recap checks the session against it")
+                    .padding(.top, block.description == nil ? 0 : 4)
+                    .help("What you want out of this session. Steers its plan, and the recap checks the session against it")
                     .accessibilityLabel("What you want out of this session")
             }
             if let error {
@@ -187,6 +192,11 @@ private struct AgendaSection: View {
     @State private var toggled: [String: Bool] = [:]
     /// Once the session is over, the agenda is history: folded away until asked for.
     @State private var expanded = false
+
+    /// Nothing says yet what the session is for, so the useful help is picking a focus, not planning one.
+    private var needsFocus: Bool {
+        block.title == nil && (block.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         let agenda = block.agenda
@@ -239,17 +249,24 @@ private struct AgendaSection: View {
 
                 if !ended {
                     if agenda != nil {
-                        QuietButton(title: preparing ? "Preparing…" : stale ? "Update agenda" : "Prepare again", spinning: preparing, action: prepare)
+                        QuietButton(title: preparing ? "Preparing…" : stale ? "Update agenda" : "Plan again", spinning: preparing, action: prepare)
                             .inactive(preparing)
                             .padding(.top, 12)
+                    } else if needsFocus {
+                        QuietButton(icon: .target, title: preparing ? "Suggesting…" : "Suggest a focus", spinning: preparing, action: prepare)
+                            .inactive(preparing)
+                            .padding(.top, preparing ? 12 : 0)
+                            .help("Suggests what to aim for in this session and how to spend it, from the goal’s week, tasks, notes and latest read")
                     } else {
-                        FullPrimaryButton(title: preparing ? "Preparing…" : "Prepare agenda", isDisabled: preparing, action: prepare)
-                            .padding(.top, preparing ? 16 : 0)
-                            .help("A short plan for this session, from the goal’s tasks, notes and latest read")
+                        QuietButton(icon: .checklist, title: preparing ? "Planning…" : "Plan this session", spinning: preparing, action: prepare)
+                            .inactive(preparing)
+                            .padding(.top, preparing ? 12 : 0)
+                            .help("A short plan for getting what this session is for, from the goal’s tasks, notes and latest read")
                     }
                 }
             }
-            .padding(.top, 24)
+            // With nothing prepared yet the action sits close under the aim, as one quiet line.
+            .padding(.top, agenda == nil && !preparing ? 12 : 24)
 
             if let agenda, showsBody, !agenda.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -675,8 +692,9 @@ private struct OutlineButton: View {
     }
 }
 
-/// `h-7 rounded-lg px-2 text-xs font-medium text-muted hover:bg-wash`, with the refresh icon.
+/// `h-7 rounded-lg px-2 text-xs font-medium text-muted hover:bg-wash`, with an icon (refresh by default).
 private struct QuietButton: View {
+    var icon: Icon = .refresh
     let title: String
     var spinning = false
     let action: () -> Void
@@ -685,7 +703,7 @@ private struct QuietButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if spinning { SpinningIcon(size: 13) } else { Icon.refresh.image(size: 13) }
+                if spinning { SpinningIcon(size: 13) } else { icon.image(size: 13) }
                 Text(title).appText(.xs, .medium)
             }
             .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
@@ -711,6 +729,23 @@ private struct QuietButton: View {
                 ended: block.endsAt <= now, now: now, actions: nil
             )
             .frame(width: 320, height: 640)
+        }
+    }
+    .padding(16)
+    .background(Theme.background)
+}
+
+#Preview("Fresh block panels") {
+    let data = Fixtures.calendar
+    let now = Fixtures.referenceNow
+    HStack(alignment: .top, spacing: 16) {
+        ForEach(Fixtures.freshPanelBlocks) { block in
+            BlockPanel(
+                block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
+                when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: [],
+                ended: block.endsAt <= now, now: now, actions: nil
+            )
+            .frame(width: 320, height: 260)
         }
     }
     .padding(16)
