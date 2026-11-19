@@ -52,7 +52,7 @@ targets:
     info:
       path: Supervibes/Info.plist
       properties:
-        CFBundleDisplayName: Supervibes
+        CFBundleDisplayName: $(SUPERVIBES_DISPLAY_NAME)
         LSApplicationCategoryType: public.app-category.productivity
         SupervibesBaseURL: $(SUPERVIBES_BASE_URL)
         NSAppTransportSecurity:
@@ -60,7 +60,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Supervibes
-        PRODUCT_BUNDLE_IDENTIFIER: com.supervibes.mac
+        PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID)
     dependencies:
       - target: SupervibesWidgets
       - package: OpenAPIRuntime
@@ -81,7 +81,7 @@ targets:
     info:
       path: SupervibesWidgets/Info.plist
       properties:
-        CFBundleDisplayName: Supervibes
+        CFBundleDisplayName: $(SUPERVIBES_DISPLAY_NAME)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -90,7 +90,7 @@ targets:
         com.apple.security.app-sandbox: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.supervibes.mac.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID).widgets
 
   # Runs without a host app, so tests never launch Supervibes itself.
   SupervibesTests:

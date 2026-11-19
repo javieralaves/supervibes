@@ -1,5 +1,8 @@
 #include "Base.xcconfig"
 
+SUPERVIBES_BUNDLE_ID = com.supervibes.mac.debug
+SUPERVIBES_DISPLAY_NAME = Supervibes Dev
+
 // Debug builds talk to the local Next.js server (`npm run dev`).
 // `$()` keeps xcconfig from reading `//` as the start of a comment.
 SUPERVIBES_BASE_URL = http:/$()/localhost:3000

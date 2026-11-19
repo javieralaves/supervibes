@@ -6,9 +6,11 @@ source "$(dirname "$0")/_common.sh"
 generate
 xb -configuration Debug build
 
-if pgrep -x Supervibes >/dev/null; then
-  osascript -e 'quit app id "com.supervibes.mac"' 2>/dev/null || pkill -x Supervibes || true
-  while pgrep -x Supervibes >/dev/null; do sleep 0.2; done
+# Quit the Debug app if it's running; an installed Release build is a separate app and keeps running.
+binary="$PWD/$APP/Contents/MacOS/Supervibes"
+if pgrep -f "$binary" >/dev/null; then
+  osascript -e 'quit app id "com.supervibes.mac.debug"' 2>/dev/null || pkill -f "$binary" || true
+  while pgrep -f "$binary" >/dev/null; do sleep 0.2; done
 fi
 
 open "$APP"

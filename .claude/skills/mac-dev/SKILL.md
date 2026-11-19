@@ -47,7 +47,9 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 | Goal | Command |
 |---|---|
 | Build | `scripts/build.sh` (prints only warnings and errors) |
-| Build and launch, replacing any running copy | `scripts/run.sh` |
+| Build and launch the Debug app ("Supervibes Dev"), replacing a running Debug copy | `scripts/run.sh` |
+| Build the Release app (talks to production) | `scripts/release.sh` |
+| Build Release and install it in /Applications, replacing and reopening it | `scripts/release.sh --install` (only when the user asks: it replaces the copy they use every day) |
 | All tests | `scripts/test.sh` (extra args go to xcodebuild, e.g. `-only-testing:...`) |
 | Snapshot tests, compare | `scripts/snapshot.sh` |
 | Snapshot tests, re-record after an intended UI change | `scripts/snapshot.sh --record` |
@@ -55,6 +57,8 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 | App logs, live | `scripts/logs.sh` (streams; run in the background) |
 
 Debug builds load the local Next.js server. Start it with the preview tool's `dev` configuration (or `npm run dev` at the repo root) before `scripts/run.sh`.
+
+Debug and Release are separate apps: Debug is "Supervibes Dev" (`com.supervibes.mac.debug`, localhost, token in a file), Release is "Supervibes" (`com.supervibes.mac`, production, token in the Keychain), so the user can keep the installed Release app open while you work. `run.sh` only ever quits the Debug one. Release is signed with the user's Apple Developer team once an Apple Development certificate is in the Keychain: `release.sh` then writes the gitignored `Config/Signing.local.xcconfig` from it; until then it's signed ad hoc.
 
 ## Verifying a change
 
