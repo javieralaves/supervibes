@@ -503,10 +503,7 @@ final class GoalPageModel {
         guard let index = detail?.sources.firstIndex(where: { $0.id == source.id }) else { return }
         detail?.sources.remove(at: index)
         Task {
-            let restore = { [weak self] in
-                guard let self else { return }
-                self.detail?.sources.insert(source, at: min(index, self.detail?.sources.count ?? 0))
-            }
+            let restore = { self.detail?.sources.insert(source, at: min(index, self.detail?.sources.count ?? 0)) }
             do {
                 switch try await client.deleteSource(path: .init(sourceId: source.id)) {
                 case .noContent, .notFound: break
