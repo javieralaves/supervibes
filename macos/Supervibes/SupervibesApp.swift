@@ -21,7 +21,7 @@ struct SupervibesApp: App {
     var body: some Scene {
         // The main window: the rail beside the app's window, which shows the screen for the route.
         Window(appName, id: "main") {
-            MainView(auth: auth, shell: shell, notifier: model.notifier)
+            MainView(auth: auth, shell: shell, notifier: model.notifier, routineRunner: model.routineRunner)
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await auth.restore() }
                 .onChange(of: auth.isSignedIn) { model.refreshSoon() }

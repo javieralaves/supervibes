@@ -34,6 +34,8 @@ struct CardHeader<Status: View>: View {
                     .foregroundStyle(Theme.foreground)
                 Text(description).appText(.sm)
                     .foregroundStyle(Theme.muted)
+                    // Wraps rather than truncating when the card is short of height.
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             status.padding(.top, 2)

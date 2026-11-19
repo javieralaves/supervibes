@@ -57,6 +57,24 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testSessionRoutineCard() {
+        let slack = SessionRoutine.App(bundleId: "com.tinyspeck.slackmacgap", name: "Slack")
+        let mail = SessionRoutine.App(bundleId: "com.apple.mail", name: "Mail")
+        assertAppearances(
+            VStack(spacing: 12) {
+                SessionRoutineCard(routine: .defaults, shortcuts: [])
+                SessionRoutineCard(routine: SessionRoutine(doNotDisturb: true), shortcuts: [SessionRoutine.focusOn])
+                SessionRoutineCard(
+                    routine: SessionRoutine(doNotDisturb: true, quitApps: [slack, mail], start: "Start playlist", end: "Old routine"),
+                    shortcuts: [SessionRoutine.focusOn, SessionRoutine.focusOff, "Start playlist"]
+                )
+            }
+            .padding(32)
+            .background(Theme.background),
+            width: 768, height: 1600
+        )
+    }
+
     func testSettingsPageWithProblem() {
         let settings = SleepSettings(sleepStart: 8 * 60, wakeTime: 8 * 60, clock: nil)
         assertAppearances(

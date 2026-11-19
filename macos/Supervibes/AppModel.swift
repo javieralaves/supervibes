@@ -15,6 +15,8 @@ final class AppModel {
     private(set) var taskError: String?
     /// The notices before sessions, scheduled from today's blocks.
     let notifier = SessionNotifier()
+    /// What happens as sessions start and end: Do Not Disturb, quitting apps, Shortcuts.
+    let routineRunner = SessionRoutineRunner()
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -108,6 +110,7 @@ final class AppModel {
             }
         }
         notifier.tick(now: now)
+        routineRunner.tick(now: now)
         guard signedIn else { return }
 
         let day = Calendar.current.dateComponents([.year, .month, .day], from: now)
@@ -200,6 +203,7 @@ extension AppModel {
     /// Hands today's blocks to the widget, and has it redraw when they've changed.
     private func share() {
         notifier.blocksChanged(blocks)
+        routineRunner.blocksChanged(blocks)
         if let shared, shared.signedIn == isSignedIn, shared.blocks == blocks { return }
         let today = SharedToday(signedIn: isSignedIn, fetchedAt: Date(), blocks: blocks)
         guard WidgetShare.write(today) else {

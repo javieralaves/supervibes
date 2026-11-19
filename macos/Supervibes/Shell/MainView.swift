@@ -17,6 +17,7 @@ struct MainView: View {
     let auth: AuthModel
     @Bindable var shell: ShellModel
     let notifier: SessionNotifier
+    let routineRunner: SessionRoutineRunner
 
     var body: some View {
         Group {
@@ -65,7 +66,7 @@ struct MainView: View {
                     case .settings:
                         ZStack {
                             Backdrop()
-                            SettingsScreen(auth: auth, notifier: notifier)
+                            SettingsScreen(auth: auth, notifier: notifier, routineRunner: routineRunner)
                         }
                     case .connections:
                         ZStack {
@@ -441,10 +442,12 @@ private struct ConnectionsScreen: View {
 private struct SettingsScreen: View {
     @State private var model: SettingsModel
     let notifier: SessionNotifier
+    let routineRunner: SessionRoutineRunner
 
-    init(auth: AuthModel, notifier: SessionNotifier) {
+    init(auth: AuthModel, notifier: SessionNotifier, routineRunner: SessionRoutineRunner) {
         _model = State(initialValue: SettingsModel(auth: auth))
         self.notifier = notifier
+        self.routineRunner = routineRunner
     }
 
     var body: some View {
@@ -471,10 +474,21 @@ private struct SettingsScreen: View {
                         onChange: notifier.change,
                         onOpenSystemSettings: notifier.openSystemSettings
                     ),
+                    routine: SessionRoutineCard(
+                        routine: routineRunner.routine,
+                        shortcuts: routineRunner.shortcuts,
+                        openApps: routineRunner.openApps,
+                        onChange: routineRunner.change,
+                        onAddFocusShortcut: routineRunner.addFocusShortcut,
+                        onChooseApp: routineRunner.chooseApp,
+                        onOpenShortcuts: routineRunner.openShortcutsApp,
+                        onOpenFocusSettings: routineRunner.openFocusSettings
+                    ),
                     onChange: model.changed
                 )
             }
         }
         .task { await model.refresh() }
+        .task { routineRunner.refreshOptions() }
     }
 }
