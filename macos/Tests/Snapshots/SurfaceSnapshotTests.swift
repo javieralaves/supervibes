@@ -474,6 +474,7 @@ extension XCTestCase {
         testName: String = #function,
         line: UInt = #line
     ) {
+        Self.prepareFonts()
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let host = NSHostingController(
                 rootView: view
@@ -485,7 +486,31 @@ extension XCTestCase {
             let fitting = host.sizeThatFits(in: CGSize(width: width, height: height ?? 2000))
             let size = CGSize(width: width, height: height ?? ceil(fitting.height))
             host.view.frame = CGRect(origin: .zero, size: size)
+            settleLayout(host.view)
             assertSnapshot(of: host, as: .image(size: size), named: name, file: file, testName: testName, line: line)
         }
+    }
+
+    @MainActor private static var fontsReady = false
+
+    /// AppKit-backed controls, like an empty multi-line TextField, take their height from the font
+    /// as AppKit sees it. The bundled font registers on first use, and AppKit only picks it up on a
+    /// later turn of the run loop, so a field measured before that got the system font's line
+    /// height, and everything below it moved from run to run. So the font is registered before
+    /// any view is measured, with a moment for AppKit to catch up.
+    @MainActor private static func prepareFonts() {
+        guard !fontsReady else { return }
+        fontsReady = true
+        Fonts.registerOnce()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    }
+
+    /// Lets a view finish laying out before it's drawn; AppKit-backed controls settle their size on a later pass.
+    @MainActor private func settleLayout(_ view: NSView) {
+        for _ in 0..<3 {
+            view.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        view.layoutSubtreeIfNeeded()
     }
 }
