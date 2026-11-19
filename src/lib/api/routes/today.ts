@@ -50,7 +50,7 @@ const TodayBlockSchema = z
     taskId: z.string().nullable(),
     taskDone: z.boolean(),
     hasAgenda: z.boolean(),
-    agenda: TodayAgendaSchema.nullable().openapi({ description: "For protected time with a prepared agenda: what the menu bar shows during it." }),
+    agenda: TodayAgendaSchema.nullable().openapi({ description: "For a session with a prepared agenda: what the menu bar shows during it." }),
     goal: z.object({
       id: z.string(),
       title: z.string(),

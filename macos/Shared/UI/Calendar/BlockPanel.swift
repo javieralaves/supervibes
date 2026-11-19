@@ -3,7 +3,8 @@ import SwiftUI
 /*
  * The block you clicked, beside the calendar on the right, as block-panel.tsx and
  * recap-section.tsx. Protected time can say what the person wants out of it and get an agenda
- * steered by that, with the tasks it draws on below. Both are optional and offered quietly: a
+ * steered by that, with the tasks it draws on below. An intention's task is its aim, so it can be
+ * planned too, and checked off. Aim and agenda are optional and offered quietly: a
  * block can just be time. With nothing saying what it's for, the offer is to suggest a focus,
  * which becomes the aim if taken; once a title or aim says what it's for, it's to plan the session. An intention shows the task it schedules.
  * Once a block has ended it can be recapped; then it reads as a record: the aim, the posted recap,
@@ -72,15 +73,14 @@ struct BlockPanel: View {
                     RecapSection(block: block, actions: actions).padding(.top, 24)
                 }
 
-                if block.isIntention {
-                    if block.taskId != nil {
-                        OutlineButton(icon: block.taskDone ? .refresh : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
-                            actions?.toggleDone(block.id)
-                        }
-                        .padding(.top, 24)
+                // An intention's task is its aim, so it can be planned like protected time with one.
+                AgendaSection(block: block, color: goal?.color ?? "slate", when: when, ended: ended, now: now, openTaskIds: openTaskIds, actions: actions)
+
+                if block.isIntention, block.taskId != nil {
+                    OutlineButton(icon: block.taskDone ? .refresh : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
+                        actions?.toggleDone(block.id)
                     }
-                } else {
-                    AgendaSection(block: block, color: goal?.color ?? "slate", when: when, ended: ended, now: now, openTaskIds: openTaskIds, actions: actions)
+                    .padding(.top, 24)
                 }
             }
             .padding(.horizontal, 16)
@@ -204,7 +204,7 @@ private struct AgendaSection: View {
 
     /// Nothing says yet what the session is for, so the useful help is picking a focus, not planning one.
     private var needsFocus: Bool {
-        block.title == nil && (block.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !block.isIntention && block.title == nil && (block.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -281,8 +281,8 @@ private struct AgendaSection: View {
                     }
                 }
             }
-            // With nothing prepared yet the action sits close under the aim, as one quiet line.
-            .padding(.top, agenda == nil && !preparing ? 12 : 24)
+            // With nothing prepared yet the action sits close under the aim (or a task's time), as one quiet line.
+            .padding(.top, agenda == nil && !preparing ? (block.isIntention ? 16 : 12) : 24)
 
             if let agenda, showsBody, !agenda.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {

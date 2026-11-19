@@ -142,7 +142,7 @@ const agendaRoute = createRoute({
   method: "post",
   path: "/blocks/{blockId}/agenda",
   operationId: "prepareAgenda",
-  summary: "Prepare an agenda for a session, from the goal's tasks, notes and latest read",
+  summary: "Prepare an agenda for a session (protected time or a task's), from the goal's tasks, notes and latest read",
   security: [{ bearerAuth: [] }],
   request: {
     params: blockParam,

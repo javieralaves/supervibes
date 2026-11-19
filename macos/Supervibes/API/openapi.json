@@ -1727,7 +1727,7 @@
           "text",
           "tasks"
         ],
-        "description": "For protected time with a prepared agenda: what the menu bar shows during it."
+        "description": "For a session with a prepared agenda: what the menu bar shows during it."
       },
       "GoalColor": {
         "type": "object",
@@ -2372,7 +2372,7 @@
     "/api/v1/blocks/{blockId}/agenda": {
       "post": {
         "operationId": "prepareAgenda",
-        "summary": "Prepare an agenda for a session, from the goal's tasks, notes and latest read",
+        "summary": "Prepare an agenda for a session (protected time or a task's), from the goal's tasks, notes and latest read",
         "security": [
           {
             "bearerAuth": []

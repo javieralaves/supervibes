@@ -308,7 +308,7 @@ final class SurfaceSnapshotTests: XCTestCase {
             }
             .padding(16)
             .background(Theme.background),
-            width: 688, height: 292
+            width: 1024, height: 292
         )
     }
 

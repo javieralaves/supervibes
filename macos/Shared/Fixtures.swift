@@ -241,13 +241,14 @@ enum Fixtures {
         why: "It's this week's objective, and the sketch task you planned for today is the last thing blocking it."
     )
 
-    /// Protected time ahead with nothing prepared: one untitled (offers a focus), one titled (offers a plan).
+    /// Sessions ahead with nothing prepared: protected time untitled (offers a focus) and titled (offers a plan), and a task's (offers a plan).
     static var freshPanelBlocks: [CalendarBlock] {
         let day = Calendar.current.startOfDay(for: referenceNow)
         func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
         return [
             CalendarBlock(id: "f1", goalId: "g1", title: nil, startsAt: at(15), endsAt: at(16, 30)),
             CalendarBlock(id: "f2", goalId: "g3", title: "Follow up with the community", startsAt: at(17, 30), endsAt: at(18)),
+            CalendarBlock(id: "f3", goalId: "g1", title: "Sketch the week view", startsAt: at(11), endsAt: at(12), taskId: "t5"),
         ]
     }
 
