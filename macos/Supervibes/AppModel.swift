@@ -24,8 +24,14 @@ final class AppModel {
     /// What the widget was last given, so it's only asked to reload when that changes.
     @ObservationIgnored private var shared: (signedIn: Bool, blocks: [Block])?
 
-    /// How often today's blocks are fetched again while the app runs.
-    private static let refreshInterval: TimeInterval = 5 * 60
+    /// Asked for while a fetch was underway: that fetch may have missed it, so fetch once more.
+    @ObservationIgnored private var fetchAgain = false
+
+    /// How often today's blocks are fetched again while the app runs, for changes made elsewhere
+    /// (recaps finishing on the server). Changes saved in the app are fetched straight away.
+    private static let refreshInterval: TimeInterval = 2 * 60
+    /// Opening the menu bar fetches again when what it has is older than this.
+    private static let freshEnough: TimeInterval = 60
 
     init(auth: AuthModel) {
         self.auth = auth
@@ -42,6 +48,14 @@ final class AppModel {
         // Coming back from sleep, today may have moved on.
         NotificationCenter.default.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshSoon() }
+        }
+        // A block, task or goal was saved somewhere in the app.
+        NotificationCenter.default.addObserver(forName: .supervibesDataChanged, object: nil, queue: .main) { [weak self] note in
+            let operation = note.userInfo?["operation"] as? String ?? "?"
+            MainActor.assumeIsolated {
+                Log.app.info("Saved (\(operation, privacy: .public)): fetching today again")
+                self?.refreshSoon()
+            }
         }
     }
 
@@ -64,10 +78,22 @@ final class AppModel {
         return Text(Image(systemName: "calendar"))
     }
 
-    /// Fetch on the next tick, for example right after signing in.
+    /// Fetch now, for example right after signing in or saving a change. If a fetch is already
+    /// underway, another follows it, since that one may have started before the change.
     func refreshSoon() {
         lastFetch = nil
-        tick()
+        if isFetching {
+            fetchAgain = true
+        } else {
+            tick()
+        }
+    }
+
+    /// The menu bar opened: make sure what it shows is recent.
+    func refreshIfStale() {
+        guard let lastFetch, Date().timeIntervalSince(lastFetch) < Self.freshEnough else {
+            return refreshSoon()
+        }
     }
 
     private func tick() {
@@ -86,7 +112,7 @@ final class AppModel {
 
         let day = Calendar.current.dateComponents([.year, .month, .day], from: now)
         let stale = lastFetch.map { now.timeIntervalSince($0) > Self.refreshInterval } ?? true
-        if stale || day != fetchedDay {
+        if (stale || day != fetchedDay), !isFetching {
             Task { await refresh() }
         }
     }
@@ -94,8 +120,14 @@ final class AppModel {
     private func refresh() async {
         guard !isFetching else { return }
         isFetching = true
-        defer { isFetching = false }
+        repeat {
+            fetchAgain = false
+            await fetchToday()
+        } while fetchAgain && isSignedIn
+        isFetching = false
+    }
 
+    private func fetchToday() async {
         do {
             let output = try await client.getToday(query: .init(timeZone: TimeZone.current.identifier))
             switch output {

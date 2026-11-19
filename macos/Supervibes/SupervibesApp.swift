@@ -113,5 +113,6 @@ private struct MenuBarRoot: View {
             },
             onQuit: { NSApp.terminate(nil) }
         )
+        .onAppear { model.refreshIfStale() }
     }
 }
