@@ -7,6 +7,7 @@ import { errorResponses } from "@/lib/api/errors";
 import { listBlocks } from "@/lib/blocks";
 import { GOAL_COLORS, isGoalColor, DEFAULT_GOAL_COLOR } from "@/lib/goal-colors";
 import { listGoals } from "@/lib/goals";
+import { listOpenTasks } from "@/lib/tasks";
 import { getTimeZone } from "@/lib/settings";
 import { timeZoneSchema } from "@/lib/settings-schema";
 import { todayIn } from "@/lib/target-date";
@@ -19,6 +20,22 @@ const GoalColorSchema = z
     dark: z.string().openapi({ description: "Hex for dark mode.", example: "#b88bff" }),
   })
   .openapi("GoalColor");
+
+const TodayAgendaSchema = z
+  .object({
+    text: z.string().openapi({ description: "The prepared plan for the session: a short paragraph." }),
+    tasks: z
+      .array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          minutes: z.number().int(),
+          done: z.boolean().openapi({ description: "Not open anymore: checked off, or deleted." }),
+        }),
+      )
+      .openapi({ description: "The tasks it draws on, most relevant first, titled as they were when it was prepared." }),
+  })
+  .openapi("TodayAgenda");
 
 const TodayBlockSchema = z
   .object({
@@ -33,6 +50,7 @@ const TodayBlockSchema = z
     taskId: z.string().nullable(),
     taskDone: z.boolean(),
     hasAgenda: z.boolean(),
+    agenda: TodayAgendaSchema.nullable().openapi({ description: "For protected time with a prepared agenda: what the menu bar shows during it." }),
     goal: z.object({
       id: z.string(),
       title: z.string(),
@@ -75,8 +93,9 @@ export const today = new OpenAPIHono<ApiEnv>().openapi(getToday, async (c) => {
   const day = todayIn(timeZone);
   const { start, end } = dayBoundsIn(day, timeZone);
 
-  const [blocks, goals] = await Promise.all([listBlocks(userId, start, end), listGoals(userId)]);
+  const [blocks, goals, openTasks] = await Promise.all([listBlocks(userId, start, end), listGoals(userId), listOpenTasks(userId)]);
   const goalsById = new Map(goals.map((goal) => [goal.id, goal]));
+  const openTaskIds = new Set(openTasks.map((task) => task.id));
 
   return c.json(
     {
@@ -97,6 +116,10 @@ export const today = new OpenAPIHono<ApiEnv>().openapi(getToday, async (c) => {
             taskId: block.taskId,
             taskDone: block.taskDone ?? false,
             hasAgenda: block.agenda !== null,
+            agenda: block.agenda && {
+              text: block.agenda.text,
+              tasks: block.agenda.tasks.map(({ id, title, minutes }) => ({ id, title, minutes, done: !openTaskIds.has(id) })),
+            },
             goal: {
               id: goal.id,
               title: goal.title,

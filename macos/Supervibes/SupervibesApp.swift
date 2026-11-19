@@ -105,6 +105,8 @@ private struct MenuBarRoot: View {
             now: model.now,
             isSignedIn: model.isSignedIn,
             appName: appName,
+            taskError: model.taskError,
+            onSetTaskDone: model.setTaskDone,
             onOpen: {
                 openWindow(id: "main")
                 NSApp.activate()

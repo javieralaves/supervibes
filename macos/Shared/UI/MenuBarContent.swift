@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The popover under the menu bar item: the current block, what's next, and a way into the app.
+/// The popover under the menu bar item: the current block and what it's for, what's next, and a
+/// way into the app.
 struct MenuBarContent: View {
     let current: Block?
     let upcoming: [Block]
@@ -8,6 +9,9 @@ struct MenuBarContent: View {
     var isSignedIn = true
     /// "Supervibes", or "Supervibes Dev" for Debug builds.
     var appName = "Supervibes"
+    /// Why checking off a task didn't save.
+    var taskError: String?
+    var onSetTaskDone: (_ taskId: String, _ done: Bool) -> Void = { _, _ in }
     var onOpen: () -> Void = {}
     var onQuit: () -> Void = {}
 
@@ -24,6 +28,11 @@ struct MenuBarContent: View {
             } else {
                 if let current {
                     CurrentBlockView(block: current, now: now)
+                    if SessionPlanView.hasPlan(current) {
+                        Divider()
+                        SessionPlanView(block: current, error: taskError, onSetTaskDone: onSetTaskDone)
+                            .id(current.id)
+                    }
                 } else {
                     NoBlockView(next: upcoming.first, nextIsListed: true)
                 }
@@ -88,6 +97,12 @@ private struct UpcomingRow: View {
 #Preview("During a block") {
     let now = Fixtures.referenceNow
     MenuBarContent(current: Fixtures.current(at: now), upcoming: Fixtures.upcoming(at: now), now: now)
+        .frame(width: 300)
+}
+
+#Preview("During a block with a plan") {
+    let now = Fixtures.referenceNow
+    MenuBarContent(current: Fixtures.planned(at: now), upcoming: Fixtures.upcoming(at: now), now: now)
         .frame(width: 300)
 }
 

@@ -39,6 +39,22 @@ enum Fixtures {
         blocks(around: now).first { $0.isHappening(at: now) }
     }
 
+    /// The current block with an aim and a prepared agenda, one of its tasks already done.
+    static func planned(at now: Date) -> Block? {
+        guard var block = current(at: now) else { return nil }
+        block.aim = "A native menu bar that reads today's blocks from the API."
+        block.agenda = SessionAgenda(
+            text: "Get the menu bar reading real blocks before you touch the widget: that's what makes the Mac app useful today. "
+                + "Start by wiring the today endpoint into the app model, then swap the fixtures out of the popover. "
+                + "Leave the widget on sample data for now, and stop to sign in once the token is in place so you know it holds across launches.",
+            tasks: [
+                .init(id: "t1", title: "Wire /api/v1/today into the app model", minutes: 60, done: true),
+                .init(id: "t2", title: "Show real blocks in the menu bar popover", minutes: 30, done: false),
+            ]
+        )
+        return block
+    }
+
     static func upcoming(at now: Date) -> [Block] {
         blocks(around: now).filter { $0.start > now }
     }

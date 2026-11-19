@@ -11,6 +11,8 @@ final class AppModel {
     private(set) var now = Date()
     private(set) var blocks: [Block] = []
     private(set) var isSignedIn = false
+    /// Why checking off a task from the menu bar didn't save, until the next try.
+    private(set) var taskError: String?
     /// The notices before sessions, scheduled from today's blocks.
     let notifier = SessionNotifier()
 
@@ -124,6 +126,45 @@ final class AppModel {
 }
 
 extension AppModel {
+    /// Checks off or reopens one of an agenda's tasks from the menu bar. Shows the change straight
+    /// away and puts it back if the server says no.
+    func setTaskDone(_ taskId: String, _ done: Bool) {
+        taskError = nil
+        markTask(taskId, done: done)
+        Task {
+            do {
+                switch try await client.setTaskDone(path: .init(taskId: taskId), body: .json(.init(done: done))) {
+                case .ok:
+                    Log.app.info("Task \(done ? "done" : "reopened", privacy: .public) from the menu bar")
+                    return
+                case .unauthorized:
+                    await auth.sessionEnded()
+                    return
+                case .notFound:
+                    taskError = "That task doesn’t exist anymore."
+                case .badRequest(let bad):
+                    taskError = (try? bad.body.json.error.message) ?? "Couldn’t save that."
+                case .undocumented(let status, _):
+                    taskError = "Couldn’t save that (the server answered \(status))."
+                }
+            } catch {
+                taskError = "Couldn’t save that. Check your connection."
+            }
+            markTask(taskId, done: !done)
+        }
+    }
+
+    private func markTask(_ taskId: String, done: Bool) {
+        blocks = blocks.map { block in
+            guard var agenda = block.agenda, agenda.tasks.contains(where: { $0.id == taskId }) else { return block }
+            agenda.tasks = agenda.tasks.map { var task = $0; if task.id == taskId { task.done = done }; return task }
+            var block = block
+            block.agenda = agenda
+            return block
+        }
+        share()
+    }
+
     /// Hands today's blocks to the widget, and has it redraw when they've changed.
     private func share() {
         notifier.blocksChanged(blocks)
@@ -148,7 +189,13 @@ extension Block {
             start: block.startsAt,
             end: block.endsAt,
             tint: Tint(light: block.goal.color.light, dark: block.goal.color.dark),
-            aim: block.description.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            aim: block.description.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+            agenda: block.agenda.map { agenda in
+                SessionAgenda(
+                    text: agenda.text,
+                    tasks: agenda.tasks.map { .init(id: $0.id, title: $0.title, minutes: $0.minutes, done: $0.done) }
+                )
+            }
         )
     }
 }

@@ -16,6 +16,13 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testMenuBarDuringPlannedBlock() {
+        assertAppearances(
+            MenuBarContent(current: Fixtures.planned(at: now), upcoming: Fixtures.upcoming(at: now), now: now),
+            width: 300
+        )
+    }
+
     func testMenuBarWithNothingScheduled() {
         assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now), width: 300)
     }

@@ -1614,6 +1614,9 @@
           "hasAgenda": {
             "type": "boolean"
           },
+          "agenda": {
+            "$ref": "#/components/schemas/TodayAgenda"
+          },
           "goal": {
             "type": "object",
             "properties": {
@@ -1644,8 +1647,52 @@
           "taskId",
           "taskDone",
           "hasAgenda",
+          "agenda",
           "goal"
         ]
+      },
+      "TodayAgenda": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The prepared plan for the session: a short paragraph."
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "minutes": {
+                  "type": "integer"
+                },
+                "done": {
+                  "type": "boolean",
+                  "description": "Not open anymore: checked off, or deleted."
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "minutes",
+                "done"
+              ]
+            },
+            "description": "The tasks it draws on, most relevant first, titled as they were when it was prepared."
+          }
+        },
+        "required": [
+          "text",
+          "tasks"
+        ],
+        "description": "For protected time with a prepared agenda: what the menu bar shows during it."
       },
       "GoalColor": {
         "type": "object",

@@ -13,6 +13,8 @@ struct Block: Identifiable, Hashable, Sendable, Codable {
     var tint: Tint? = nil
     /// For protected time: what the person wants out of the session, if they said.
     var aim: String? = nil
+    /// The plan prepared for the session, if there is one.
+    var agenda: SessionAgenda? = nil
 
     func progress(at now: Date) -> Double {
         let total = end.timeIntervalSince(start)
@@ -27,6 +29,20 @@ struct Block: Identifiable, Hashable, Sendable, Codable {
     func isHappening(at now: Date) -> Bool {
         start <= now && now < end
     }
+}
+
+/// A session's prepared plan, as the menu bar shows it during the session.
+struct SessionAgenda: Hashable, Sendable, Codable {
+    struct Item: Identifiable, Hashable, Sendable, Codable {
+        let id: String
+        let title: String
+        let minutes: Int
+        var done: Bool
+    }
+
+    let text: String
+    /// The tasks it draws on, most relevant first.
+    var tasks: [Item]
 }
 
 /// A goal's colour, as hex for light and dark mode (the server's palette, src/lib/goal-colors.ts).
