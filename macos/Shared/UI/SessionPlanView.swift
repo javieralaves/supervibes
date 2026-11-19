@@ -43,6 +43,8 @@ struct SessionPlanView: View {
 
                 if !agenda.tasks.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
+                        // Named as in the calendar's block panel.
+                        SectionLabel("Related tasks")
                         ForEach(agenda.tasks) { task in
                             TaskRow(task: task) { onSetTaskDone(task.id, !task.done) }
                         }
