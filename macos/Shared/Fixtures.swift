@@ -235,6 +235,12 @@ enum Fixtures {
         ]
     }
 
+    /// What "Suggest a focus" might come back with for an untitled block.
+    static let focusSuggestion = FocusSuggestion(
+        aim: "Settle the week view's layout so part 4 can start.",
+        why: "It's this week's objective, and the sketch task you planned for today is the last thing blocking it."
+    )
+
     /// Protected time ahead with nothing prepared: one untitled (offers a focus), one titled (offers a plan).
     static var freshPanelBlocks: [CalendarBlock] {
         let day = Calendar.current.startOfDay(for: referenceNow)

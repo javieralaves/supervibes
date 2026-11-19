@@ -346,6 +346,30 @@ final class CalendarModel {
         }
     }
 
+    /// Suggest an aim for a session that doesn't say what it's for yet. Nothing is saved;
+    /// `instead` are aims already suggested and passed over.
+    func suggestFocus(_ blockId: String, when: String, instead: [String]) async -> FocusOutcome {
+        var suggestion: FocusSuggestion?
+        let error = await call { client in
+            switch try await client.suggestFocus(
+                path: .init(blockId: blockId),
+                body: .json(.init(when: when, instead: instead.isEmpty ? nil : instead))
+            ) {
+            case .ok(let ok):
+                let body = try ok.body.json
+                suggestion = FocusSuggestion(aim: body.aim, why: body.why)
+                return nil
+            case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Couldn’t suggest a focus."
+            case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .badGateway(let failed): return (try? failed.body.json.error.message) ?? "Couldn’t suggest a focus right now. Try again."
+            case .unauthorized: return Self.signedOut
+            case .undocumented(let status, _): return "Couldn’t suggest a focus (the server answered \(status))."
+            }
+        }
+        if let suggestion { return .suggested(suggestion) }
+        return .failed(error ?? "Couldn’t suggest a focus.")
+    }
+
     /// Draft a recap of a session that's ended.
     func prepareRecap(_ blockId: String) async -> String? {
         await call { client in

@@ -376,6 +376,41 @@
           "when"
         ]
       },
+      "FocusSuggestion": {
+        "type": "object",
+        "properties": {
+          "aim": {
+            "type": "string",
+            "description": "In the person's own voice, ready to be the session's aim."
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "aim",
+          "why"
+        ]
+      },
+      "SuggestFocus": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "string",
+            "description": "How the block reads in the viewer's time zone."
+          },
+          "instead": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Aims already suggested for this block and passed over, so the next one differs."
+          }
+        },
+        "required": [
+          "when"
+        ]
+      },
       "PostRecap": {
         "type": "object",
         "properties": {
@@ -2407,6 +2442,90 @@
           },
           "502": {
             "description": "Couldn't prepare it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/focus": {
+      "post": {
+        "operationId": "suggestFocus",
+        "summary": "Suggest an aim for a session that doesn't say what it's for yet; nothing is saved",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestFocus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Suggested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusSuggestion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Couldn't suggest one.",
             "content": {
               "application/json": {
                 "schema": {

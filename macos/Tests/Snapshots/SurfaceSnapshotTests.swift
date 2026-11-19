@@ -312,6 +312,15 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testFocusSuggestion() {
+        assertAppearances(
+            FocusSuggestionCard(suggestion: Fixtures.focusSuggestion, onUse: {}, onAnother: {}, onDismiss: {})
+                .padding(16)
+                .background(Theme.card),
+            width: 320, height: 180
+        )
+    }
+
     func testWeekView() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, isWeek: true, onSetWeek: { _ in },

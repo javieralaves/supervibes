@@ -354,6 +354,7 @@ private struct CalendarScreen: View {
                     panel: BlockPanelActions(
                         setDescription: model.setDescription,
                         prepareAgenda: model.prepareAgenda(_:when:),
+                        suggestFocus: model.suggestFocus(_:when:instead:),
                         prepareRecap: model.prepareRecap,
                         postRecap: model.postRecap(_:body:keep:markTaskDone:),
                         discardRecap: model.discardRecap,

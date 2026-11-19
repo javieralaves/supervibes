@@ -42,6 +42,19 @@ enum BlockEdge: Sendable {
 }
 
 /// A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made.
+/// An aim suggested for a session that doesn't say what it's for yet, and why it's the one.
+/// Only a suggestion: it becomes the session's aim if the person takes it.
+struct FocusSuggestion: Hashable, Sendable {
+    let aim: String
+    let why: String
+}
+
+/// How asking for a focus went: a suggestion, or a message to show.
+enum FocusOutcome: Sendable {
+    case suggested(FocusSuggestion)
+    case failed(String)
+}
+
 struct BlockAgenda: Hashable, Sendable {
     struct Task: Identifiable, Hashable, Sendable {
         let id: String

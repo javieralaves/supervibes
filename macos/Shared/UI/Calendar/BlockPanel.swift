@@ -4,8 +4,8 @@ import SwiftUI
  * The block you clicked, beside the calendar on the right, as block-panel.tsx and
  * recap-section.tsx. Protected time can say what the person wants out of it and get an agenda
  * steered by that, with the tasks it draws on below. Both are optional and offered quietly: a
- * block can just be time. With nothing saying what it's for, the offer is to suggest a focus;
- * once a title or aim does, it's to plan the session. An intention shows the task it schedules.
+ * block can just be time. With nothing saying what it's for, the offer is to suggest a focus,
+ * which becomes the aim if taken; once a title or aim says what it's for, it's to plan the session. An intention shows the task it schedules.
  * Once a block has ended it can be recapped; then it reads as a record: the aim, the posted recap,
  * and the agenda folded away.
  */
@@ -14,6 +14,7 @@ import SwiftUI
 struct BlockPanelActions {
     var setDescription: (_ blockId: String, _ text: String) async -> String?
     var prepareAgenda: (_ blockId: String, _ when: String) async -> String?
+    var suggestFocus: (_ blockId: String, _ when: String, _ instead: [String]) async -> FocusOutcome
     var prepareRecap: (_ blockId: String) async -> String?
     var postRecap: (_ blockId: String, _ body: String, _ keep: [NoteItem.Breadcrumb], _ markTaskDone: Bool) async -> String?
     var discardRecap: (_ blockId: String) async -> String?
@@ -149,6 +150,8 @@ private struct SessionAim: View {
                     }
                     .onChange(of: draft) { if draft.count > 1000 { draft = String(draft.prefix(1000)) } }
                     .onChange(of: isFocused) { if !isFocused { save() } }
+                    // Set from outside the field too, like taking a suggested focus.
+                    .onChange(of: block.description) { if !isFocused { draft = block.description ?? "" } }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(isHovered || isFocused ? Theme.wash.opacity(0.6) : .clear, in: .rect(cornerRadius: 8))
@@ -192,6 +195,12 @@ private struct AgendaSection: View {
     @State private var toggled: [String: Bool] = [:]
     /// Once the session is over, the agenda is history: folded away until asked for.
     @State private var expanded = false
+    /// A focus suggested for a session that doesn't say what it's for, until it's taken or set aside.
+    @State private var suggestion: FocusSuggestion?
+    @State private var suggesting = false
+    @State private var adopting = false
+    /// Aims suggested here and passed over, so the next suggestion differs.
+    @State private var passed: [String] = []
 
     /// Nothing says yet what the session is for, so the useful help is picking a focus, not planning one.
     private var needsFocus: Bool {
@@ -253,10 +262,17 @@ private struct AgendaSection: View {
                             .inactive(preparing)
                             .padding(.top, 12)
                     } else if needsFocus {
-                        QuietButton(icon: .target, title: preparing ? "Suggesting…" : "Suggest a focus", spinning: preparing, action: prepare)
-                            .inactive(preparing)
-                            .padding(.top, preparing ? 12 : 0)
-                            .help("Suggests what to aim for in this session and how to spend it, from the goal’s week, tasks, notes and latest read")
+                        if let suggestion {
+                            FocusSuggestionCard(
+                                suggestion: suggestion, busy: suggesting || adopting, spinning: suggesting,
+                                onUse: adopt, onAnother: another, onDismiss: dismiss
+                            )
+                        } else if suggesting {
+                            Skeleton(widths: [1, 0.7])
+                        } else {
+                            QuietButton(icon: .target, title: "Suggest a focus", action: suggest)
+                                .help("Suggests an aim for this session, from the goal’s week, tasks, notes and latest read")
+                        }
                     } else {
                         QuietButton(icon: .checklist, title: preparing ? "Planning…" : "Plan this session", spinning: preparing, action: prepare)
                             .inactive(preparing)
@@ -300,6 +316,47 @@ private struct AgendaSection: View {
         }
     }
 
+    private func suggest() {
+        guard let actions, !suggesting else { return }
+        error = nil
+        suggesting = true
+        let blockId = block.id, instead = passed
+        Task {
+            switch await actions.suggestFocus(blockId, when, instead) {
+            case .suggested(let next): suggestion = next
+            case .failed(let message): error = message
+            }
+            suggesting = false
+        }
+    }
+
+    private func another() {
+        if let suggestion { passed.append(suggestion.aim) }
+        suggest()
+    }
+
+    private func dismiss() {
+        if let suggestion { passed.append(suggestion.aim) }
+        suggestion = nil
+    }
+
+    /// Takes the suggestion as the session's aim; from there the panel offers to plan it.
+    private func adopt() {
+        guard let actions, let suggestion, !adopting else { return }
+        error = nil
+        adopting = true
+        let blockId = block.id
+        Task {
+            if let message = await actions.setDescription(blockId, suggestion.aim) {
+                error = message
+            } else {
+                self.suggestion = nil
+                passed = []
+            }
+            adopting = false
+        }
+    }
+
     private func toggle(_ taskId: String, _ done: Bool) {
         guard let actions else { return }
         toggled[taskId] = done
@@ -318,6 +375,53 @@ private struct AgendaSection: View {
         if minutes < 60 { return "Prepared \(minutes) min ago" }
         if minutes < 24 * 60 { return "Prepared \(Int((Double(minutes) / 60).rounded())) hr ago" }
         return "Prepared \(date.webMonthDay)"
+    }
+}
+
+/// A focus suggested for a session that doesn't say what it's for yet: take it as the aim (it can be
+/// edited from there), ask for another, or set it aside.
+struct FocusSuggestionCard: View {
+    let suggestion: FocusSuggestion
+    var busy = false
+    /// Another one is on its way.
+    var spinning = false
+    let onUse: () -> Void
+    let onAnother: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Suggested focus").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                Spacer()
+                PanelIconButton(icon: .close, label: "Set this suggestion aside", action: onDismiss)
+                    .padding(.trailing, -6)
+            }
+            Group {
+                Text(suggestion.aim).appText(.sm, .medium).lineSpacing(3).foregroundStyle(Theme.foreground)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !suggestion.why.isEmpty {
+                    Text(suggestion.why).appText(.xs).lineSpacing(3).foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+            }
+            .opacity(spinning ? 0.5 : 1)
+            HStack(spacing: 12) {
+                SmallPrimaryButton(title: "Use as aim", action: onUse)
+                QuietButton(title: spinning ? "Suggesting…" : "Another", spinning: spinning, action: onAnother)
+                    .padding(.leading, 8)
+            }
+            .inactive(busy)
+            .padding(.top, 12)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+        .background(Theme.background.opacity(0.6), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Suggested focus: \(suggestion.aim)")
     }
 }
 
@@ -750,4 +854,11 @@ private struct QuietButton: View {
     }
     .padding(16)
     .background(Theme.background)
+}
+
+#Preview("Suggested focus") {
+    FocusSuggestionCard(suggestion: Fixtures.focusSuggestion, onUse: {}, onAnother: {}, onDismiss: {})
+        .frame(width: 288)
+        .padding(16)
+        .background(Theme.card)
 }

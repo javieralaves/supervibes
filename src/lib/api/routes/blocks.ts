@@ -4,7 +4,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
-import { AgendaError, prepareAgenda } from "@/lib/agenda";
+import { AgendaError, prepareAgenda, suggestFocus } from "@/lib/agenda";
 import { asAgenda, asCalendarBlock, asRecap, BlockAgendaSchema, BlockRecapSchema, CalendarBlockSchema } from "@/lib/api/routes/calendar";
 import { requestRead } from "@/lib/background-read";
 import { blockDescriptionSchema, blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
@@ -165,6 +165,51 @@ const agendaRoute = createRoute({
   },
 });
 
+const focusRoute = createRoute({
+  method: "post",
+  path: "/blocks/{blockId}/focus",
+  operationId: "suggestFocus",
+  summary: "Suggest an aim for a session that doesn't say what it's for yet; nothing is saved",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: blockParam,
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              when: z.string().openapi({ description: "How the block reads in the viewer's time zone." }),
+              instead: z
+                .array(z.string())
+                .optional()
+                .openapi({ description: "Aims already suggested for this block and passed over, so the next one differs." }),
+            })
+            .openapi("SuggestFocus"),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Suggested",
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              aim: z.string().openapi({ description: "In the person's own voice, ready to be the session's aim." }),
+              why: z.string(),
+            })
+            .openapi("FocusSuggestion"),
+        },
+      },
+    },
+    ...errorResponses,
+    404: notFound,
+    502: { description: "Couldn't suggest one.", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const recapRoute = createRoute({
   method: "post",
   path: "/blocks/{blockId}/recap",
@@ -316,6 +361,19 @@ export const blocks = new OpenAPIHono<ApiEnv>()
       if (error instanceof AgendaError) return c.json(apiError("unavailable", error.message), 502);
       console.error("[agenda] failed", error);
       return c.json(apiError("unavailable", "Couldn't prepare an agenda right now. Try again."), 502);
+    }
+  })
+  .openapi(focusRoute, async (c) => {
+    const { when, instead } = c.req.valid("json");
+    const label = z.string().trim().min(1).max(120).safeParse(when);
+    if (!label.success) return c.json(apiError("invalid_request", "Couldn't tell when this block is."), 400);
+    try {
+      const focus = await suggestFocus(c.var.user.id, c.req.valid("param").blockId, label.data, instead ?? []);
+      return c.json(focus, 200);
+    } catch (error) {
+      if (error instanceof AgendaError) return c.json(apiError("unavailable", error.message), 502);
+      console.error("[focus] failed", error);
+      return c.json(apiError("unavailable", "Couldn't suggest a focus right now. Try again."), 502);
     }
   })
   .openapi(recapRoute, async (c) => {
