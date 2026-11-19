@@ -54,19 +54,45 @@ struct GoalDot: View {
     }
 }
 
-/// Shown where the current block would be when nothing is scheduled right now.
+/// Shown where the current block would be when nothing is scheduled right now: what's next, if
+/// anything is, or a nudge to sign in.
 struct NoBlockView: View {
+    var next: Block?
+    var signedIn = true
+    /// The menu bar lists what's next right below, so it only says until when you're free.
+    var nextIsListed = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Now")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-            Text("Nothing scheduled")
-                .font(.headline)
-            Text("Free time until your next block.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if !signedIn {
+                Text("Not signed in")
+                    .font(.headline)
+                Text("Open Supervibes to see your blocks here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else if let next {
+                Text("Free until \(next.start.formatted(date: .omitted, time: .shortened))")
+                    .font(.headline)
+                if !nextIsListed {
+                    HStack(spacing: 6) {
+                        GoalDot(tint: next.tint)
+                        Text("Next: \(next.title)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            } else {
+                Text("Nothing scheduled")
+                    .font(.headline)
+                Text("No more blocks today.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

@@ -25,7 +25,7 @@ struct MenuBarContent: View {
                 if let current {
                     CurrentBlockView(block: current, now: now)
                 } else {
-                    NoBlockView()
+                    NoBlockView(next: upcoming.first, nextIsListed: true)
                 }
 
                 if !upcoming.isEmpty {

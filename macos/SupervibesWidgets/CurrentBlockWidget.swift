@@ -23,30 +23,45 @@ struct CurrentBlockWidget: Widget {
 struct BlockEntry: TimelineEntry {
     let date: Date
     let current: Block?
+    var next: Block?
+    var signedIn = true
 }
 
-/// Runs on fixtures until the app shares real data with the widget through an App Group.
+/// Today's blocks as the app last shared them (Shared/Models/WidgetShare.swift), laid out around
+/// each block's start and end. The gallery's preview shows sample data.
 struct BlockTimelineProvider: TimelineProvider {
     func placeholder(in context: Context) -> BlockEntry {
-        entry(at: Fixtures.referenceNow, anchor: Fixtures.referenceNow)
+        sample()
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BlockEntry) -> Void) {
-        let now = Date()
-        completion(entry(at: now, anchor: now))
+        if context.isPreview {
+            completion(sample())
+        } else {
+            completion(timeline(from: Date()).entries.first ?? BlockEntry(date: Date(), current: nil))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BlockEntry>) -> Void) {
-        let now = Date()
-        let entries = (0..<12).map { step in
-            entry(at: now.addingTimeInterval(Double(step) * 5 * 60), anchor: now)
-        }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        completion(timeline(from: Date()))
     }
 
-    private func entry(at date: Date, anchor: Date) -> BlockEntry {
-        let current = Fixtures.blocks(around: anchor).first { $0.isHappening(at: date) }
-        return BlockEntry(date: date, current: current)
+    private func timeline(from now: Date) -> Timeline<BlockEntry> {
+        guard let today = WidgetShare.read() else {
+            // Nothing shared yet: the app hasn't run since installing, or isn't signed in.
+            return Timeline(entries: [BlockEntry(date: now, current: nil, signedIn: false)], policy: .after(now.addingTimeInterval(15 * 60)))
+        }
+        let entries = WidgetTimeline.moments(blocks: today.blocks, from: now).map {
+            BlockEntry(date: $0.date, current: $0.current, next: $0.next, signedIn: today.signedIn)
+        }
+        // Plan again in an hour; the app also asks for a reload whenever today's blocks change.
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(3600)))
+    }
+
+    private func sample() -> BlockEntry {
+        let now = Fixtures.referenceNow
+        let blocks = Fixtures.blocks(around: now)
+        return BlockEntry(date: now, current: blocks.first { $0.isHappening(at: now) }, next: blocks.first { $0.start > now })
     }
 }
 
@@ -57,7 +72,7 @@ struct CurrentBlockWidgetView: View {
         if let current = entry.current {
             CurrentBlockView(block: current, now: entry.date)
         } else {
-            NoBlockView()
+            NoBlockView(next: entry.next, signedIn: entry.signedIn)
         }
     }
 }

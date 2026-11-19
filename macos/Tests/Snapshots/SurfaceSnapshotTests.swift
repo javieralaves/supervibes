@@ -334,16 +334,61 @@ final class SurfaceSnapshotTests: XCTestCase {
             width: 170, height: 170
         )
     }
+
+    /// Between blocks, and before the app has shared anything.
+    func testWidgetFreeAndSignedOut() {
+        let between = now.addingTimeInterval(50 * 60)
+        assertAppearances(
+            HStack(spacing: 12) {
+                CurrentBlockWidgetPreview(block: nil, now: between, next: Fixtures.upcoming(at: now).first)
+                    .frame(width: 170, height: 170)
+                CurrentBlockWidgetPreview(block: nil, now: now, signedIn: false)
+                    .frame(width: 170, height: 170)
+            },
+            width: 352, height: 170
+        )
+    }
+
+    /// The widget's timeline: a block shows the moment it starts, and between blocks it says what's next.
+    func testWidgetTimeline() {
+        let blocks = Fixtures.blocks(around: now)
+        let moments = WidgetTimeline.moments(blocks: blocks, from: now)
+        XCTAssertEqual(moments.first?.date, now)
+        XCTAssertEqual(moments.first?.current?.id, "current")
+        // Every minute for the next hour, plus each later start and end within the day.
+        XCTAssertTrue(moments.contains { $0.date == blocks[2].start && $0.current?.id == "later" })
+        let afterCurrent = moments.first { $0.date == blocks[0].end }
+        XCTAssertNil(afterCurrent?.current)
+        XCTAssertEqual(afterCurrent?.next?.id, "next")
+        XCTAssertEqual(moments.map(\.date), moments.map(\.date).sorted())
+        XCTAssertEqual(moments.last?.date, blocks[2].end)
+        XCTAssertNil(moments.last?.current)
+        XCTAssertNil(moments.last?.next)
+    }
+
+    /// What the app writes, the widget reads back the same.
+    func testSharedTodayRoundTrip() throws {
+        let today = SharedToday(signedIn: true, fetchedAt: now, blocks: Fixtures.blocks(around: now))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let back = try decoder.decode(SharedToday.self, from: encoder.encode(today))
+        XCTAssertEqual(back.blocks.map(\.id), today.blocks.map(\.id))
+        XCTAssertEqual(back.blocks.first?.tint, today.blocks.first?.tint)
+    }
 }
 
 /// Approximates the widget's frame for snapshots; WidgetKit itself only renders inside a widget host.
 private struct CurrentBlockWidgetPreview: View {
     let block: Block?
     let now: Date
+    var next: Block?
+    var signedIn = true
 
     var body: some View {
         Group {
-            if let block { CurrentBlockView(block: block, now: now) } else { NoBlockView() }
+            if let block { CurrentBlockView(block: block, now: now) } else { NoBlockView(next: next, signedIn: signedIn) }
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

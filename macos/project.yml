@@ -55,8 +55,15 @@ targets:
         CFBundleDisplayName: $(SUPERVIBES_DISPLAY_NAME)
         LSApplicationCategoryType: public.app-category.productivity
         SupervibesBaseURL: $(SUPERVIBES_BASE_URL)
+        # Shared with the widget: today's blocks go through this App Group (Shared/Models/WidgetShare.swift).
+        SupervibesAppGroup: $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    entitlements:
+      path: Supervibes/Supervibes.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
     settings:
       base:
         # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.
@@ -85,10 +92,13 @@ targets:
         CFBundleDisplayName: $(SUPERVIBES_DISPLAY_NAME)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        SupervibesAppGroup: $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
     entitlements:
       path: SupervibesWidgets/SupervibesWidgets.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID).widgets

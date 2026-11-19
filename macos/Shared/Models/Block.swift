@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 /// A block of time on the calendar, as the Mac surfaces show it.
-struct Block: Identifiable, Hashable, Sendable {
+struct Block: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let title: String
     /// The goal's title, or "Protected time" when the block is the goal's own time.
@@ -28,7 +28,7 @@ struct Block: Identifiable, Hashable, Sendable {
 }
 
 /// A goal's colour, as hex for light and dark mode (the server's palette, src/lib/goal-colors.ts).
-struct Tint: Hashable, Sendable {
+struct Tint: Hashable, Sendable, Codable {
     let light: String
     let dark: String
 

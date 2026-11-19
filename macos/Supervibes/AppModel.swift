@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import SwiftUI
+import WidgetKit
 
 /// App-wide state for the native surfaces: today's blocks from the API, and a clock.
 @MainActor
@@ -16,6 +17,8 @@ final class AppModel {
     @ObservationIgnored private var lastFetch: Date?
     @ObservationIgnored private var fetchedDay: DateComponents?
     @ObservationIgnored private var isFetching = false
+    /// What the widget was last given, so it's only asked to reload when that changes.
+    @ObservationIgnored private var shared: (signedIn: Bool, blocks: [Block])?
 
     /// How often today's blocks are fetched again while the app runs.
     private static let refreshInterval: TimeInterval = 5 * 60
@@ -69,7 +72,10 @@ final class AppModel {
         if signedIn != isSignedIn {
             isSignedIn = signedIn
             lastFetch = nil
-            if !signedIn { blocks = [] }
+            if !signedIn {
+                blocks = []
+                share()
+            }
         }
         guard signedIn else { return }
 
@@ -91,6 +97,7 @@ final class AppModel {
             case .ok(let ok):
                 let today = try ok.body.json
                 blocks = today.blocks.map(Block.init(api:))
+                share()
                 lastFetch = Date()
                 fetchedDay = Calendar.current.dateComponents([.year, .month, .day], from: Date())
                 Log.app.info("Fetched today: \(today.blocks.count) blocks")
@@ -110,6 +117,21 @@ final class AppModel {
             Log.app.error("Today: \(error.localizedDescription, privacy: .public)")
             lastFetch = Date()
         }
+    }
+}
+
+extension AppModel {
+    /// Hands today's blocks to the widget, and has it redraw when they've changed.
+    private func share() {
+        if let shared, shared.signedIn == isSignedIn, shared.blocks == blocks { return }
+        let today = SharedToday(signedIn: isSignedIn, fetchedAt: Date(), blocks: blocks)
+        guard WidgetShare.write(today) else {
+            Log.widgets.error("Couldn't write to the App Group \(WidgetShare.groupID ?? "(none)", privacy: .public)")
+            return
+        }
+        shared = (isSignedIn, blocks)
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetShare.kind)
+        Log.widgets.info("Shared \(self.blocks.count) blocks with the widget")
     }
 }
 
