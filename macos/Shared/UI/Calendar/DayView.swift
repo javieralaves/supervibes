@@ -6,18 +6,17 @@ import SwiftUI
  * past time washed, blocks filling in as their time passes, and the now line.
  */
 
-/// The timeline's geometry (geometry.ts).
+/// The timeline's geometry (geometry.ts). Pinching changes how tall an hour is (`HourGrid`).
 enum DayGrid {
-    /// Height of one hour.
+    /// Height of one hour, before any pinching.
     static let hour: CGFloat = 176
+    /// Pinching in stops at twice that.
+    static let maxHour = hour * 2
     /// Room above midnight and below the last hour so their labels aren't clipped.
     static let pad: CGFloat = 12
     /// Width of the hour-label column.
     static let gutter: CGFloat = 64
-    static let height = y(CalendarDayMath.dayMinutes) + pad
-
-    /// Top of a time (minutes after midnight).
-    static func y(_ minutes: Int) -> CGFloat { pad + CGFloat(minutes) / 60 * hour }
+    static let standard = HourGrid(hour: hour, pad: pad)
 }
 
 struct DayView: View {
@@ -48,6 +47,9 @@ struct DayView: View {
     var onToggleOverview: (() -> Void)?
     /// Saves a goal's objective for a week; returns an error to show, or nil.
     var setObjective: ((_ goalId: String, _ weekStart: String, _ text: String) async -> String?)?
+    /// How tall an hour is in the day and in the week, as last pinched; without them each keeps its own.
+    var dayHour: Binding<CGFloat>?
+    var weekHour: Binding<CGFloat>?
 
     @State private var drag = TaskDragState()
     /// Time drawn on the week and waiting to be named.
@@ -61,7 +63,8 @@ struct DayView: View {
          showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
          panel: BlockPanelActions? = nil, isWeek: Bool = false, onSetWeek: ((Bool) -> Void)? = nil,
          showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
-         setObjective: ((String, String, String) async -> String?)? = nil) {
+         setObjective: ((String, String, String) async -> String?)? = nil,
+         dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -78,6 +81,8 @@ struct DayView: View {
         self.showsOverview = showsOverview
         self.onToggleOverview = onToggleOverview
         self.setObjective = setObjective
+        self.dayHour = dayHour
+        self.weekHour = weekHour
         _editing = State(initialValue: editing)
     }
 
@@ -198,6 +203,7 @@ struct DayView: View {
                     actions: actions,
                     creating: $weekCreating,
                     selectedId: selected?.id,
+                    storedHour: weekHour,
                     onOpenBlock: { id in if panel != nil { selectedId.wrappedValue = id } },
                     onOpenDay: { day in
                         weekCreating = nil
@@ -238,7 +244,8 @@ struct DayView: View {
             TimelineScroll(
                 data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
                 selectedId: selected?.id,
-                onSelect: panel != nil && width >= 1024 ? { selectedId.wrappedValue = $0 } : nil
+                onSelect: panel != nil && width >= 1024 ? { selectedId.wrappedValue = $0 } : nil,
+                storedHour: dayHour
             )
         }
         .background(Theme.card, in: .rect(cornerRadius: 16))
@@ -628,7 +635,8 @@ struct FlowLayout: Layout {
 
 // MARK: - Timeline
 
-/// The day's hours, scrolled to about an hour before now when it opens on today.
+/// The day's hours, scrolled to about an hour before now when it opens on today. Pinch to make
+/// the hours taller or shorter.
 private struct TimelineScroll: View {
     let data: CalendarData
     let offset: Int
@@ -638,6 +646,8 @@ private struct TimelineScroll: View {
     @Binding var editing: BlockEditing?
     let selectedId: String?
     let onSelect: ((String) -> Void)?
+    /// How tall an hour is, kept between visits; without it the timeline keeps its own.
+    let storedHour: Binding<CGFloat>?
     @Environment(\.taskDrag) private var drag
     @State private var position = ScrollPosition()
     @State private var scrollY: CGFloat = 0
@@ -645,9 +655,21 @@ private struct TimelineScroll: View {
     @State private var viewport: CGFloat = 0
     /// The day it last opened on its focus, so it does so once the scroll view has a size.
     @State private var focusedOffset: Int?
+    @State private var ownHour = DayGrid.hour
+    /// The hour height mid-pinch, saved when it ends.
+    @State private var pinchHour: CGFloat?
+    /// Where a pinch last scrolled to, applied again once the content has its new height.
+    @State private var pinchY: CGFloat?
 
     /// How close to the top or bottom edge a dragged task starts it scrolling.
     private static let scrollEdge: CGFloat = 56
+
+    private var range: ClosedRange<CGFloat> { HourGrid.range(viewport: viewport, pad: DayGrid.pad, most: DayGrid.maxHour) }
+
+    private var grid: HourGrid {
+        let hour = pinchHour ?? storedHour?.wrappedValue ?? ownHour
+        return HourGrid(hour: min(max(hour, range.lowerBound), range.upperBound), pad: DayGrid.pad)
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -656,6 +678,20 @@ private struct TimelineScroll: View {
                     data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
                     selectedId: selectedId, onSelect: onSelect, proxy: proxy
                 )
+                .environment(\.dayGrid, grid)
+                .modifier(HourPinch(
+                    grid: grid, range: range, scrollY: scrollY, viewport: viewport,
+                    onChange: { hour, y in
+                        pinchHour = hour
+                        pinchY = y
+                        position.scrollTo(y: y)
+                    },
+                    onEnd: {
+                        guard let pinchHour else { return }
+                        if let storedHour { storedHour.wrappedValue = pinchHour } else { ownHour = pinchHour }
+                        self.pinchHour = nil
+                    }
+                ))
             }
             .scrollPosition($position)
             .onScrollGeometryChange(for: [CGFloat].self) {
@@ -664,6 +700,11 @@ private struct TimelineScroll: View {
                 scrollY = value[0]
                 maxScrollY = max(value[1], 0)
                 viewport = value[2]
+                if let y = pinchY {
+                    // The scroll may have been held to the old height; once the new one is in, go there.
+                    pinchY = nil
+                    if abs(scrollY - y) > 0.5 { position.scrollTo(y: y) }
+                }
                 if focusedOffset != offset { scrollToFocus() }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.viewportFrame = $0 }
@@ -702,8 +743,7 @@ private struct TimelineScroll: View {
         guard viewport > 0 else { return }
         focusedOffset = offset
         let focus = offset == 0 ? CalendarDayMath.minutes(now) : data.wakeTime
-        let y = DayGrid.y(max(0, focus / 60 - 1) * 60) - DayGrid.pad
-        position.scrollTo(y: min(max(y, 0), max(DayGrid.height - viewport, 0)))
+        position.scrollTo(y: grid.scrollY(keeping: CGFloat(max(0, focus / 60 - 1) * 60), at: DayGrid.pad, viewport: viewport))
     }
 }
 
@@ -768,6 +808,12 @@ struct DayTimeline: View {
     @State private var width: CGFloat = 0
     @Environment(\.overlays) private var overlays
     @Environment(\.taskDrag) private var drag
+    @Environment(\.dayGrid) private var grid
+
+    /// How close (in points) an hour's label can come to the now line's before it hides.
+    private static let nowClearance: CGFloat = 40
+    /// How tall sleep needs to be for its label: 45 minutes at the usual hour height.
+    private static let sleepLabelHeight: CGFloat = 132
 
     init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil,
          editing: Binding<BlockEditing?> = .constant(nil), selectedId: String? = nil, onSelect: ((String) -> Void)? = nil,
@@ -817,7 +863,7 @@ struct DayTimeline: View {
         ZStack(alignment: .topLeading) {
             // Hour lines and labels
             ForEach(0...24, id: \.self) { hour in
-                let nearNow = isToday && abs(hour * 60 - nowMinutes) < 14
+                let nearNow = isToday && abs(grid.y(hour * 60) - grid.y(nowMinutes)) < Self.nowClearance
                 ZStack(alignment: .topLeading) {
                     Text(hour < 24 ? clock.formatHour(hour) : "")
                         .font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted)
@@ -826,22 +872,22 @@ struct DayTimeline: View {
                         .opacity(nearNow ? 0 : 1)
                     Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.leading, DayGrid.gutter)
                 }
-                .offset(y: DayGrid.y(hour * 60))
+                .offset(y: grid.y(hour * 60))
                 .allowsHitTesting(false)
             }
 
             // Sleep
             ForEach(CalendarDayMath.sleepSpans(sleepStart: data.sleepStart, wakeTime: data.wakeTime), id: \.lowerBound) { span in
-                SleepShade(showsLabel: span.upperBound - span.lowerBound >= 45)
-                    .frame(height: DayGrid.y(span.upperBound) - DayGrid.y(span.lowerBound))
+                SleepShade(showsLabel: grid.height(span.upperBound - span.lowerBound) >= Self.sleepLabelHeight)
+                    .frame(height: grid.y(span.upperBound) - grid.y(span.lowerBound))
                     .padding(.leading, DayGrid.gutter)
-                    .offset(y: DayGrid.y(span.lowerBound))
+                    .offset(y: grid.y(span.lowerBound))
             }
 
             // Time that's already gone
             if let pastUntil {
                 Rectangle().fill(Theme.foreground(0.03))
-                    .frame(height: DayGrid.y(pastUntil) - DayGrid.pad)
+                    .frame(height: grid.y(pastUntil) - DayGrid.pad)
                     .padding(.leading, DayGrid.gutter)
                     .offset(y: DayGrid.pad)
                     .allowsHitTesting(false)
@@ -880,10 +926,10 @@ struct DayTimeline: View {
                         onDragEnd: { edge in endBlockDrag(block, segment, edge: edge) },
                         onMenu: { anchor in showMenu(block, segment, anchor: anchor) }
                     )
-                    .frame(height: max(DayGrid.y(end) - DayGrid.y(start) - 2, 14))
+                    .frame(height: max(grid.y(end) - grid.y(start) - 2, 14))
                     .padding(.leading, DayGrid.gutter + 4)
                     .padding(.trailing, 8)
-                    .offset(y: DayGrid.y(start) + 1)
+                    .offset(y: grid.y(start) + 1)
                     .zIndex(moving != nil ? 1 : 0)
                 }
             }
@@ -891,10 +937,10 @@ struct DayTimeline: View {
             // The block being drawn
             if let draft {
                 DraftBlock(label: clock.formatRange(draft.start, draft.end))
-                    .frame(height: DayGrid.y(draft.end) - DayGrid.y(draft.start) - 2)
+                    .frame(height: grid.y(draft.end) - grid.y(draft.start) - 2)
                     .padding(.leading, DayGrid.gutter + 4)
                     .padding(.trailing, 8)
-                    .offset(y: DayGrid.y(draft.start) + 1)
+                    .offset(y: grid.y(draft.start) + 1)
                     .zIndex(2)
             }
 
@@ -902,16 +948,16 @@ struct DayTimeline: View {
             if let placing = drag?.placing, placing.moved, let start = placing.start {
                 let end = start + placing.minutes
                 DropPreview(title: placing.title, color: data.goal(placing.goalId)?.color ?? "slate", start: start, end: end, clock: clock)
-                    .frame(height: max(DayGrid.y(end) - DayGrid.y(start) - 2, 14))
+                    .frame(height: max(grid.y(end) - grid.y(start) - 2, 14))
                     .padding(.leading, DayGrid.gutter + 4)
                     .padding(.trailing, 8)
-                    .offset(y: DayGrid.y(start) + 1)
+                    .offset(y: grid.y(start) + 1)
                     .zIndex(2)
             }
 
             // Now
             if isToday {
-                NowLine(label: clock.format(minutes: nowMinutes)).offset(y: DayGrid.y(nowMinutes))
+                NowLine(label: clock.format(minutes: nowMinutes)).offset(y: grid.y(nowMinutes))
                     .zIndex(3)
             }
 
@@ -920,10 +966,11 @@ struct DayTimeline: View {
                     .zIndex(4)
             }
         }
-        .frame(height: DayGrid.height, alignment: .top)
+        .frame(height: grid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.timelineFrame = $0 }
+        .onChange(of: grid, initial: true) { drag?.grid = grid }
         .onChange(of: offset) { if editing?.day != offset { editing = nil } }
         .onChange(of: editing) { if editing != nil { scrollToPopover() } }
     }
@@ -940,11 +987,6 @@ struct DayTimeline: View {
         return nil
     }
 
-    private static func minutes(at y: CGFloat) -> Int {
-        let raw = Int(((y - DayGrid.pad) / DayGrid.hour * 60).rounded())
-        return min(max(raw, 0), CalendarDayMath.dayMinutes)
-    }
-
     private var drawGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
@@ -955,11 +997,11 @@ struct DayTimeline: View {
                         drawing = Drawing(from: 0, to: 0, dismissing: true)
                         return
                     }
-                    let m = Self.minutes(at: value.startLocation.y)
+                    let m = grid.minutes(at: value.startLocation.y)
                     drawing = Drawing(from: m, to: m)
                 }
                 guard var current = drawing, !current.dismissing else { return }
-                current.to = Self.minutes(at: value.location.y)
+                current.to = grid.minutes(at: value.location.y)
                 current.moved = current.moved || abs(value.translation.height) > 4
                 drawing = current
             }
@@ -990,7 +1032,7 @@ struct DayTimeline: View {
         var current = dragging ?? BlockDrag(blockId: segment.blockId, edge: edge, start: segment.start, end: segment.end)
         let step = CalendarDayMath.step
         current.moved = current.moved || abs(dy) > 4
-        let raw = Int((dy / DayGrid.hour * 60 / CGFloat(step)).rounded()) * step
+        let raw = Int((dy / grid.hour * 60 / CGFloat(step)).rounded()) * step
         // Keep it within the day, and at least 15 minutes long when changing its length.
         let bounds: (Int, Int) = switch edge {
         case .start: (-current.start, current.end - step - current.start)
@@ -1078,7 +1120,9 @@ struct DayTimeline: View {
         let intention = if case .edit(_, let intention) = editing.mode { intention } else { false }
         let weekday = CalendarDayMath.midnight(editing.day, from: now)
             .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
-        let above = DayGrid.y(editing.end) + 8 + BlockPopover.estimatedHeight > DayGrid.height
+        let top = grid.y(editing.start)
+        let bottom = grid.y(editing.end)
+        let above = bottom + 8 + BlockPopover.estimatedHeight > grid.height
         BlockPopover(
             goals: data.goals,
             goalId: editing.goalId,
@@ -1090,7 +1134,7 @@ struct DayTimeline: View {
         )
         .id(editing.key)
         .frame(width: max(min(320, width - DayGrid.gutter - 24), 240))
-        .alignmentGuide(.top) { d in above ? d.height - (DayGrid.y(editing.start) - 8) : -(DayGrid.y(editing.end) + 8) }
+        .alignmentGuide(.top) { d in above ? d.height - (top - 8) : -(bottom + 8) }
         .alignmentGuide(.leading) { _ in -(DayGrid.gutter + 12) }
         .id(Self.popoverID)
     }
@@ -1270,11 +1314,12 @@ struct BlockCardView: View {
 
     /// Height a block needs for its title and time on two lines; shorter ones get a single line.
     private static let twoLines: CGFloat = 48
+    @Environment(\.dayGrid) private var grid
 
     private var color: String { goal?.color ?? "slate" }
     private var title: String { block.title ?? goal?.title ?? "Protected time" }
     private var time: String { clock.formatRange(start, end) }
-    private var isShort: Bool { CGFloat(end - start) / 60 * DayGrid.hour < Self.twoLines }
+    private var isShort: Bool { grid.height(end - start) < Self.twoLines }
 
     var body: some View {
         GeometryReader { geometry in

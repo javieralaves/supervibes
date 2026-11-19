@@ -7,22 +7,20 @@ import SwiftUI
  * or bottom edge to change its length; click a block to open it, or a day to step into it.
  */
 
-/// The week's geometry: hours a little shorter than the day's, so blocks stay readable as the grid scrolls.
+/// The week's geometry: hours a little shorter than the day's, so blocks stay readable as the grid
+/// scrolls. Pinching changes how tall an hour is (`HourGrid`).
 enum WeekGrid {
+    /// Height of one hour, before any pinching.
     static let hour: CGFloat = 150
+    /// Pinching in stops at twice that.
+    static let maxHour = hour * 2
     static let pad: CGFloat = 8
     static let gutter: CGFloat = 52
-    static let height = y(CalendarDayMath.dayMinutes) + pad
+    static let standard = HourGrid(hour: hour, pad: pad)
     /// Planned-for-the-day tasks shown per day before "+N more".
     static let maxAnytime = 3
     /// How wide the popover is beside a day.
     static let popoverWidth: CGFloat = 300
-
-    static func y(_ minutes: Int) -> CGFloat { pad + CGFloat(minutes) / 60 * hour }
-
-    static func minutes(at y: CGFloat) -> Int {
-        min(max(Int(((y - pad) / hour * 60).rounded()), 0), CalendarDayMath.dayMinutes)
-    }
 }
 
 struct WeekView: View {
@@ -35,6 +33,8 @@ struct WeekView: View {
     /// Time drawn and waiting to be named.
     @Binding var creating: BlockEditing?
     var selectedId: String?
+    /// How tall an hour is, kept between visits; without it the grid keeps its own.
+    var storedHour: Binding<CGFloat>?
     var onOpenBlock: (String) -> Void = { _ in }
     var onOpenDay: (Int) -> Void = { _ in }
     /// The grid scrolls; snapshots lay all of it out instead.
@@ -44,14 +44,29 @@ struct WeekView: View {
     @State private var drawing: Drawing?
     @State private var dragging: WeekDrag?
     @State private var position = ScrollPosition()
+    @State private var scrollY: CGFloat = 0
     @State private var viewport: CGFloat = 0
     /// The week it last opened on its focus, so it does so once the scroll view has a size.
     @State private var focusedMonday: Int?
+    @State private var ownHour = WeekGrid.hour
+    /// The hour height mid-pinch, saved when it ends.
+    @State private var pinchHour: CGFloat?
+    /// Where a pinch last scrolled to, applied again once the content has its new height.
+    @State private var pinchY: CGFloat?
     @Environment(\.overlays) private var overlays
 
     private var days: [Int] { Array(monday...(monday + 6)) }
     private var columnWidth: CGFloat { max((width - WeekGrid.gutter) / 7, 1) }
     private var thisWeek: Bool { monday <= 0 && monday + 6 >= 0 }
+
+    private var range: ClosedRange<CGFloat> { HourGrid.range(viewport: viewport, pad: WeekGrid.pad, most: WeekGrid.maxHour) }
+
+    /// The grid at the height it's pinched to; laid out whole (snapshots), at the usual height.
+    private var grid: HourGrid {
+        guard scrolls else { return WeekGrid.standard }
+        let hour = pinchHour ?? storedHour?.wrappedValue ?? ownHour
+        return HourGrid(hour: min(max(hour, range.lowerBound), range.upperBound), pad: WeekGrid.pad)
+    }
 
     /// Time being drawn on one day.
     private struct Drawing {
@@ -94,16 +109,35 @@ struct WeekView: View {
             header(strips: strips)
             if scrolls {
                 ScrollView {
-                    grid
+                    hours
+                        .modifier(HourPinch(
+                            grid: grid, range: range, scrollY: scrollY, viewport: viewport,
+                            onChange: { hour, y in
+                                pinchHour = hour
+                                pinchY = y
+                                position.scrollTo(y: y)
+                            },
+                            onEnd: {
+                                guard let pinchHour else { return }
+                                if let storedHour { storedHour.wrappedValue = pinchHour } else { ownHour = pinchHour }
+                                self.pinchHour = nil
+                            }
+                        ))
                 }
                 .scrollPosition($position)
-                .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
-                    viewport = height
+                .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentOffset.y, $0.containerSize.height] } action: { _, value in
+                    scrollY = value[0]
+                    viewport = value[1]
+                    if let y = pinchY {
+                        // The scroll may have been held to the old height; once the new one is in, go there.
+                        pinchY = nil
+                        if abs(scrollY - y) > 0.5 { position.scrollTo(y: y) }
+                    }
                     if focusedMonday != monday { scrollToFocus() }
                 }
                 .onChange(of: monday) { scrollToFocus() }
             } else {
-                grid
+                hours
             }
         }
         .background(Theme.card, in: .rect(cornerRadius: 16))
@@ -118,8 +152,7 @@ struct WeekView: View {
         guard viewport > 0 else { return }
         focusedMonday = monday
         let focus = thisWeek ? CalendarDayMath.minutes(now) : data.wakeTime
-        let y = WeekGrid.y(max(0, focus / 60 - 1) * 60) - WeekGrid.pad
-        position.scrollTo(y: min(max(y, 0), max(WeekGrid.height - viewport, 0)))
+        position.scrollTo(y: grid.scrollY(keeping: CGFloat(max(0, focus / 60 - 1) * 60), at: WeekGrid.pad, viewport: viewport))
     }
 
     // MARK: Header
@@ -161,7 +194,9 @@ struct WeekView: View {
 
     // MARK: Grid
 
-    private var grid: some View {
+    /// The hours, the days' columns, their blocks and the now line.
+    private var hours: some View {
+        let grid = self.grid
         let nowMinutes = CalendarDayMath.minutes(now)
         let segments = data.blocks.flatMap { DaySegment.of($0, today: now) }
             .filter { $0.day >= monday && $0.day <= monday + 6 }
@@ -177,7 +212,7 @@ struct WeekView: View {
                     }
                     Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.leading, WeekGrid.gutter)
                 }
-                .offset(y: WeekGrid.y(hour * 60))
+                .offset(y: grid.y(hour * 60))
                 .allowsHitTesting(false)
             }
 
@@ -199,8 +234,8 @@ struct WeekView: View {
             // Time being drawn, or drawn and waiting to be named
             if let draft {
                 DraftOutline(label: clock.formatRange(draft.start, draft.end))
-                    .frame(width: columnWidth - 4, height: WeekGrid.y(draft.end) - WeekGrid.y(draft.start) - 2)
-                    .offset(x: x(of: draft.day) + 2, y: WeekGrid.y(draft.start) + 1)
+                    .frame(width: columnWidth - 4, height: grid.y(draft.end) - grid.y(draft.start) - 2)
+                    .offset(x: x(of: draft.day) + 2, y: grid.y(draft.start) + 1)
                     .zIndex(2)
             }
 
@@ -211,7 +246,7 @@ struct WeekView: View {
                     Circle().fill(Color(nsColor: .rgb(0xef4444))).frame(width: 8, height: 8).offset(x: -4)
                 }
                 .frame(width: columnWidth, height: 8)
-                .offset(x: x(of: 0), y: WeekGrid.y(nowMinutes) - 4)
+                .offset(x: x(of: 0), y: grid.y(nowMinutes) - 4)
                 .allowsHitTesting(false)
                 .zIndex(3)
             }
@@ -220,7 +255,7 @@ struct WeekView: View {
                 popover(creating).zIndex(4)
             }
         }
-        .frame(height: WeekGrid.height, alignment: .top)
+        .frame(height: grid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -241,12 +276,12 @@ struct WeekView: View {
         return ZStack(alignment: .topLeading) {
             ForEach(CalendarDayMath.sleepSpans(sleepStart: data.sleepStart, wakeTime: data.wakeTime), id: \.lowerBound) { span in
                 Hatch(color: Theme.foreground(0.06), spacing: 7)
-                    .frame(height: WeekGrid.y(span.upperBound) - WeekGrid.y(span.lowerBound))
-                    .offset(y: WeekGrid.y(span.lowerBound))
+                    .frame(height: grid.y(span.upperBound) - grid.y(span.lowerBound))
+                    .offset(y: grid.y(span.lowerBound))
             }
             if let pastUntil {
                 Rectangle().fill(Theme.foreground(0.03))
-                    .frame(height: WeekGrid.y(pastUntil) - WeekGrid.pad)
+                    .frame(height: grid.y(pastUntil) - WeekGrid.pad)
                     .offset(y: WeekGrid.pad)
             }
         }
@@ -272,11 +307,11 @@ struct WeekView: View {
                         drawing = Drawing(day: day, from: 0, to: 0, dismissing: true)
                         return
                     }
-                    let m = WeekGrid.minutes(at: value.startLocation.y)
+                    let m = grid.minutes(at: value.startLocation.y)
                     drawing = Drawing(day: day, from: m, to: m)
                 }
                 guard var current = drawing, !current.dismissing else { return }
-                current.to = WeekGrid.minutes(at: value.location.y)
+                current.to = grid.minutes(at: value.location.y)
                 current.moved = current.moved || abs(value.translation.height) > 4
                 drawing = current
             }
@@ -297,7 +332,9 @@ struct WeekView: View {
         let left = index < 5
             ? WeekGrid.gutter + columnWidth * CGFloat(index + 1) + 6
             : WeekGrid.gutter + columnWidth * CGFloat(index) - WeekGrid.popoverWidth - 6
-        let above = WeekGrid.y(editing.start) + BlockPopover.estimatedHeight > WeekGrid.height
+        let top = grid.y(editing.start)
+        let bottom = grid.y(editing.end)
+        let above = top + BlockPopover.estimatedHeight > grid.height
         let weekday = CalendarDayMath.midnight(editing.day, from: now)
             .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
         return BlockPopover(
@@ -314,7 +351,7 @@ struct WeekView: View {
         )
         .id(editing.key)
         .frame(width: WeekGrid.popoverWidth)
-        .alignmentGuide(.top) { d in above ? d.height - WeekGrid.y(editing.end) : -WeekGrid.y(editing.start) }
+        .alignmentGuide(.top) { d in above ? d.height - bottom : -top }
         .alignmentGuide(.leading) { _ in -left }
     }
 
@@ -335,7 +372,7 @@ struct WeekView: View {
         let segmentEnd = CalendarDayMath.midnight(segment.day, from: now).addingTimeInterval(Double(segment.end) * 60)
         let startsHere = segmentStart == block.startsAt
         let endsHere = segmentEnd == block.endsAt
-        let height = max(WeekGrid.y(end) - WeekGrid.y(start) - 2, 6)
+        let height = max(grid.y(end) - grid.y(start) - 2, 6)
 
         return WeekBlock(
             block: block,
@@ -355,7 +392,7 @@ struct WeekView: View {
             onOpen: { onOpenBlock(block.id) }
         )
         .frame(width: columnWidth - 4, height: height)
-        .offset(x: x(of: day) + 2, y: WeekGrid.y(start) + 1)
+        .offset(x: x(of: day) + 2, y: grid.y(start) + 1)
         .zIndex(drag != nil ? 1 : 0)
     }
 
@@ -364,7 +401,7 @@ struct WeekView: View {
         var current = dragging ?? WeekDrag(blockId: segment.blockId, day: segment.day, edge: edge, start: segment.start, end: segment.end)
         let step = CalendarDayMath.step
         current.moved = current.moved || edge != .move || hypot(translation.width, translation.height) > 4
-        let raw = Int((translation.height / WeekGrid.hour * 60 / CGFloat(step)).rounded()) * step
+        let raw = Int((translation.height / grid.hour * 60 / CGFloat(step)).rounded()) * step
         // Snapped, kept within its day, and at least a step long when changing its length.
         let bounds: (Int, Int) = switch edge {
         case .start: (-current.start, current.end - step - current.start)

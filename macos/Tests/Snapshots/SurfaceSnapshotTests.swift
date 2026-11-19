@@ -238,30 +238,30 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testDayTimeline() {
         // 6 AM to 3 PM of the timeline, the way it opens on a morning.
-        let top = DayGrid.y(6 * 60)
+        let top = DayGrid.standard.y(6 * 60)
         assertAppearances(
             DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour)
                 .frame(width: 736)
                 .offset(y: -top)
-                .frame(width: 736, height: DayGrid.y(15 * 60) - top, alignment: .topLeading)
+                .frame(width: 736, height: DayGrid.standard.y(15 * 60) - top, alignment: .topLeading)
                 .clipped()
                 .background(Theme.card),
-            width: 736, height: DayGrid.y(15 * 60) - top
+            width: 736, height: DayGrid.standard.y(15 * 60) - top
         )
     }
 
     func testDayTimelinePopover() {
         // Protecting 3–4 PM: the draft with the popover under it.
-        let top = DayGrid.y(14 * 60)
+        let top = DayGrid.standard.y(14 * 60)
         let editing = BlockEditing(mode: .create, day: 0, start: 15 * 60, end: 16 * 60, goalId: Fixtures.calendar.goals[0].id, title: nil)
         assertAppearances(
             DayTimeline(data: Fixtures.calendar, offset: 0, now: now, clock: .twelveHour, editing: .constant(editing))
                 .frame(width: 736)
                 .offset(y: -top)
-                .frame(width: 736, height: DayGrid.y(18 * 60) - top, alignment: .topLeading)
+                .frame(width: 736, height: DayGrid.standard.y(18 * 60) - top, alignment: .topLeading)
                 .clipped()
                 .background(Theme.card),
-            width: 736, height: DayGrid.y(18 * 60) - top
+            width: 736, height: DayGrid.standard.y(18 * 60) - top
         )
     }
 
@@ -303,15 +303,15 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testWeekGridMorning() {
         // 7 AM to 6 PM: the week's blocks, today's under way, the now line.
-        let top = WeekGrid.y(7 * 60)
+        let top = WeekGrid.standard.y(7 * 60)
         assertAppearances(
             WeekView(data: Fixtures.calendar, monday: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
-                .frame(width: 1100, height: 260 + WeekGrid.height)
+                .frame(width: 1100, height: 260 + WeekGrid.standard.height)
                 .offset(y: -top)
-                .frame(width: 1100, height: WeekGrid.y(18 * 60) - top, alignment: .topLeading)
+                .frame(width: 1100, height: WeekGrid.standard.y(18 * 60) - top, alignment: .topLeading)
                 .clipped()
                 .background(Theme.background),
-            width: 1100, height: WeekGrid.y(18 * 60) - top
+            width: 1100, height: WeekGrid.standard.y(18 * 60) - top
         )
     }
 

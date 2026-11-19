@@ -302,6 +302,9 @@ private struct CalendarScreen: View {
     @AppStorage("sv-calendar-view") private var view = "day"
     /// The week's overview: open unless closed, remembered.
     @AppStorage("sv-calendar-week-panel") private var weekPanel = "on"
+    /// How tall an hour is in the day and in the week, as last pinched, remembered.
+    @AppStorage("sv-calendar-day-hour") private var dayHour = Double(DayGrid.hour)
+    @AppStorage("sv-calendar-week-hour") private var weekHour = Double(WeekGrid.hour)
     @State private var selectedId: String?
     @State private var width: CGFloat = 0
     let shell: ShellModel
@@ -362,7 +365,9 @@ private struct CalendarScreen: View {
                     onSetWeek: { view = $0 ? "week" : "day" },
                     showsOverview: weekPanel != "off",
                     onToggleOverview: { weekPanel = weekPanel == "off" ? "on" : "off" },
-                    setObjective: model.setObjective(_:weekStart:_:)
+                    setObjective: model.setObjective(_:weekStart:_:),
+                    dayHour: Binding(get: { CGFloat(dayHour) }, set: { dayHour = Double($0) }),
+                    weekHour: Binding(get: { CGFloat(weekHour) }, set: { weekHour = Double($0) })
                 )
                 .focusable()
                 .focusEffectDisabled()

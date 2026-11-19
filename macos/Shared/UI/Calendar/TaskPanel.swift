@@ -40,6 +40,8 @@ final class TaskDragState {
     @ObservationIgnored var timelineFrame: CGRect = .zero
     @ObservationIgnored var viewportFrame: CGRect = .zero
     @ObservationIgnored var stripFrame: CGRect = .zero
+    /// The timeline's geometry, at the height it's pinched to.
+    @ObservationIgnored var grid = DayGrid.standard
     /// Called with the drag when it's let go past the threshold.
     @ObservationIgnored var onDrop: (Placing) -> Void = { _ in }
 
@@ -62,7 +64,7 @@ final class TaskDragState {
         guard var current = placing, current.moved else { return }
         let p = current.location
         if p.x >= timelineFrame.minX + DayGrid.gutter, p.x <= viewportFrame.maxX, p.y >= viewportFrame.minY, p.y <= viewportFrame.maxY {
-            let raw = Int(((p.y - timelineFrame.minY - DayGrid.pad) / DayGrid.hour * 60).rounded())
+            let raw = Int(((p.y - timelineFrame.minY - grid.pad) / grid.hour * 60).rounded())
             current.start = min(max(CalendarDayMath.snapDown(raw), 0), CalendarDayMath.dayMinutes - current.minutes)
         } else {
             current.start = nil
@@ -124,9 +126,10 @@ struct DropPreview: View {
     let start: Int
     let end: Int
     let clock: Clock
+    @Environment(\.dayGrid) private var grid
 
     var body: some View {
-        let short = CGFloat(end - start) / 60 * DayGrid.hour < 48
+        let short = grid.height(end - start) < 48
         RoundedRectangle(cornerRadius: 8)
             .fill(GoalPalette.mix(color, light: 0.03, dark: 0.03))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(GoalPalette.color(color).opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
