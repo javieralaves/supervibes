@@ -15,6 +15,16 @@ struct Block: Identifiable, Hashable, Sendable, Codable {
     var aim: String? = nil
     /// The plan prepared for the session, if there is one.
     var agenda: SessionAgenda? = nil
+    /// The task the block schedules, for an intention: the task is then its aim.
+    var taskId: String? = nil
+    /// Protected time nobody has titled, so it shows the goal's title. Optional so blocks the
+    /// widget saved before this existed still load.
+    var untitled: Bool? = nil
+
+    var isTask: Bool { taskId != nil }
+
+    /// Nothing says yet what the session is for: no task, no title, no aim.
+    var needsFocus: Bool { !isTask && untitled == true && aim == nil }
 
     func progress(at now: Date) -> Double {
         let total = end.timeIntervalSince(start)

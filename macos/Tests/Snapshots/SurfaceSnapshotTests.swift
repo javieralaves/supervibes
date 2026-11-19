@@ -23,6 +23,22 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testMenuBarStartingSoon() {
+        // Eight minutes before the next block, with nothing under way.
+        let soon = now.addingTimeInterval(52 * 60)
+        let upcoming = Fixtures.blocks(around: now).filter { $0.start > soon }
+        assertAppearances(MenuBarContent(current: nil, upcoming: upcoming, now: soon), width: 300)
+    }
+
+    func testMenuBarSuggestedFocus() {
+        let block = Fixtures.current(at: now)!
+        let untitled = Block(id: block.id, title: block.goal, goal: "Protected time", start: block.start, end: block.end, tint: block.tint, untitled: true)
+        assertAppearances(
+            SessionPlanView(block: untitled, suggestion: Fixtures.focusSuggestion).padding(16),
+            width: 300
+        )
+    }
+
     func testMenuBarWithNothingScheduled() {
         assertAppearances(MenuBarContent(current: nil, upcoming: [], now: now), width: 300)
     }

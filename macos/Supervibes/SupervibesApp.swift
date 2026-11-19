@@ -107,6 +107,11 @@ private struct MenuBarRoot: View {
             appName: appName,
             taskError: model.taskError,
             onSetTaskDone: model.setTaskDone,
+            sessionActions: SessionPlanActions(
+                setAim: model.setAim,
+                plan: model.planSession,
+                suggestFocus: { await model.suggestFocus($0, instead: $1) }
+            ),
             onOpen: {
                 openWindow(id: "main")
                 NSApp.activate()

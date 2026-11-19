@@ -200,6 +200,96 @@ extension AppModel {
         share()
     }
 
+    /// Saves what the person wants out of a session, from the menu bar; empty clears it. Shows the
+    /// change straight away and puts it back if the server says no.
+    func setAim(_ blockId: String, _ text: String) async -> String? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let before = blocks.first(where: { $0.id == blockId }), value != (before.aim ?? "") else { return nil }
+        updateBlock(blockId) { $0.aim = value.isEmpty ? nil : value }
+        var message: String?
+        do {
+            switch try await client.setBlockDescription(path: .init(blockId: blockId), body: .json(.init(description: value))) {
+            case .noContent: break
+            case .badRequest(let bad): message = (try? bad.body.json.error.message) ?? "Couldn’t save that."
+            case .notFound(let gone): message = (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .unauthorized: await auth.sessionEnded()
+            case .undocumented(let status, _): message = "Couldn’t save that (the server answered \(status))."
+            }
+        } catch {
+            message = "Couldn’t save that. Check your connection."
+        }
+        if message != nil { updateBlock(blockId) { $0.aim = before.aim } }
+        return message
+    }
+
+    /// Prepares a session's agenda from the menu bar.
+    func planSession(_ blockId: String) async -> String? {
+        guard let block = blocks.first(where: { $0.id == blockId }) else { return "That block doesn’t exist anymore." }
+        do {
+            switch try await client.prepareAgenda(path: .init(blockId: blockId), body: .json(.init(when: Self.when(block)))) {
+            case .ok(let ok):
+                let agenda = try ok.body.json
+                updateBlock(blockId) {
+                    // The tasks it draws on are open ones; the next fetch says otherwise if that's changed.
+                    $0.agenda = SessionAgenda(text: agenda.text, tasks: agenda.tasks.map { .init(id: $0.id, title: $0.title, minutes: $0.minutes, done: false) })
+                }
+                return nil
+            case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Couldn’t prepare an agenda."
+            case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That block doesn’t exist anymore."
+            case .badGateway(let failed): return (try? failed.body.json.error.message) ?? "Couldn’t prepare an agenda right now. Try again."
+            case .unauthorized:
+                await auth.sessionEnded()
+                return nil
+            case .undocumented(let status, _): return "Couldn’t prepare an agenda (the server answered \(status))."
+            }
+        } catch {
+            return "Couldn’t reach Supervibes. Check your connection."
+        }
+    }
+
+    /// Suggests an aim for a session that doesn't say what it's for yet. Nothing is saved.
+    func suggestFocus(_ blockId: String, instead: [String]) async -> FocusOutcome {
+        guard let block = blocks.first(where: { $0.id == blockId }) else { return .failed("That block doesn’t exist anymore.") }
+        do {
+            switch try await client.suggestFocus(
+                path: .init(blockId: blockId),
+                body: .json(.init(when: Self.when(block), instead: instead.isEmpty ? nil : instead))
+            ) {
+            case .ok(let ok):
+                let body = try ok.body.json
+                return .suggested(FocusSuggestion(aim: body.aim, why: body.why))
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t suggest a focus.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That block doesn’t exist anymore.")
+            case .badGateway(let failed): return .failed((try? failed.body.json.error.message) ?? "Couldn’t suggest a focus right now. Try again.")
+            case .unauthorized:
+                await auth.sessionEnded()
+                return .failed("You’ve been signed out.")
+            case .undocumented(let status, _): return .failed("Couldn’t suggest a focus (the server answered \(status)).")
+            }
+        } catch {
+            return .failed("Couldn’t reach Supervibes. Check your connection.")
+        }
+    }
+
+    /// How a block reads for the agenda, as the calendar says it: "Wednesday, November 18 (today), 3:00 PM–4:30 PM".
+    private static func when(_ block: Block) -> String {
+        let en = Locale(identifier: "en_US")
+        let date = block.start.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(en))
+        let today = Calendar.current.isDateInToday(block.start) ? " (today)" : ""
+        let time = Date.FormatStyle(date: .omitted, time: .shortened).locale(en)
+        return "\(date)\(today), \(block.start.formatted(time))–\(block.end.formatted(time))"
+    }
+
+    private func updateBlock(_ blockId: String, _ change: (inout Block) -> Void) {
+        blocks = blocks.map { block in
+            guard block.id == blockId else { return block }
+            var block = block
+            change(&block)
+            return block
+        }
+        share()
+    }
+
     /// Hands today's blocks to the widget, and has it redraw when they've changed.
     private func share() {
         notifier.blocksChanged(blocks)
@@ -231,7 +321,9 @@ extension Block {
                     text: agenda.text,
                     tasks: agenda.tasks.map { .init(id: $0.id, title: $0.title, minutes: $0.minutes, done: $0.done) }
                 )
-            }
+            },
+            taskId: block.taskId,
+            untitled: block.title == nil
         )
     }
 }

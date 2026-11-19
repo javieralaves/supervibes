@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The popover under the menu bar item: the current block and what it's for, what's next, and a
-/// way into the app.
+/// way into the app. Right before a session is when its aim is clearest, so a block starting soon
+/// gets the same place to set it as the one under way.
 struct MenuBarContent: View {
     let current: Block?
     let upcoming: [Block]
@@ -12,7 +13,18 @@ struct MenuBarContent: View {
     /// Why checking off a task didn't save.
     var taskError: String?
     var onSetTaskDone: (_ taskId: String, _ done: Bool) -> Void = { _, _ in }
+    /// Setting a session's aim and planning it; nil where nothing can be saved (previews, snapshots).
+    var sessionActions: SessionPlanActions?
     var onOpen: () -> Void = {}
+
+    /// How soon a session counts as about to start.
+    static let soonLead: TimeInterval = 15 * 60
+
+    /// With nothing under way, the next session if it starts within `soonLead`.
+    private var soon: Block? {
+        guard current == nil, let next = upcoming.first, next.start.timeIntervalSince(now) <= Self.soonLead else { return nil }
+        return next
+    }
     var onQuit: () -> Void = {}
 
     var body: some View {
@@ -28,23 +40,27 @@ struct MenuBarContent: View {
             } else {
                 if let current {
                     CurrentBlockView(block: current, now: now)
-                    if SessionPlanView.hasPlan(current) {
-                        Divider()
-                        SessionPlanView(block: current, error: taskError, onSetTaskDone: onSetTaskDone)
-                            .id(current.id)
-                    }
+                    Divider()
+                    SessionPlanView(block: current, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
+                        .id(current.id)
+                } else if let soon {
+                    StartingSoonView(block: soon, now: now)
+                    Divider()
+                    SessionPlanView(block: soon, error: taskError, actions: sessionActions, onSetTaskDone: onSetTaskDone)
+                        .id(soon.id)
                 } else {
                     NoBlockView(next: upcoming.first, nextIsListed: true)
                 }
 
-                if !upcoming.isEmpty {
+                let later = upcoming.filter { $0.id != soon?.id }
+                if !later.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Next")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
-                        ForEach(upcoming) { block in
+                        ForEach(later) { block in
                             UpcomingRow(block: block)
                         }
                     }
@@ -65,6 +81,47 @@ struct MenuBarContent: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+}
+
+/// A session about to start, laid out like the current one: how soon, what, for which goal, and when.
+private struct StartingSoonView: View {
+    let block: Block
+    let now: Date
+
+    private var lead: String {
+        let minutes = max(Int((block.start.timeIntervalSince(now) / 60).rounded(.up)), 0)
+        return minutes == 0 ? "starting now" : "in \(Block.remaining(minutes: minutes))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Up next")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(lead)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(block.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    GoalDot(tint: block.tint)
+                    Text(block.goal)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Text(Block.timeRange(block))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -103,6 +160,12 @@ private struct UpcomingRow: View {
 #Preview("During a block with a plan") {
     let now = Fixtures.referenceNow
     MenuBarContent(current: Fixtures.planned(at: now), upcoming: Fixtures.upcoming(at: now), now: now)
+        .frame(width: 300)
+}
+
+#Preview("A session starting soon") {
+    let now = Fixtures.referenceNow.addingTimeInterval(52 * 60)
+    MenuBarContent(current: nil, upcoming: Fixtures.blocks(around: Fixtures.referenceNow).filter { $0.start > now }, now: now)
         .frame(width: 300)
 }
 
