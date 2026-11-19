@@ -11,6 +11,8 @@ struct Block: Identifiable, Hashable, Sendable, Codable {
     let start: Date
     let end: Date
     var tint: Tint? = nil
+    /// For protected time: what the person wants out of the session, if they said.
+    var aim: String? = nil
 
     func progress(at now: Date) -> Double {
         let total = end.timeIntervalSince(start)

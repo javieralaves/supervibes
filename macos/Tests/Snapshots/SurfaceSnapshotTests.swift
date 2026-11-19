@@ -37,6 +37,19 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testNoticesCard() {
+        assertAppearances(
+            VStack(spacing: 12) {
+                NoticesCard(settings: .defaults, permission: .notAsked)
+                NoticesCard(settings: NoticeSettings(isOn: true, leads: [.five, .atStart]), permission: .allowed)
+                NoticesCard(settings: NoticeSettings(isOn: true, leads: [.fifteen]), permission: .denied)
+            }
+            .padding(32)
+            .background(Theme.background),
+            width: 768, height: 640
+        )
+    }
+
     func testSettingsPageWithProblem() {
         let settings = SleepSettings(sleepStart: 8 * 60, wakeTime: 8 * 60, clock: nil)
         assertAppearances(

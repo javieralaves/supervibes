@@ -16,6 +16,7 @@ enum Route: Hashable {
 struct MainView: View {
     let auth: AuthModel
     @Bindable var shell: ShellModel
+    let notifier: SessionNotifier
 
     var body: some View {
         Group {
@@ -64,7 +65,7 @@ struct MainView: View {
                     case .settings:
                         ZStack {
                             Backdrop()
-                            SettingsScreen(auth: auth)
+                            SettingsScreen(auth: auth, notifier: notifier)
                         }
                     case .connections:
                         ZStack {
@@ -378,7 +379,27 @@ private struct CalendarScreen: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task { await model.start() }
         .onDisappear { model.stop() }
+        // A notice was clicked: show its block once it's loaded.
+        .onChange(of: PendingSelection(load: model.load, blockId: shell.pendingBlockId), initial: true) { _, pending in
+            guard pending.load == .loaded, let id = pending.blockId else { return }
+            shell.pendingBlockId = nil
+            if model.show(id) {
+                selectedId = id
+            } else {
+                // Added since the calendar last loaded.
+                Task {
+                    await model.refresh()
+                    if model.show(id) { selectedId = id }
+                }
+            }
+        }
     }
+}
+
+/// What the calendar waits on to select a block from a notice.
+private struct PendingSelection: Equatable {
+    let load: CalendarModel.Load
+    let blockId: String?
 }
 
 /// The Connections page with its data, in the app's window.
@@ -419,9 +440,11 @@ private struct ConnectionsScreen: View {
 /// The Settings page with its data, in the app's window.
 private struct SettingsScreen: View {
     @State private var model: SettingsModel
+    let notifier: SessionNotifier
 
-    init(auth: AuthModel) {
+    init(auth: AuthModel, notifier: SessionNotifier) {
         _model = State(initialValue: SettingsModel(auth: auth))
+        self.notifier = notifier
     }
 
     var body: some View {
@@ -442,6 +465,12 @@ private struct SettingsScreen: View {
                     settings: $model.settings,
                     status: model.status,
                     usage: model.usage,
+                    notices: NoticesCard(
+                        settings: notifier.settings,
+                        permission: notifier.permission,
+                        onChange: notifier.change,
+                        onOpenSystemSettings: notifier.openSystemSettings
+                    ),
                     onChange: model.changed
                 )
             }

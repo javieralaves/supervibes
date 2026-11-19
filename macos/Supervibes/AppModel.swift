@@ -11,6 +11,8 @@ final class AppModel {
     private(set) var now = Date()
     private(set) var blocks: [Block] = []
     private(set) var isSignedIn = false
+    /// The notices before sessions, scheduled from today's blocks.
+    let notifier = SessionNotifier()
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -77,6 +79,7 @@ final class AppModel {
                 share()
             }
         }
+        notifier.tick(now: now)
         guard signedIn else { return }
 
         let day = Calendar.current.dateComponents([.year, .month, .day], from: now)
@@ -123,6 +126,7 @@ final class AppModel {
 extension AppModel {
     /// Hands today's blocks to the widget, and has it redraw when they've changed.
     private func share() {
+        notifier.blocksChanged(blocks)
         if let shared, shared.signedIn == isSignedIn, shared.blocks == blocks { return }
         let today = SharedToday(signedIn: isSignedIn, fetchedAt: Date(), blocks: blocks)
         guard WidgetShare.write(today) else {
@@ -143,7 +147,8 @@ extension Block {
             goal: block.title == nil ? "Protected time" : block.goal.title,
             start: block.startsAt,
             end: block.endsAt,
-            tint: Tint(light: block.goal.color.light, dark: block.goal.color.dark)
+            tint: Tint(light: block.goal.color.light, dark: block.goal.color.dark),
+            aim: block.description.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         )
     }
 }

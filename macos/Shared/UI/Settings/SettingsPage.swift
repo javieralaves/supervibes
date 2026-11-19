@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The Settings page, matching the web app's src/app/(app)/settings: sleep schedule, clock, usage.
+/// The Settings page, matching the web app's src/app/(app)/settings: sleep schedule, clock, usage;
+/// plus session notices, which the Mac app added.
 struct SettingsPage: View {
     enum Section: Hashable { case sleep, clock }
 
@@ -8,6 +9,8 @@ struct SettingsPage: View {
     /// The status shown on the card that was changed last.
     var status: (section: Section, state: SaveStatusView.State)?
     var usage: UsageSummary?
+    /// Notices before sessions; kept on this Mac, so it saves itself rather than through `onChange`.
+    var notices: NoticesCard?
     /// Called with the card a change came from, after `settings` is updated.
     var onChange: (Section) -> Void = { _ in }
 
@@ -19,6 +22,7 @@ struct SettingsPage: View {
                 VStack(spacing: 12) {
                     sleepCard
                     clockCard
+                    if let notices { notices }
                 }
                 .padding(.top, 40)
 

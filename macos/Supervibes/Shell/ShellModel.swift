@@ -47,6 +47,20 @@ final class ShellModel {
         route = .goal(id)
     }
 
+    /// A block to select once the calendar has loaded, from clicking its notice.
+    var pendingBlockId: String?
+    /// Bumped to ask for the main window to open and come forward (SupervibesApp does it).
+    private(set) var windowRequests = 0
+
+    /// The calendar, on a block: what clicking a session notice opens.
+    func openBlock(_ id: String) {
+        isAccountMenuOpen = false
+        overlays.dismiss()
+        pendingBlockId = id
+        route = .calendar
+        windowRequests += 1
+    }
+
     func openSettings() {
         isAccountMenuOpen = false
         overlays.dismiss()

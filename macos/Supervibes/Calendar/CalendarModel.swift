@@ -85,6 +85,15 @@ final class CalendarModel {
         offset = 0
     }
 
+    /// Shows the day a block is on, for opening it from a notice. False if it isn't loaded.
+    func show(_ blockId: String) -> Bool {
+        guard let block = block(blockId) else { return false }
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: block.startsAt)).day ?? 0
+        offset = min(max(days, range.lowerBound), range.upperBound)
+        return true
+    }
+
     // MARK: - Changing blocks
 
     /// The goal a new block starts with: the last one used, else the first.
