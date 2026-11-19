@@ -3,19 +3,16 @@ import SwiftUI
 
 /// What the app's window shows beside the rail.
 enum Route: Hashable {
-    /// A web page; the web view keeps its own path.
-    case web
     case goals
     /// A goal's own page.
     case goal(String)
     case settings
     case connections
-    /// The calendar, being built natively in parts; the rail still opens the web one.
     case calendar
 }
 
 /// The main window: sign-in while signed out; otherwise the native rail beside the app's window,
-/// which shows either a web page or a native screen.
+/// which shows the screen for the route.
 struct MainView: View {
     let auth: AuthModel
     @Bindable var shell: ShellModel
@@ -52,14 +49,7 @@ struct MainView: View {
 
             AppWindowFrame {
                 ZStack {
-                    // Kept alive under native screens, so going back to a web page is instant.
-                    WebContentView(model: shell.web)
-                        .opacity(shell.route == .web ? 1 : 0)
-                        .allowsHitTesting(shell.route == .web)
-
                     switch shell.route {
-                    case .web:
-                        EmptyView()
                     case .goals:
                         ZStack {
                             Backdrop()
@@ -113,7 +103,7 @@ struct MainView: View {
     }
 }
 
-/// The home page with its goals, in the app's window. A goal's own page is still web.
+/// The home page with its goals, in the app's window.
 private struct GoalsScreen: View {
     let shell: ShellModel
     @State private var model: GoalsModel

@@ -38,18 +38,6 @@ export type StatusView = {
   at: string;
 };
 
-/** "On track", or for a goal judged on momentum, "Moving". */
-export function statusLabel(status: GoalStatus, basis: StatusBasis): string {
-  if (status === "unclear") return "Too early to tell";
-  if (basis === "momentum") return { on_track: "Moving", at_risk: "Slowing", off_track: "Stalled" }[status];
-  return { on_track: "On track", at_risk: "At risk", off_track: "Off track" }[status];
-}
-
-/** What the status is measured against, for a tooltip. */
-export function basisLabel(basis: StatusBasis): string {
-  return basis === "target" ? "Judged against the target date" : basis === "week" ? "Judged against this week's objective" : "Judged on momentum";
-}
-
 /** How many days a trajectory shows, ending today. */
 export const TRAJECTORY_DAYS = 28;
 

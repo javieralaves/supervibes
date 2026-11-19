@@ -1,23 +1,9 @@
-@import "tailwindcss";
-
-/*
- * Calm, cool, monochrome. Neutrals lean slightly blue; goal colours are the
- * only accent, and even those are muted (see goal-colors.ts).
- */
+/* The one page the site still serves (app/page.tsx), in the app's colours. */
 :root {
+  color-scheme: light dark;
   --background: #f6f7f8;
   --foreground: #0f1114;
   --muted: #676c75;
-  --card: #ffffff;
-  --card-border: rgb(15 17 20 / 0.08);
-  --line-strong: rgb(15 17 20 / 0.16);
-  --wash: rgb(15 17 20 / 0.04);
-  /* Behind the app's window: the rail sits on it, a shade darker than the page. */
-  --shell: #eceef1;
-  /* Chart series (Settings → Usage), in fixed order; validated against --card in each mode. */
-  --viz-1: #2a78d6;
-  --viz-2: #eb6834;
-  --viz-3: #1baf7a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,191 +11,37 @@
     --background: #0b0c0e;
     --foreground: #eceef1;
     --muted: #8d939c;
-    --card: #131417;
-    --card-border: rgb(255 255 255 / 0.07);
-    --line-strong: rgb(255 255 255 / 0.16);
-    --wash: rgb(255 255 255 / 0.04);
-    --shell: #060708;
-    --viz-1: #3987e5;
-    --viz-2: #d95926;
-    --viz-3: #199e70;
   }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-card: var(--card);
-  --color-card-border: var(--card-border);
-  --color-line-strong: var(--line-strong);
-  --color-wash: var(--wash);
-  --color-shell: var(--shell);
-  --color-viz-1: var(--viz-1);
-  --color-viz-2: var(--viz-2);
-  --color-viz-3: var(--viz-3);
-  --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
-}
-
-/*
- * Inside the Mac app (which sets data-shell="mac" before the page draws), the app draws the rail
- * and the window frame natively, so the page drops its own and fills the view.
- */
-html[data-shell="mac"] [data-app-rail] {
-  display: none;
-}
-html[data-shell="mac"] [data-app-window] {
+html,
+body {
+  height: 100%;
   margin: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
 }
 
 body {
+  display: grid;
+  place-items: center;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Instrument Sans", system-ui, sans-serif;
 }
 
-::selection {
-  background: color-mix(in oklab, var(--foreground) 14%, transparent);
+main {
+  max-width: 28rem;
+  padding: 1.5rem;
+  text-align: center;
 }
 
-/* Goal colours: elements set --goal-light / --goal-dark (see goal-colors.ts). */
-.goal-tint {
-  --goal: var(--goal-light);
-  color: var(--goal);
-  background-color: color-mix(in oklab, var(--goal) 13%, transparent);
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.goal-solid {
-  background-color: var(--goal-light);
-}
-
-/* A light band of a goal's colour, e.g. time planned behind time done. */
-.goal-track {
-  background-color: color-mix(in oklab, var(--goal-light) 30%, transparent);
-}
-
-/* Same light tone as .goal-tint, mixed into the card colour so it's fully opaque. */
-.goal-tint.goal-tint-opaque {
-  background-color: color-mix(in oklab, var(--goal) 8%, var(--card));
-}
-
-/* Calendar: time protected for a goal. */
-.goal-tint.goal-hatch {
-  background-color: color-mix(in oklab, var(--goal) 4%, var(--card));
-  background-image: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, var(--goal) 16%, transparent) 0 1px,
-    transparent 1px 8px
-  );
-}
-
-/* Calendar: a task being dragged onto the day, where it would land. */
-.goal-tint.goal-task-outline {
-  background-color: color-mix(in oklab, var(--goal) 3%, var(--card));
-  border: 1px solid color-mix(in oklab, var(--goal) 40%, transparent);
-}
-
-/*
- * Calendar blocks over time: what happened is filled in, what's ahead is an outline.
- * A block is drawn filled, then a veil in the card colour covers the part that
- * hasn't happened yet (below --elapsed, 0% to 100%), so a session in progress
- * fills in as the now line passes through it. Colour, not opacity: text stays crisp.
- */
-.goal-tint.block-time {
-  --elapsed: 0%;
-  --veil: color-mix(in oklab, var(--card) 72%, transparent);
-  /* A border, not a shadow: the selected ring is a shadow. */
-  border: 1px solid color-mix(in oklab, var(--goal) 22%, transparent);
-}
-.goal-tint.goal-tint-opaque.block-time {
-  background-color: color-mix(in oklab, var(--goal) 18%, var(--card));
-  background-image: linear-gradient(to bottom, transparent var(--elapsed), var(--veil) var(--elapsed));
-}
-.goal-tint.goal-hatch.block-time {
-  background-color: color-mix(in oklab, var(--goal) 10%, var(--card));
-  background-image:
-    linear-gradient(to bottom, transparent var(--elapsed), var(--veil) var(--elapsed)),
-    repeating-linear-gradient(135deg, color-mix(in oklab, var(--goal) 26%, transparent) 0 1px, transparent 1px 8px);
-}
-/* The bar down a block's left edge: solid where time has passed, a soft tint ahead. */
-.block-bar {
-  background-image: linear-gradient(
-    to bottom,
-    var(--goal) var(--elapsed),
-    color-mix(in oklab, var(--goal) 40%, var(--card)) var(--elapsed)
-  );
-}
-
-@media (prefers-color-scheme: dark) {
-  .goal-tint {
-    --goal: var(--goal-dark);
-    background-color: color-mix(in oklab, var(--goal) 18%, transparent);
-  }
-  .goal-solid {
-    background-color: var(--goal-dark);
-  }
-  .goal-track {
-    background-color: color-mix(in oklab, var(--goal-dark) 30%, transparent);
-  }
-  .goal-tint.goal-tint-opaque {
-    background-color: color-mix(in oklab, var(--goal) 12%, var(--card));
-  }
-  .goal-tint.goal-hatch {
-    background-color: color-mix(in oklab, var(--goal) 6%, var(--card));
-  }
-  .goal-tint.goal-task-outline {
-    background-color: color-mix(in oklab, var(--goal) 5%, var(--card));
-  }
-  .goal-tint.goal-tint-opaque.block-time {
-    background-color: color-mix(in oklab, var(--goal) 24%, var(--card));
-  }
-  .goal-tint.goal-hatch.block-time {
-    background-color: color-mix(in oklab, var(--goal) 13%, var(--card));
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes sheet-in {
-  from {
-    transform: translateY(24px);
-    opacity: 0;
-  }
-}
-
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    scale: 0.98;
-  }
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.animate-rise {
-  animation: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-rise {
-    animation: none;
-  }
+p {
+  margin: 0;
+  color: var(--muted);
 }

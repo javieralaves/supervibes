@@ -81,16 +81,6 @@ export function weekdayName(day: string, style: "long" | "short" = "short"): str
   return new Date(utcDay(day)).toLocaleDateString("en-US", { weekday: style, timeZone: "UTC" });
 }
 
-/** "Today", "Tomorrow", "Yesterday", "Fri" within a week either way, otherwise "Nov 28". */
-export function relativeDayLabel(day: string, today = todayISO()): string {
-  const days = daysUntil(day, today);
-  if (days === 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days === -1) return "Yesterday";
-  if (Math.abs(days) < 7) return weekdayName(day);
-  return formatTargetDate(day, today);
-}
-
 const dayCount = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 /**
@@ -135,13 +125,4 @@ export function formatWeek(weekStart: string): string {
   return month(weekStart) === month(end)
     ? `${month(weekStart)} ${day(weekStart)}–${day(end)}`
     : `${month(weekStart)} ${day(weekStart)} – ${month(end)} ${day(end)}`;
-}
-
-/** "today", "tomorrow", "5 d", "4 wk", "3 mo", or "2 d past": the short form of `relativeTarget`, for tight spaces. */
-export function shortRelative(days: number): string {
-  if (days === 0) return "today";
-  if (days === 1) return "tomorrow";
-  const n = Math.abs(days);
-  const span = n < 14 ? `${n} d` : n < 60 ? `${Math.round(n / 7)} wk` : `${Math.round(n / 30.44)} mo`;
-  return days > 0 ? span : `${span} past`;
 }

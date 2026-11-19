@@ -8,7 +8,6 @@ final class ShellModel {
     var route: Route = .goals
     var isAccountMenuOpen = false
     private(set) var account: RailAccount?
-    let web: WebContentModel
     /// Menus and dialogs drawn above the window's content.
     let overlays = OverlayCenter()
 
@@ -17,27 +16,13 @@ final class ShellModel {
 
     init(auth: AuthModel) {
         self.auth = auth
-        web = WebContentModel(auth: auth)
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
-        web.onNativePath = { [weak self] path in
-            if let id = WebContentModel.goalID(in: path) {
-                self?.openGoal(id)
-                return
-            }
-            switch path {
-            case "/": self?.open(.goals)
-            case "/settings": self?.openSettings()
-            case "/connections": self?.open(.connections)
-            default: break
-            }
-        }
     }
 
     /// The rail item to light up for what's showing.
     var activeRailItem: RailItem? {
         switch route {
-        case .web: RailItem.matching(path: web.currentPath)
         case .goals, .goal: .goals
         case .calendar: .calendar
         case .connections: .connections
@@ -45,27 +30,14 @@ final class ShellModel {
         }
     }
 
-    /// A rail item: its native screen, or its web page.
+    /// A rail item's screen.
     func open(_ item: RailItem) {
         isAccountMenuOpen = false
         overlays.dismiss()
-        switch item {
-        case .goals:
-            route = .goals
-            return
-        case .connections:
-            route = .connections
-            return
-        case .calendar:
-            route = .calendar
-            return
-        default:
-            break
-        }
-        route = .web
-        // Like the web rail's links: go to the section's page unless it's already showing.
-        if web.currentPath != item.href {
-            web.navigate(to: item.href)
+        route = switch item {
+        case .calendar: .calendar
+        case .connections: .connections
+        default: .goals
         }
     }
 
@@ -83,12 +55,10 @@ final class ShellModel {
 
     func signedInChanged() async {
         guard auth.isSignedIn else {
-            web.clear()
             account = nil
             route = .goals
             return
         }
-        // Home is native, so the web view waits until a web page is wanted (navigate signs it in).
         route = .goals
         await loadAccount()
     }

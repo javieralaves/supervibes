@@ -31,11 +31,3 @@ export async function getTimeZone(userId: string): Promise<string | null> {
     .where(eq(userSettings.userId, userId));
   return row?.timeZone ?? null;
 }
-
-/** Records the time zone their browser reports. Validate it first. */
-export async function saveTimeZone(userId: string, timeZone: string): Promise<void> {
-  await db
-    .insert(userSettings)
-    .values({ userId, timeZone })
-    .onConflictDoUpdate({ target: userSettings.userId, set: { timeZone } });
-}

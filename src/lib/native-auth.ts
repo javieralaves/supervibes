@@ -48,10 +48,3 @@ export function redirectWithCookies(location: string, from: Response): Response 
 export function errorCode(value: string | null): string {
   return value && /^[a-z_]{1,64}$/i.test(value) ? value.toLowerCase() : "failed";
 }
-
-/** A same-origin path to continue to after the handoff, or "/" if `next` is missing or points elsewhere. */
-export function safeNext(next: string | null, origin: string): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
-  const url = new URL(next, origin);
-  return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : "/";
-}

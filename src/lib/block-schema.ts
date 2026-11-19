@@ -79,10 +79,3 @@ export type BlockAgenda = {
   title?: string | null;
   description?: string | null;
 };
-
-/** Whether the person has changed what steers the agenda (title or description) since it was prepared. */
-export function agendaIsStale(agenda: BlockAgenda, block: Pick<BlockView, "title" | "description">): boolean {
-  // Older agendas didn't keep the title; they had no description to keep.
-  const titleChanged = agenda.title !== undefined && agenda.title !== block.title;
-  return titleChanged || (agenda.description ?? null) !== block.description;
-}

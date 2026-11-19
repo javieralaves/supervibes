@@ -32,5 +32,3 @@ export const goalInputSchema = z.object({
 });
 
 export type GoalInput = z.infer<typeof goalInputSchema>;
-
-export const goalIdSchema = z.uuid();

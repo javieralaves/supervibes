@@ -13,9 +13,6 @@ import type { OAuthClientInformationMixed, OAuthTokens } from "@modelcontextprot
 
 import { PROVIDERS, type ProviderKey } from "@/lib/providers";
 
-/** Encrypted, httpOnly cookie that carries an OAuthFlow through the redirect. */
-export const FLOW_COOKIE = "sv_mcp_oauth";
-
 /** Tokens as stored: the OAuth response plus an absolute expiry. */
 export type StoredTokens = OAuthTokens & { expires_at?: number };
 

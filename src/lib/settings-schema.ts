@@ -34,11 +34,6 @@ export const settingsSchema = z
   })
   .refine((s) => s.sleepStart !== s.wakeTime, "Bedtime and wake-up time can't be the same.");
 
-/** Minutes awake per day for a sleep schedule. */
-export function awakeMinutes({ sleepStart, wakeTime }: Pick<Settings, "sleepStart" | "wakeTime">) {
-  return (sleepStart - wakeTime + 24 * 60) % (24 * 60);
-}
-
 /** A time zone the runtime knows, e.g. "Europe/Madrid", as a browser reports it. */
 export const timeZoneSchema = z
   .string()

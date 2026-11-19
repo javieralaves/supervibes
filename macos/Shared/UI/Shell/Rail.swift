@@ -1,32 +1,20 @@
 import SwiftUI
 
 /*
- * The app's left rail, matching src/components/rail: the main sections, and the account menu at
- * the bottom. It sits on the shell colour, beside the app's window. In the Mac app it's native,
- * so web and native pages can sit side by side in the window next to it.
+ * The app's left rail: the main sections, and the account menu at the bottom. It sits on the
+ * shell colour, beside the app's window.
  */
 
-/// One of the rail's sections. `paths` decides which web pages light it up.
+/// One of the rail's sections.
 struct RailItem: Identifiable, Hashable {
     let id: String
     let label: String
     let icon: Icon
-    /// The page it opens.
-    let href: String
 
-    static let goals = RailItem(id: "goals", label: "Goals", icon: .target, href: "/")
-    static let calendar = RailItem(id: "calendar", label: "Calendar", icon: .calendar, href: "/calendar")
-    static let connections = RailItem(id: "connections", label: "Connections", icon: .plug, href: "/connections")
+    static let goals = RailItem(id: "goals", label: "Goals", icon: .target)
+    static let calendar = RailItem(id: "calendar", label: "Calendar", icon: .calendar)
+    static let connections = RailItem(id: "connections", label: "Connections", icon: .plug)
     static let all = [goals, calendar, connections]
-
-    /// The item a web path belongs to, as the web rail's `match` functions decide it.
-    static func matching(path: String?) -> RailItem? {
-        guard let path else { return nil }
-        if path == "/" || path.hasPrefix("/goals") { return .goals }
-        if path.hasPrefix("/calendar") { return .calendar }
-        if path.hasPrefix("/connections") { return .connections }
-        return nil
-    }
 }
 
 /// The person shown at the bottom of the rail and in its menu.

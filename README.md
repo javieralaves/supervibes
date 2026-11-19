@@ -1,36 +1,33 @@
 # Supervibes
 
-## Getting Started
+Supervibes is a Mac app for planning your time around your goals. This repository holds both
+halves:
 
-First, run the development server:
+- **`macos/`**: the app (SwiftUI): goals, the calendar, connections and settings, plus a menu bar
+  item and a widget. Its dev loop is in `.claude/skills/mac-dev/SKILL.md`.
+- **`src/`**: the server it talks to (Next.js on Vercel, Neon Postgres): the API at `/api/v1`,
+  sign-in (`/api/auth`, `/api/native/*`), the callback for connecting apps, and the daily sync
+  (`/api/cron/sync`). There's no web UI; the site's root only says Supervibes is a Mac app.
+
+## Running it locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then build and run the Debug app ("Supervibes Dev"), which talks to `http://localhost:3000`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cd macos && scripts/run.sh
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`scripts/release.sh --install` builds the Release app, which talks to production, and installs it
+in /Applications.
 
-## Learn More
+## Changing the API
 
-To learn more about Next.js, take a look at the following resources:
+After changing anything in `src/lib/api`, run `npm run api:spec` with the dev server running. It
+rewrites `macos/Supervibes/API/openapi.json`, which the app's Swift client is generated from.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Database changes go through Drizzle: `npm run db:generate`, then `npm run db:migrate`.

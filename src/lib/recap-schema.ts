@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import { PROVIDER_KEYS, type ProviderKey } from "@/lib/providers";
+import type { ProviderKey } from "@/lib/providers";
 
 /* Client-safe shapes for session recaps. Generation lives in recap.ts. */
 
@@ -59,5 +59,3 @@ export const postRecapSchema = z.object({
   keep: z.array(z.url()).max(MAX_BREADCRUMBS),
   markTaskDone: z.boolean(),
 });
-
-export const breadcrumbProviderSchema = z.enum(PROVIDER_KEYS);

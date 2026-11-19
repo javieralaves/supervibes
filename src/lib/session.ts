@@ -1,7 +1,6 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import { auth, isEmailAllowed } from "@/lib/auth";
@@ -15,14 +14,3 @@ export const getSession = cache(async () => {
   if (!session || !isEmailAllowed(session.user.email)) return null;
   return session;
 });
-
-/**
- * The signed-in user, or a redirect to /sign-in.
- * Use this in every page, server action and route handler that touches user data,
- * and scope every query with `user.id`.
- */
-export async function requireUser() {
-  const session = await getSession();
-  if (!session) redirect("/sign-in");
-  return session.user;
-}

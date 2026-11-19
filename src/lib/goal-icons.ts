@@ -66,7 +66,9 @@ import {
   Wallet01Icon,
   YogaIcon,
 } from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
+
+/** An icon's drawing, as the icon package exports it (every icon has the same shape). */
+type IconSvgElement = typeof Target02Icon;
 
 export type GoalIconDef = {
   icon: IconSvgElement;
@@ -206,9 +208,4 @@ export const DEFAULT_GOAL_ICON: GoalIconName = "Target02Icon";
 
 export function isGoalIcon(value: string): value is GoalIconName {
   return value in GOAL_ICONS;
-}
-
-/** The icon for a stored name, or the default if the name is unknown. */
-export function goalIcon(name: string): IconSvgElement {
-  return GOAL_ICONS[isGoalIcon(name) ? name : DEFAULT_GOAL_ICON].icon;
 }

@@ -2,7 +2,6 @@ import AppKit
 import AuthenticationServices
 import Foundation
 import Observation
-import WebKit
 
 /// The app's sign-in state and session token. The server side is described in src/lib/native-auth.ts.
 @MainActor
@@ -149,7 +148,7 @@ final class AuthModel: NSObject {
 
     // MARK: Signing out
 
-    /// Ends this app's session on the server, then forgets it here (including the web view's cookie).
+    /// Ends this app's session on the server, then forgets it here.
     func signOut(message: String? = nil) async {
         if let token = store.read() {
             var request = URLRequest(url: baseURL.appending(path: "api/auth/sign-out"))
@@ -160,36 +159,14 @@ final class AuthModel: NSObject {
             _ = try? await http.data(for: request)
         }
         store.delete()
-        await WKWebsiteDataStore.default().removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-            modifiedSince: .distantPast
-        )
         state = .signedOut(message: message)
         Log.auth.info("Signed out")
     }
 
-    /// The web app sent the web view to /sign-in: the session is gone on the server.
+    /// A request found the session gone on the server (it answered 401).
     func sessionEnded() async {
         guard isSignedIn else { return }
         await signOut(message: "Your session ended. Sign in again.")
-    }
-
-    // MARK: Web view handoff
-
-    /// A URL that signs the web view in with this app's session, then continues to `next`.
-    func handoffURL(next: String = "/") async throws -> URL {
-        guard let token = store.read() else { throw AuthError.notSignedIn }
-        var request = URLRequest(url: baseURL.appending(path: "api/auth/one-time-token/generate"))
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await http.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 401 { throw AuthError.sessionEnded }
-        guard status == 200 else { throw AuthError.server(status) }
-        let oneTimeToken = try JSONDecoder().decode(OneTimeToken.self, from: data).token
-
-        var components = URLComponents(url: baseURL.appending(path: "api/native/handoff"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "token", value: oneTimeToken), URLQueryItem(name: "next", value: next)]
-        return components.url!
     }
 
     // MARK: Server calls
@@ -251,14 +228,10 @@ extension AuthModel: ASWebAuthenticationPresentationContextProviding {
 }
 
 enum AuthError: LocalizedError {
-    case notSignedIn
-    case sessionEnded
     case server(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notSignedIn: "Not signed in."
-        case .sessionEnded: "The session ended."
         case .server(let status): "The server answered \(status)."
         }
     }

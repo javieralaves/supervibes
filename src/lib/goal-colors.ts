@@ -25,9 +25,3 @@ export const DEFAULT_GOAL_COLOR: GoalColor = "violet";
 export function isGoalColor(value: string): value is GoalColor {
   return value in GOAL_COLORS;
 }
-
-/** CSS custom properties consumed by the `.goal-tint` utilities in globals.css. */
-export function goalColorStyle(color: string): React.CSSProperties {
-  const c = GOAL_COLORS[isGoalColor(color) ? color : DEFAULT_GOAL_COLOR];
-  return { "--goal-light": c.light, "--goal-dark": c.dark } as React.CSSProperties;
-}

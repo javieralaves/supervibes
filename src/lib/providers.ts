@@ -77,12 +77,6 @@ export type ProviderKey = keyof typeof PROVIDERS;
 
 export const PROVIDER_KEYS = Object.keys(PROVIDERS) as [ProviderKey, ...ProviderKey[]];
 
-/** A provider key from a stored key or, for older rows, its label ("Linear"). */
-export function toProvider(value: string): ProviderKey | null {
-  if (isProvider(value)) return value;
-  return PROVIDER_KEYS.find((key) => PROVIDERS[key].label === value) ?? null;
-}
-
 export function isProvider(value: string): value is ProviderKey {
   return value in PROVIDERS;
 }
