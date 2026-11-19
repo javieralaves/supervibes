@@ -344,6 +344,12 @@ export const goalTasks = pgTable(
      * Giving it a time on the calendar keeps this in step with the block's day.
      */
     plannedFor: date({ mode: "string" }),
+    /**
+     * The week the person means to do it, as the Monday it starts on ("YYYY-MM-DD"). Set with a
+     * planned day (the day's week), or on its own for "sometime this week" or next week. Null with
+     * no planned day: not planned yet (Later). See src/lib/task-horizon.ts for how it's read.
+     */
+    plannedWeek: date({ mode: "string" }),
     /** The day it has to be done by ("YYYY-MM-DD", their own calendar day). */
     dueOn: date({ mode: "string" }),
     /** Manual order among the goal's tasks, ascending. */

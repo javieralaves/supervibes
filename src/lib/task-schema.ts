@@ -37,6 +37,8 @@ export const taskPatchSchema = z
     description: taskDescriptionSchema,
     minutes: taskMinutesSchema,
     plannedFor: taskDaySchema,
+    /** Any day of the week means that week; only this week or next (checked where today is known). */
+    plannedWeek: taskDaySchema,
     dueOn: taskDaySchema,
   })
   .partial()

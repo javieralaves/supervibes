@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { calendarBlocks, goals, goalTasks } from "@/db/schema";
 import { createTaskDonePost, deleteTaskDonePosts } from "@/lib/posts";
 import { getTimeZone } from "@/lib/settings";
-import { todayIn } from "@/lib/target-date";
+import { todayIn, weekStartOf } from "@/lib/target-date";
+import { resolvePlacement, weekProblem, type PlacementPatch } from "@/lib/task-horizon";
 import { DEFAULT_TASK_MINUTES } from "@/lib/task-schema";
 
 /*
@@ -23,6 +24,8 @@ export type TaskDTO = {
   doneAt: Date | null;
   /** The day they mean to do it, "YYYY-MM-DD", if they've picked one. */
   plannedFor: string | null;
+  /** The Monday of the week they mean to do it, if they've picked one (a planned day picks its week). */
+  plannedWeek: string | null;
   /** The day it's due, "YYYY-MM-DD", if it has a deadline. */
   dueOn: string | null;
   createdAt: Date;
@@ -36,6 +39,7 @@ const columns = {
   minutes: goalTasks.minutes,
   doneAt: goalTasks.doneAt,
   plannedFor: goalTasks.plannedFor,
+  plannedWeek: goalTasks.plannedWeek,
   dueOn: goalTasks.dueOn,
   createdAt: goalTasks.createdAt,
 };
@@ -118,18 +122,39 @@ export async function markTaskDone(userId: string, taskId: string, done: boolean
   return task;
 }
 
-/** Adds a task at the end of the goal's open tasks. */
+/** A planned week that isn't this week or next. Its message is for the person. */
+export class PlacementError extends Error {}
+
+type Placed = Pick<TaskDTO, "plannedFor" | "plannedWeek">;
+
+/** Applies a change to where a task is planned, against today in the person's time zone. */
+async function applyPlacement(userId: string, current: Placed, patch: PlacementPatch): Promise<Placed> {
+  const today = todayIn(await getTimeZone(userId));
+  const problem = patch.plannedWeek ? weekProblem(patch.plannedWeek, today) : null;
+  if (problem) throw new PlacementError(problem);
+  return resolvePlacement(current, patch, today);
+}
+
+const touchesPlacement = (patch: PlacementPatch) => patch.plannedFor !== undefined || patch.plannedWeek !== undefined;
+
+/**
+ * Adds a task at the end of the goal's open tasks: not planned yet (Later) unless it's given a
+ * day or a week. Throws PlacementError for a week that can't be planned for.
+ */
 export async function createTask(
   userId: string,
   goalId: string,
   title: string,
-  extra: { minutes?: number; description?: string | null } = {},
+  extra: { minutes?: number; description?: string | null } & PlacementPatch = {},
 ): Promise<TaskDTO | null> {
   const [goal] = await db
     .select({ id: goals.id })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) return null;
+  const placed = touchesPlacement(extra)
+    ? await applyPlacement(userId, { plannedFor: null, plannedWeek: null }, extra)
+    : { plannedFor: null, plannedWeek: null };
   const [{ last }] = await db
     .select({ last: max(goalTasks.position) })
     .from(goalTasks)
@@ -142,6 +167,7 @@ export async function createTask(
       title,
       minutes: extra.minutes ?? DEFAULT_TASK_MINUTES,
       description: extra.description ?? null,
+      ...placed,
       position: (last ?? -1) + 1,
     })
     .returning(columns);
@@ -172,13 +198,67 @@ export async function reorderTasks(userId: string, goalId: string, ids: string[]
   return true;
 }
 
+/**
+ * Changes a task. A new planned day or week keeps the two in step (see resolvePlacement);
+ * throws PlacementError for a week that can't be planned for.
+ */
 export async function updateTask(
   userId: string,
   taskId: string,
-  patch: Partial<Pick<TaskDTO, "title" | "description" | "minutes" | "plannedFor" | "dueOn">>,
+  patch: Partial<Pick<TaskDTO, "title" | "description" | "minutes" | "plannedFor" | "plannedWeek" | "dueOn">>,
 ): Promise<TaskDTO | null> {
-  const [task] = await db.update(goalTasks).set(patch).where(mine(userId, taskId)).returning(columns);
+  const { plannedFor, plannedWeek, ...rest } = patch;
+  let set: typeof patch = rest;
+  if (touchesPlacement({ plannedFor, plannedWeek })) {
+    const current = await getTask(userId, taskId);
+    if (!current) return null;
+    set = { ...rest, ...(await applyPlacement(userId, current, { plannedFor, plannedWeek })) };
+  }
+  const [task] = await db.update(goalTasks).set(set).where(mine(userId, taskId)).returning(columns);
   return task ?? null;
+}
+
+/**
+ * Moves an open task: plans it for a day, a week or Later, and puts it just before `before`
+ * among the goal's open tasks (or after all of them), in one go. "stale" when either task is
+ * done or gone, or `before` is on another goal; throws PlacementError for a week that can't be
+ * planned for.
+ */
+export async function placeTask(
+  userId: string,
+  taskId: string,
+  patch: PlacementPatch,
+  before?: string,
+): Promise<TaskDTO | "not_found" | "stale"> {
+  const current = await getTask(userId, taskId);
+  if (!current) return "not_found";
+  if (current.doneAt || before === taskId) return "stale";
+  const placed = touchesPlacement(patch) ? await applyPlacement(userId, current, patch) : current;
+  const open = await db
+    .select({ id: goalTasks.id })
+    .from(goalTasks)
+    .where(and(eq(goalTasks.userId, userId), eq(goalTasks.goalId, current.goalId), isNull(goalTasks.doneAt)))
+    .orderBy(asc(goalTasks.position), asc(goalTasks.createdAt));
+  const ids = open.map((t) => t.id).filter((id) => id !== taskId);
+  const at = before === undefined ? ids.length : ids.indexOf(before);
+  if (at < 0) return "stale";
+  ids.splice(at, 0, taskId);
+  const cases = sql.join(
+    ids.map((id, i) => sql`when ${goalTasks.id} = ${id} then ${i}::integer`),
+    sql` `,
+  );
+  const [[task]] = await db.batch([
+    db
+      .update(goalTasks)
+      .set({ plannedFor: placed.plannedFor, plannedWeek: placed.plannedWeek })
+      .where(mine(userId, taskId))
+      .returning(columns),
+    db
+      .update(goalTasks)
+      .set({ position: sql`case ${cases} end` })
+      .where(and(eq(goalTasks.userId, userId), eq(goalTasks.goalId, current.goalId), inArray(goalTasks.id, ids))),
+  ]);
+  return task ?? "not_found";
 }
 
 export async function setTaskDone(userId: string, taskId: string, done: boolean): Promise<TaskDTO | null> {
@@ -203,5 +283,5 @@ export async function deleteTask(userId: string, taskId: string): Promise<boolea
 export async function planTaskForBlock(userId: string, block: { taskId: string | null; startsAt: Date }) {
   if (!block.taskId) return;
   const plannedFor = todayIn(await getTimeZone(userId), block.startsAt);
-  await db.update(goalTasks).set({ plannedFor }).where(mine(userId, block.taskId));
+  await db.update(goalTasks).set({ plannedFor, plannedWeek: weekStartOf(plannedFor) }).where(mine(userId, block.taskId));
 }

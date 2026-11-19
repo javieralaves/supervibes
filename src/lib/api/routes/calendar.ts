@@ -107,6 +107,7 @@ const CalendarTaskSchema = z
     title: z.string(),
     minutes: z.int(),
     plannedFor: z.iso.date().nullable(),
+    plannedWeek: z.iso.date().nullable().openapi({ description: "The Monday of the week they mean to do it." }),
     dueOn: z.iso.date().nullable(),
   })
   .openapi("CalendarTask");
@@ -194,7 +195,7 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
         icon: goal.icon,
         color: isGoalColor(goal.color) ? goal.color : DEFAULT_GOAL_COLOR,
       })),
-      tasks: tasks.map(({ id, goalId, title, minutes, plannedFor, dueOn }) => ({ id, goalId, title, minutes, plannedFor, dueOn })),
+      tasks: tasks.map(({ id, goalId, title, minutes, plannedFor, plannedWeek, dueOn }) => ({ id, goalId, title, minutes, plannedFor, plannedWeek, dueOn })),
       settings,
       objectives: objectives.map(({ goalId, weekStart, objective }) => ({ goalId, weekStart, objective })),
     },

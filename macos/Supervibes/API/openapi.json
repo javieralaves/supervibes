@@ -570,6 +570,12 @@
             "nullable": true,
             "format": "date"
           },
+          "plannedWeek": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "The Monday of the week they mean to do it."
+          },
           "dueOn": {
             "type": "string",
             "nullable": true,
@@ -582,6 +588,7 @@
           "title",
           "minutes",
           "plannedFor",
+          "plannedWeek",
           "dueOn"
         ]
       },
@@ -1183,6 +1190,12 @@
             "format": "date",
             "description": "The day they mean to do it."
           },
+          "plannedWeek": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "The Monday of the week they mean to do it (a planned day sets its week). Null with no planned day: not planned yet, Later."
+          },
           "dueOn": {
             "type": "string",
             "nullable": true,
@@ -1203,6 +1216,7 @@
           "minutes",
           "doneAt",
           "plannedFor",
+          "plannedWeek",
           "dueOn",
           "scheduledAt"
         ]
@@ -1516,6 +1530,14 @@
         "properties": {
           "title": {
             "type": "string"
+          },
+          "plannedFor": {
+            "type": "string",
+            "description": "YYYY-MM-DD."
+          },
+          "plannedWeek": {
+            "type": "string",
+            "description": "Any day of this week or next."
           }
         },
         "required": [
@@ -1552,11 +1574,32 @@
           },
           "plannedFor": {
             "type": "string",
-            "description": "YYYY-MM-DD; empty clears it."
+            "description": "YYYY-MM-DD; also plans it for that day's week. Empty clears the day and keeps the week."
+          },
+          "plannedWeek": {
+            "type": "string",
+            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Later."
           },
           "dueOn": {
             "type": "string",
             "description": "YYYY-MM-DD; empty clears it."
+          }
+        }
+      },
+      "TaskPlacement": {
+        "type": "object",
+        "properties": {
+          "plannedFor": {
+            "type": "string",
+            "description": "YYYY-MM-DD; also plans it for that day's week. Empty clears the day and keeps the week."
+          },
+          "plannedWeek": {
+            "type": "string",
+            "description": "Any day of this week or next (kept as its Monday); drops a planned day outside it. Empty moves it to Later."
+          },
+          "before": {
+            "type": "string",
+            "description": "An open task on the same goal to put it just before; left out, it goes after all of them."
           }
         }
       },
@@ -3871,7 +3914,7 @@
     "/api/v1/goals/{id}/tasks": {
       "post": {
         "operationId": "addTask",
-        "summary": "Add a task at the end of the goal's open tasks",
+        "summary": "Add a task at the end of the goal's open tasks, in Later unless given a day or week",
         "security": [
           {
             "bearerAuth": []
@@ -4012,7 +4055,7 @@
     "/api/v1/tasks/{taskId}": {
       "patch": {
         "operationId": "editTask",
-        "summary": "Change a task's title, description, estimate, planned day or due date",
+        "summary": "Change a task's title, description, estimate, planned day or week, or due date",
         "security": [
           {
             "bearerAuth": []
@@ -4104,6 +4147,80 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{taskId}/place": {
+      "put": {
+        "operationId": "placeTask",
+        "summary": "Move an open task to a day, a week or Later, and to a spot among the goal's open tasks",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskPlacement"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Not signed in, or the session ended.",
