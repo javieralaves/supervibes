@@ -45,13 +45,7 @@ struct MainView: View {
                 account: shell.account,
                 isMenuOpen: shell.isAccountMenuOpen,
                 topInset: 28,
-                onSelect: { item in
-                    #if DEBUG
-                    // Option-click Calendar previews the native one while it's being built.
-                    if item == .calendar, NSEvent.modifierFlags.contains(.option) { return shell.openNativeCalendar() }
-                    #endif
-                    shell.open(item)
-                },
+                onSelect: { shell.open($0) },
                 onAccount: { shell.isAccountMenuOpen.toggle() }
             )
             .zIndex(1)
@@ -312,8 +306,15 @@ private struct CalendarScreen: View {
     @State private var model: CalendarModel
     /// The task panel beside the day: closed unless opened, remembered.
     @AppStorage("sv-calendar-task-panel") private var showsTasks = false
+    /// Day or week, remembered; the week needs a wide window, and below that it's always the day.
+    @AppStorage("sv-calendar-view") private var view = "day"
+    /// The week's overview: open unless closed, remembered.
+    @AppStorage("sv-calendar-week-panel") private var weekPanel = "on"
     @State private var selectedId: String?
+    @State private var width: CGFloat = 0
     let shell: ShellModel
+
+    private var isWeek: Bool { view == "week" && width >= 1024 }
 
     init(auth: AuthModel, shell: ShellModel) {
         self.shell = shell
@@ -344,7 +345,7 @@ private struct CalendarScreen: View {
                     actions: CalendarActions(
                         create: model.create(day:start:end:goalId:title:),
                         saveDetails: model.saveDetails(_:goalId:title:),
-                        move: model.move(_:edge:delta:),
+                        move: model.move(_:edge:delta:days:),
                         moveToTomorrow: model.moveToTomorrow,
                         toggleDone: model.toggleDone,
                         remove: model.remove,
@@ -364,7 +365,12 @@ private struct CalendarScreen: View {
                         setTaskDone: model.setTaskDone,
                         toggleDone: model.toggleDone,
                         openGoal: { shell.openGoal($0) }
-                    )
+                    ),
+                    isWeek: isWeek,
+                    onSetWeek: { view = $0 ? "week" : "day" },
+                    showsOverview: weekPanel != "off",
+                    onToggleOverview: { weekPanel = weekPanel == "off" ? "on" : "off" },
+                    setObjective: model.setObjective(_:weekStart:_:)
                 )
                 .focusable()
                 .focusEffectDisabled()
@@ -374,11 +380,12 @@ private struct CalendarScreen: View {
                     selectedId = nil
                     return .handled
                 }
-                .onKeyPress(.leftArrow) { model.step(-1); return .handled }
-                .onKeyPress(.rightArrow) { model.step(1); return .handled }
+                .onKeyPress(.leftArrow) { model.step(isWeek ? -7 : -1); return .handled }
+                .onKeyPress(.rightArrow) { model.step(isWeek ? 7 : 1); return .handled }
             }
         }
         .background(Theme.background)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task { await model.start() }
         .onDisappear { model.stop() }
     }

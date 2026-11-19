@@ -251,8 +251,9 @@ struct ConfirmDialog: View {
 @Observable
 final class OverlayCenter {
     enum Placement {
-        /// Below `anchor`, its right edge lined up with the anchor's (`align="end"`).
-        case menu(anchor: CGRect)
+        /// Below `anchor`, its right edge lined up with the anchor's (`align="end"`), or its left
+        /// edge with the anchor's (`align="start"`).
+        case menu(anchor: CGRect, leading: Bool)
         /// Centred over a dimmed window.
         case dialog
     }
@@ -268,8 +269,8 @@ final class OverlayCenter {
 
     private(set) var presented: Presented?
 
-    func showMenu(anchor: CGRect, owner: String? = nil, @ViewBuilder content: () -> some View) {
-        presented = Presented(placement: .menu(anchor: anchor), content: AnyView(content()), owner: owner)
+    func showMenu(anchor: CGRect, owner: String? = nil, alignLeading: Bool = false, @ViewBuilder content: () -> some View) {
+        presented = Presented(placement: .menu(anchor: anchor, leading: alignLeading), content: AnyView(content()), owner: owner)
     }
 
     func showDialog(dismissible: Bool = true, @ViewBuilder content: () -> some View) {
@@ -312,10 +313,10 @@ private struct OverlayHost: ViewModifier {
                                 .contentShape(.rect)
                                 .onTapGesture { if presented.dismissible { center.dismiss() } }
                             switch presented.placement {
-                            case .menu(let anchor):
+                            case .menu(let anchor, let leading):
                                 presented.content
                                     .fixedSize()
-                                    .alignmentGuide(.leading) { $0[.trailing] - anchor.maxX }
+                                    .alignmentGuide(.leading) { leading ? -anchor.minX : $0[.trailing] - anchor.maxX }
                                     .alignmentGuide(.top) { _ in -(anchor.maxY + 6) }
                             case .dialog:
                                 presented.content

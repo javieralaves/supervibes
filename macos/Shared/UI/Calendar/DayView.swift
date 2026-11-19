@@ -39,8 +39,19 @@ struct DayView: View {
     var selectedId: Binding<String?> = .constant(nil)
     /// What the block panel can do; without it, clicking a block edits it in place.
     var panel: BlockPanelActions?
+    /// Showing the week rather than one day (the screen decides, since the week needs a wide window).
+    var isWeek = false
+    /// Day or week; without it there's no switch.
+    var onSetWeek: ((Bool) -> Void)?
+    /// The week's overview panel.
+    var showsOverview = false
+    var onToggleOverview: (() -> Void)?
+    /// Saves a goal's objective for a week; returns an error to show, or nil.
+    var setObjective: ((_ goalId: String, _ weekStart: String, _ text: String) async -> String?)?
 
     @State private var drag = TaskDragState()
+    /// Time drawn on the week and waiting to be named.
+    @State private var weekCreating: BlockEditing?
     /// The block being named or given a goal in the popover.
     @State private var editing: BlockEditing?
     @State private var width: CGFloat = 0
@@ -48,7 +59,9 @@ struct DayView: View {
     init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
          onToday: @escaping () -> Void = {}, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
          showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
-         panel: BlockPanelActions? = nil) {
+         panel: BlockPanelActions? = nil, isWeek: Bool = false, onSetWeek: ((Bool) -> Void)? = nil,
+         showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
+         setObjective: ((String, String, String) async -> String?)? = nil) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -60,7 +73,29 @@ struct DayView: View {
         self.onToggleTasks = onToggleTasks
         self.selectedId = selectedId
         self.panel = panel
+        self.isWeek = isWeek
+        self.onSetWeek = onSetWeek
+        self.showsOverview = showsOverview
+        self.onToggleOverview = onToggleOverview
+        self.setObjective = setObjective
         _editing = State(initialValue: editing)
+    }
+
+    /// The week's Monday, in days from today, and as "YYYY-MM-DD".
+    private var monday: Int { CalendarDayMath.monday(of: offset, from: now) }
+    private var weekStart: String { CalendarDay.today(CalendarDayMath.midnight(monday, from: now)) }
+    private var thisWeek: Bool { monday <= 0 && monday + 6 >= 0 }
+    /// How far the arrows step: a day, or a week.
+    private var step: Int { isWeek ? 7 : 1 }
+
+    /// "This week", "Next week" or "Last week"; nil further away.
+    private var weekRelative: String? {
+        switch (monday - CalendarDayMath.monday(of: 0, from: now)) / 7 {
+        case 0: "This week"
+        case 1: "Next week"
+        case -1: "Last week"
+        default: nil
+        }
     }
 
     /// The selected block, while it's there and saved; below the width the panel needs, none.
@@ -76,29 +111,26 @@ struct DayView: View {
     var body: some View {
         VStack(spacing: 0) {
             CalendarTopBar(
-                showsTasks: onToggleTasks == nil ? nil : showsTasks,
-                onToggleTasks: { onToggleTasks?() },
-                title: shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
-                relative: Self.dayLabel(offset),
-                showsToday: !isToday,
+                isWeek: onSetWeek != nil && width >= 1024 ? isWeek : nil,
+                onSetWeek: { week in
+                    editing = nil
+                    weekCreating = nil
+                    onSetWeek?(week)
+                },
+                showsTasks: isWeek ? (onToggleOverview == nil ? nil : showsOverview) : (onToggleTasks == nil ? nil : showsTasks),
+                weekPanel: isWeek,
+                onToggleTasks: { if isWeek { onToggleOverview?() } else { onToggleTasks?() } },
+                title: isWeek
+                    ? CalendarDay.formatWeek(weekStart)
+                    : shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
+                relative: isWeek ? weekRelative : Self.dayLabel(offset),
+                showsToday: isWeek ? !thisWeek : !isToday,
                 onToday: onToday,
-                onPrevious: { onStep(-1) },
-                onNext: { onStep(1) }
+                onPrevious: { editing = nil; weekCreating = nil; onStep(-step) },
+                onNext: { editing = nil; weekCreating = nil; onStep(step) }
             )
 
-            HStack(spacing: 16) {
-                if showsTasks {
-                    TaskPanel(groups: data.panelGroups(day: offset, now: now), clock: clock, now: now)
-                        .frame(width: 288)
-                }
-                day
-                if let selected {
-                    blockPanel(selected).frame(width: 320)
-                }
-            }
-            .frame(maxWidth: showsTasks && selected != nil ? 1408 : showsTasks ? 1072 : selected != nil ? 1104 : 768)
-            .padding(16)
-            .frame(maxWidth: .infinity)
+            if isWeek { weekLayout } else { dayLayout }
         }
         .coordinateSpace(.calendar)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -122,6 +154,65 @@ struct DayView: View {
                 }
             }
         }
+    }
+
+    private var dayLayout: some View {
+        HStack(spacing: 16) {
+            if showsTasks {
+                TaskPanel(groups: data.panelGroups(day: offset, now: now), clock: clock, now: now)
+                    .frame(width: 288)
+            }
+            day
+            if let selected {
+                blockPanel(selected).frame(width: 320)
+            }
+        }
+        .frame(maxWidth: showsTasks && selected != nil ? 1408 : showsTasks ? 1072 : selected != nil ? 1104 : 768)
+        .padding(16)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var weekLayout: some View {
+        HStack(spacing: 16) {
+            if showsOverview {
+                WeekOverview(
+                    goals: data.goals,
+                    totals: data.weekTotals(monday: monday, now: now),
+                    objectives: data.objectives(weekStart: weekStart),
+                    weekStart: weekStart,
+                    setObjective: setObjective
+                )
+                .frame(width: 288)
+            }
+            VStack(spacing: 0) {
+                if let error {
+                    Text(error).appText(.sm).foregroundStyle(Theme.danger)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                WeekView(
+                    data: data,
+                    monday: monday,
+                    now: now,
+                    clock: clock,
+                    actions: actions,
+                    creating: $weekCreating,
+                    selectedId: selected?.id,
+                    onOpenBlock: { id in if panel != nil { selectedId.wrappedValue = id } },
+                    onOpenDay: { day in
+                        weekCreating = nil
+                        onSetWeek?(false)
+                        onStep(day - offset)
+                    }
+                )
+            }
+            if let selected {
+                blockPanel(selected).frame(width: 320)
+            }
+        }
+        .frame(maxWidth: 1536)
+        .padding(16)
+        .frame(maxWidth: .infinity)
     }
 
     private var day: some View {
@@ -183,6 +274,8 @@ struct DayView: View {
     /// Edit a block in the popover on its day's timeline, stepping to that day first.
     private func edit(_ block: CalendarBlock) {
         guard let segment = DaySegment.of(block, today: now).first(where: { $0.day == offset }) ?? DaySegment.of(block, today: now).first else { return }
+        // Editing happens on the day's timeline, so from the week it steps into that day.
+        if isWeek { weekCreating = nil; onSetWeek?(false) }
         if segment.day != offset { onStep(segment.day - offset) }
         editing = BlockEditing(
             mode: .edit(blockId: block.id, intention: block.isIntention),
@@ -206,8 +299,13 @@ struct DayView: View {
 
 /// `h-14 bg-background shadow-[inset_0_-1px_0_var(--card-border)]`: the date, then Today and the arrows.
 struct CalendarTopBar: View {
-    /// Whether the task panel is open; nil hides its toggle.
+    /// Day or week; nil hides the switch (the week needs a wide window).
+    var isWeek: Bool?
+    var onSetWeek: (Bool) -> Void = { _ in }
+    /// Whether the view's panel is open (tasks beside a day, the overview beside a week); nil hides its toggle.
     var showsTasks: Bool?
+    /// The week's panel rather than the day's.
+    var weekPanel = false
     var onToggleTasks: () -> Void = {}
     let title: String
     var relative: String?
@@ -218,10 +316,15 @@ struct CalendarTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            if let isWeek {
+                ViewSwitch(isWeek: isWeek, onSet: onSetWeek)
+            }
             if let showsTasks {
-                ToggleButton(isOn: showsTasks, action: onToggleTasks)
-                    .help(showsTasks ? "Hide tasks" : "Show tasks to drag onto the day")
-                    .accessibilityLabel("Tasks")
+                ToggleButton(icon: weekPanel ? .target : .checklist, isOn: showsTasks, action: onToggleTasks)
+                    .help(weekPanel
+                        ? (showsTasks ? "Hide the week’s overview" : "Show each goal’s objective and time this week")
+                        : (showsTasks ? "Hide tasks" : "Show tasks to drag onto the day"))
+                    .accessibilityLabel(weekPanel ? "This week’s overview" : "Tasks")
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title).font(.app(15, .semibold)).tracking(-0.15).foregroundStyle(Theme.foreground).lineLimit(1)
@@ -235,11 +338,11 @@ struct CalendarTopBar: View {
             }
             HStack(spacing: 4) {
                 BarButton(action: onPrevious) { Icon.arrowLeft.image(size: 16).frame(width: 32) }
-                    .help("Previous day")
-                    .accessibilityLabel("Previous day")
+                    .help(weekPanel ? "Previous week" : "Previous day")
+                    .accessibilityLabel(weekPanel ? "Previous week" : "Previous day")
                 BarButton(action: onNext) { Icon.arrowRight.image(size: 16).frame(width: 32) }
-                    .help("Next day")
-                    .accessibilityLabel("Next day")
+                    .help(weekPanel ? "Next week" : "Next day")
+                    .accessibilityLabel(weekPanel ? "Next week" : "Next day")
             }
         }
         .padding(.horizontal, 16)
@@ -248,15 +351,54 @@ struct CalendarTopBar: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
     }
 
-    /// The task panel's toggle: pressed, or a card button like the arrows.
+    /// Day or Week: `h-8 rounded-lg border bg-card p-0.5`, the chosen one washed.
+    private struct ViewSwitch: View {
+        let isWeek: Bool
+        let onSet: (Bool) -> Void
+
+        var body: some View {
+            HStack(spacing: 0) {
+                SwitchOption(title: "Day", isOn: !isWeek) { onSet(false) }
+                SwitchOption(title: "Week", isOn: isWeek) { onSet(true) }
+            }
+            .padding(2)
+            .frame(height: 32)
+            .background(Theme.card, in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
+        }
+
+        private struct SwitchOption: View {
+            let title: String
+            let isOn: Bool
+            let action: () -> Void
+            @State private var isHovered = false
+
+            var body: some View {
+                Button(action: action) {
+                    Text(title).appText(.sm, .medium)
+                        .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
+                        .padding(.horizontal, 10)
+                        .frame(maxHeight: .infinity)
+                        .background(isOn ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 6))
+                        .contentShape(.rect(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .onHover { isHovered = $0 }
+                .accessibilityAddTraits(isOn ? .isSelected : [])
+            }
+        }
+    }
+
+    /// The view's panel toggle: pressed, or a card button like the arrows.
     private struct ToggleButton: View {
+        let icon: Icon
         let isOn: Bool
         let action: () -> Void
         @State private var isHovered = false
 
         var body: some View {
             Button(action: action) {
-                Icon.checklist.image(size: 16)
+                icon.image(size: 16)
                     .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
                     .frame(width: 32, height: 32)
                     .background {
@@ -560,7 +702,8 @@ private struct TimelineScroll: View {
 struct CalendarActions {
     var create: (_ day: Int, _ start: Int, _ end: Int, _ goalId: String, _ title: String?) -> Void
     var saveDetails: (_ blockId: String, _ goalId: String, _ title: String?) -> Void
-    var move: (_ blockId: String, _ edge: BlockEdge, _ delta: Int) -> Void
+    /// By `delta` minutes and, moving it whole, `days` days.
+    var move: (_ blockId: String, _ edge: BlockEdge, _ delta: Int, _ days: Int) -> Void
     var moveToTomorrow: (_ blockId: String) -> Void
     var toggleDone: (_ blockId: String) -> Void
     var remove: (_ blockId: String) -> Void
@@ -860,7 +1003,7 @@ struct DayTimeline: View {
             }
             return
         }
-        if current.delta != 0 { actions?.move(block.id, current.edge, current.delta) }
+        if current.delta != 0 { actions?.move(block.id, current.edge, current.delta, 0) }
     }
 
     // MARK: Editing
@@ -1114,6 +1257,8 @@ struct BlockCardView: View {
     let elapsed: Double
     /// Hovered, or its menu is open: the ⋯ takes the recap dot's place.
     var isHovered = false
+    /// The week's narrower card: a smaller label that shrinks with the block.
+    var compact = false
 
     /// Height a block needs for its title and time on two lines; shorter ones get a single line.
     private static let twoLines: CGFloat = 48
@@ -1145,24 +1290,41 @@ struct BlockCardView: View {
                 }
                 .frame(width: 3)
 
-                label
+                if compact { compactLabel(height: geometry.size.height) } else { label }
 
-                if block.recapWaiting {
+                if block.recapWaiting, !compact || geometry.size.height >= 18 {
                     Circle().fill(GoalPalette.color(color)).frame(width: 6, height: 6)
                         .opacity(isHovered ? 0 : block.hasRecapDraft ? 1 : 0.6)
                         .frame(maxWidth: .infinity, alignment: .topTrailing)
-                        .padding(.top, 10)
-                        .padding(.trailing, 10)
+                        .padding(.top, compact ? 6 : 10)
+                        .padding(.trailing, compact ? 6 : 10)
                         .help(block.hasRecapDraft ? "Recap to review" : "Drafting recap")
                 }
             }
-            .clipShape(.rect(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(GoalPalette.color(color).opacity(0.22)))
+            .clipShape(.rect(cornerRadius: compact ? 6 : 8))
+            .overlay(RoundedRectangle(cornerRadius: compact ? 6 : 8).strokeBorder(GoalPalette.color(color).opacity(0.22)))
         }
         .opacity(block.isPending ? 0.6 : 1)
-        .help("\(title) · \(time)")
+        .help(compact ? "\(title)\n\(time)" : "\(title) · \(time)")
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(block.isIntention ? (block.taskDone ? "Done" : "Intention") : "Protected time"): \(title), \(time)")
+    }
+
+    /// In the week: the title clamped to what fits, and the time once there's room.
+    @ViewBuilder private func compactLabel(height: CGFloat) -> some View {
+        if height >= 18 {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.app(12.5, .medium))
+                    .strikethrough(block.taskDone, color: Theme.foreground(0.25))
+                    .foregroundStyle(block.taskDone ? Theme.muted : Theme.foreground)
+                    .lineLimit(height >= 110 ? 3 : height >= 60 ? 2 : 1)
+                if height >= 60 {
+                    Text(time).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, height >= 44 ? 6 : 2)
+        }
     }
 
     @ViewBuilder private var label: some View {

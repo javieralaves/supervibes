@@ -145,13 +145,36 @@ final class CalendarModel {
         }
     }
 
-    /// Move a block, or change its length, by `delta` minutes: `edge` says which end moves.
-    func move(_ blockId: String, edge: BlockEdge, delta: Int) {
-        guard delta != 0, let before = block(blockId) else { return }
-        let shift = Double(delta) * 60
-        let startsAt = before.startsAt.addingTimeInterval(edge == .end ? 0 : shift)
-        let endsAt = before.endsAt.addingTimeInterval(edge == .start ? 0 : shift)
-        setTimes(before, startsAt: startsAt, endsAt: endsAt)
+    /// Move a block, or change its length, by `delta` minutes (and, moving it, `days` days):
+    /// `edge` says which end moves.
+    func move(_ blockId: String, edge: BlockEdge, delta: Int, days: Int = 0) {
+        guard delta != 0 || days != 0, let before = block(blockId) else { return }
+        // Days by the calendar, so a daylight-saving change keeps the clock time; then minutes.
+        func shifted(_ date: Date, _ moves: Bool) -> Date {
+            guard moves else { return date }
+            let day = Calendar.current.date(byAdding: .day, value: days, to: date) ?? date
+            return day.addingTimeInterval(Double(delta) * 60)
+        }
+        setTimes(before, startsAt: shifted(before.startsAt, edge != .end), endsAt: shifted(before.endsAt, edge != .start))
+    }
+
+    /// A goal's objective for a week; empty clears it. Returns an error to show, or nil.
+    func setObjective(_ goalId: String, weekStart: String, _ text: String) async -> String? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let before = data.objectives
+        data.objectives.removeAll { $0.goalId == goalId && $0.weekStart == weekStart }
+        if !value.isEmpty { data.objectives.append(.init(goalId: goalId, weekStart: weekStart, objective: value)) }
+        let error = await call { client in
+            switch try await client.setWeekObjective(path: .init(id: goalId, weekStart: weekStart), body: .json(.init(objective: value))) {
+            case .noContent: nil
+            case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t save that."
+            case .notFound: "That goal doesn’t exist anymore."
+            case .unauthorized: Self.signedOut
+            case .undocumented(let status, _): "Couldn’t save that (the server answered \(status))."
+            }
+        }
+        if error != nil { data.objectives = before }
+        return error
     }
 
     /// The same time, a day later.

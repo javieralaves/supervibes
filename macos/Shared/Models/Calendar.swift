@@ -146,6 +146,13 @@ enum CalendarDayMath {
         return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
 
+    /// The Monday of the week holding the day `offset` days from `base`'s, in days from `base`'s day.
+    static func monday(of offset: Int, from base: Date, calendar: Calendar = .current) -> Int {
+        let weekday = calendar.component(.weekday, from: midnight(offset, from: base, calendar: calendar))
+        // Sunday is 1: Monday-first, it's the week's seventh day.
+        return offset - (weekday + 5) % 7
+    }
+
     /// Days from `base`'s day to `date`'s day.
     static func dayOffset(_ date: Date, from base: Date, calendar: Calendar = .current) -> Int {
         calendar.dateComponents([.day], from: calendar.startOfDay(for: base), to: calendar.startOfDay(for: date)).day ?? 0
@@ -175,6 +182,40 @@ struct DaySegment: Identifiable, Hashable, Sendable {
         if end > 0 { parts.append(DaySegment(blockId: block.id, day: d1, start: 0, end: end)) }
         return parts
     }
+}
+
+extension CalendarData {
+    /// Each goal's time in the week starting `monday` days from today: all of it, and how much has
+    /// happened, in minutes (weekTotals).
+    func weekTotals(monday: Int, now: Date) -> [String: (planned: Double, done: Double)] {
+        var totals: [String: (planned: Double, done: Double)] = [:]
+        for block in blocks {
+            for segment in DaySegment.of(block, today: now) where segment.day >= monday && segment.day <= monday + 6 {
+                let midnight = CalendarDayMath.midnight(segment.day, from: now)
+                let from = midnight.addingTimeInterval(Double(segment.start) * 60)
+                let to = midnight.addingTimeInterval(Double(segment.end) * 60)
+                let elapsed = to > from ? min(max(now.timeIntervalSince(from) / to.timeIntervalSince(from), 0), 1) : 0
+                let minutes = Double(segment.end - segment.start)
+                var total = totals[block.goalId] ?? (0, 0)
+                total.planned += minutes
+                total.done += minutes * elapsed
+                totals[block.goalId] = total
+            }
+        }
+        return totals
+    }
+
+    /// Each goal's objective for the week starting on `weekStart`.
+    func objectives(weekStart: String) -> [String: String] {
+        Dictionary(objectives.filter { $0.weekStart == weekStart }.map { ($0.goalId, $0.objective) }, uniquingKeysWith: { a, _ in a })
+    }
+}
+
+/// "45m", "2h", "2h 30m".
+func durationLabel(_ minutes: Double) -> String {
+    let h = Int(minutes / 60)
+    let m = Int((minutes.truncatingRemainder(dividingBy: 60)).rounded())
+    return h == 0 ? "\(m)m" : m == 0 ? "\(h)h" : "\(h)h \(m)m"
 }
 
 /// An open task as the task panel lists it, with its next block that hasn't ended: dragging the

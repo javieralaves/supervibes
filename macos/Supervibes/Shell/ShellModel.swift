@@ -56,6 +56,9 @@ final class ShellModel {
         case .connections:
             route = .connections
             return
+        case .calendar:
+            route = .calendar
+            return
         default:
             break
         }
@@ -64,13 +67,6 @@ final class ShellModel {
         if web.currentPath != item.href {
             web.navigate(to: item.href)
         }
-    }
-
-    /// The native calendar, previewed with Option-click in Debug builds until it's complete.
-    func openNativeCalendar() {
-        isAccountMenuOpen = false
-        overlays.dismiss()
-        route = .calendar
     }
 
     /// A goal's own page.

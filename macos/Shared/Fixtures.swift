@@ -246,7 +246,16 @@ enum Fixtures {
             CalendarTask(id: "t5", goalId: "g1", title: "Sketch the week view", minutes: 45, plannedFor: "2026-11-19", dueOn: "2026-11-20"),
             CalendarTask(id: "t6", goalId: "g2", title: "Plan the weekend", minutes: 30),
         ]
-        return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
-                            clock: .twelveHour, objectives: [])
+        // Earlier and later in the week, for the week view.
+        let week = [
+            CalendarBlock(id: "w1", goalId: "g1", title: "API sketch", startsAt: at(9).addingTimeInterval(-2 * 86_400), endsAt: at(11).addingTimeInterval(-2 * 86_400), hasRecapPost: true),
+            CalendarBlock(id: "w2", goalId: "g3", title: "Community call", startsAt: at(16).addingTimeInterval(-86_400), endsAt: at(17).addingTimeInterval(-86_400)),
+            CalendarBlock(id: "w3", goalId: "g1", title: "Week view sketch", startsAt: at(9).addingTimeInterval(86_400), endsAt: at(12).addingTimeInterval(86_400)),
+            CalendarBlock(id: "w4", goalId: "g2", title: "Long walk", startsAt: at(10).addingTimeInterval(3 * 86_400), endsAt: at(11, 30).addingTimeInterval(3 * 86_400)),
+        ]
+        return CalendarData(blocks: blocks + week, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
+                            clock: .twelveHour, objectives: [
+                                .init(goalId: "g1", weekStart: "2026-11-16", objective: "Finish the native calendar, week view included."),
+                            ])
     }
 }
