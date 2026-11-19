@@ -73,8 +73,14 @@ targets:
         # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.
         PRODUCT_NAME: $(SUPERVIBES_DISPLAY_NAME)
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID)
-        ENABLE_HARDENED_RUNTIME: YES
         REGISTER_APP_GROUPS: YES
+      configs:
+        # Release only: in Debug, hardened runtime keeps Xcode from loading its preview code into
+        # the app, and the canvas fails with "did not launch in 30 seconds".
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
     dependencies:
       - target: SupervibesWidgets
       - package: OpenAPIRuntime
@@ -108,8 +114,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID).widgets
-        ENABLE_HARDENED_RUNTIME: YES
         REGISTER_APP_GROUPS: YES
+      configs:
+        # Release only, like the app: Debug builds stay previewable.
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
 
   # Runs without a host app, so tests never launch Supervibes itself.
   SupervibesTests:
