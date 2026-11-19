@@ -89,6 +89,8 @@ enum CalendarDay {
         return calendar
     }
 
+    static func utcWeekday(_ date: Date) -> Int { utc.component(.weekday, from: date) }
+
     static func date(_ day: String) -> Date? {
         let parts = day.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
@@ -199,6 +201,18 @@ struct GoalDetail: Hashable, Sendable {
 }
 
 extension CalendarDay {
+    static func addDays(_ day: String, _ n: Int) -> String {
+        guard let date = date(day) else { return day }
+        return string(date.addingTimeInterval(Double(n) * 86_400))
+    }
+
+    /// The Monday that starts the week `day` falls in. Weeks run Monday to Sunday.
+    static func weekStart(_ day: String) -> String {
+        guard let date = date(day) else { return day }
+        let weekday = utcWeekday(date) // 1 is Sunday
+        return addDays(day, -((weekday + 5) % 7))
+    }
+
     /// "Nov 16–22", or "Nov 30 – Dec 6" across months, for the week starting `weekStart`.
     static func formatWeek(_ weekStart: String) -> String {
         guard let start = date(weekStart) else { return weekStart }
@@ -250,6 +264,8 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     var done = false
     /// The day they mean to do it, "YYYY-MM-DD".
     var plannedFor: String?
+    /// The Monday of the week they mean to do it; a planned day sets its week. Nil with no day: Later.
+    var plannedWeek: String?
     /// The day it's due, "YYYY-MM-DD".
     var dueOn: String?
     /// When it's next on the calendar, if it is.
@@ -282,7 +298,65 @@ struct TaskPatch: Hashable, Sendable {
     var description: String?
     var minutes: Int?
     var plannedFor: String?
+    /// Any day of the week; empty moves it to Later.
+    var plannedWeek: String?
     var dueOn: String?
+}
+
+/// Where an open task stands in the plan, as src/lib/task-horizon.ts works it out from its day and week.
+struct TaskHorizon: Hashable, Sendable {
+    enum Group: CaseIterable, Hashable, Sendable {
+        case day, thisWeek, nextWeek, later
+    }
+
+    let group: Group
+    /// Planned for a day that's gone by without it being done.
+    var slipped = false
+    /// Weeks it has carried over from the week it was planned for.
+    var carriedWeeks = 0
+}
+
+extension TaskItem {
+    /// Where it stands today: a missed day falls back to its week; a past week carries into this one.
+    func horizon(today: String) -> TaskHorizon {
+        if let day = plannedFor, day >= today { return TaskHorizon(group: .day) }
+        let thisWeek = CalendarDay.weekStart(today)
+        let week = plannedWeek ?? plannedFor.map(CalendarDay.weekStart)
+        if let week, week <= thisWeek {
+            return TaskHorizon(group: .thisWeek, slipped: plannedFor != nil, carriedWeeks: CalendarDay.daysUntil(thisWeek, today: week) / 7)
+        }
+        if week == CalendarDay.addDays(thisWeek, 7) { return TaskHorizon(group: .nextWeek) }
+        return TaskHorizon(group: .later)
+    }
+
+    /// With a planned day or week changed as the server does it (resolvePlacement): a day sets its
+    /// week; clearing the day keeps the week (Later if it's past next week); another week drops a
+    /// day outside it; clearing the week moves it to Later. An empty string clears.
+    func placed(plannedFor newDay: String?, plannedWeek newWeek: String?, today: String) -> TaskItem {
+        var task = self
+        if let day = newDay, !day.isEmpty {
+            task.plannedFor = day
+            task.plannedWeek = CalendarDay.weekStart(day)
+            return task
+        }
+        // nil: leave the week; .some(nil): clear it; .some(day): that day's week.
+        let week: String?? = newWeek.map { $0.isEmpty ? nil : CalendarDay.weekStart($0) }
+        if newDay != nil {
+            let kept: String? = if let week { week } else { plannedWeek ?? plannedFor.map(CalendarDay.weekStart) }
+            task.plannedFor = nil
+            task.plannedWeek = kept.flatMap { $0 <= CalendarDay.addDays(CalendarDay.weekStart(today), 7) ? $0 : nil }
+            return task
+        }
+        guard let week else { return task }
+        guard let week else {
+            task.plannedFor = nil
+            task.plannedWeek = nil
+            return task
+        }
+        if let day = plannedFor, CalendarDay.weekStart(day) != week { task.plannedFor = nil }
+        task.plannedWeek = week
+        return task
+    }
 }
 
 /// Something the latest read suggests doing next.

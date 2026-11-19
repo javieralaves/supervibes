@@ -145,15 +145,22 @@ enum Fixtures {
         )
     }
 
+    /// Open tasks as of Wednesday 2026-11-18 (the week of Nov 16): planned for days, for this week
+    /// (one slipped and carried over, one carried twice), for next week, and in Later.
     static let tasks: [TaskItem] = [
         TaskItem(id: "t1", title: "Rebuild the goal page’s tasks natively",
                  description: "Drag to reorder, day pills, suggestions.\nThen notes and sources.",
-                 minutes: 120, plannedFor: "2026-11-18", dueOn: "2026-11-19"),
+                 minutes: 120, plannedFor: "2026-11-18", plannedWeek: "2026-11-16", dueOn: "2026-11-19"),
         TaskItem(id: "t2", title: "Write the API sketch for the calendar", minutes: 60,
-                 scheduledAt: referenceNow.addingTimeInterval(4 * 3600)),
+                 plannedFor: "2026-11-18", plannedWeek: "2026-11-16", scheduledAt: referenceNow.addingTimeInterval(4 * 3600)),
+        TaskItem(id: "t5", title: "Sketch the week view", minutes: 60, plannedWeek: "2026-11-16"),
         TaskItem(id: "t3", title: "Review the onboarding copy with Pablo", minutes: 30,
-                 plannedFor: "2026-11-15", dueOn: "2026-11-16"),
+                 plannedFor: "2026-11-15", plannedWeek: "2026-11-09", dueOn: "2026-11-16"),
+        TaskItem(id: "t6", title: "Tidy the empty states", minutes: 120, plannedWeek: "2026-11-02"),
+        TaskItem(id: "t7", title: "Write the release notes", minutes: 30, plannedFor: "2026-11-20", plannedWeek: "2026-11-16"),
+        TaskItem(id: "t8", title: "Ask two people to try a beta", minutes: 15, plannedWeek: "2026-11-23"),
         TaskItem(id: "t4", title: "Try the Mac app for a full day", minutes: 15, dueOn: "2026-11-24"),
+        TaskItem(id: "t9", title: "Explore a lock screen widget", minutes: 120),
     ]
 
     static let suggestions: [TaskSuggestion] = [

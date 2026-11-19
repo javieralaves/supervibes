@@ -68,7 +68,8 @@ export async function listTasksForRead(userId: string, goalId: string, days: num
       .from(goalTasks)
       .where(and(mineOnGoal, isNull(goalTasks.doneAt)))
       .orderBy(asc(goalTasks.position), asc(goalTasks.createdAt))
-      .limit(50),
+      // Prompts list every planned task and count what's in Later past a few.
+      .limit(200),
     db
       .select(columns)
       .from(goalTasks)

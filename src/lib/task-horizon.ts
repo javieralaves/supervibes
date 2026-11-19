@@ -69,3 +69,27 @@ export function weekProblem(week: string, today: string): string | null {
   const monday = weekStartOf(week);
   return monday === thisWeek || monday === nextWeek ? null : "Plan it for this week or next.";
 }
+
+/** The groups in plan order: days, then this week, next week and Later. */
+export const TASK_GROUPS: readonly TaskGroup[] = ["day", "thisWeek", "nextWeek", "later"];
+
+/**
+ * Open tasks in plan order, each with where it stands: planned days soonest first, then this
+ * week, next week and Later. Within a group they keep the order they came in (the person's).
+ */
+export function inPlanOrder<T extends Placed>(tasks: readonly T[], today: string): (T & { horizon: TaskHorizon })[] {
+  // Array.prototype.sort is stable, so ties keep the person's order.
+  return tasks
+    .map((task) => ({ ...task, horizon: taskHorizon(task, today) }))
+    .sort(
+      (a, b) =>
+        TASK_GROUPS.indexOf(a.horizon.group) - TASK_GROUPS.indexOf(b.horizon.group) ||
+        (a.horizon.group === "day" ? a.plannedFor!.localeCompare(b.plannedFor!) : 0),
+    );
+}
+
+/** For prompts: how many weeks a task has carried over, or "" when it hasn't. */
+export function carriedForPrompt(horizon: TaskHorizon): string {
+  const n = horizon.carriedWeeks;
+  return n === 0 ? "" : `carried over from ${n === 1 ? "last week" : `${n} weeks ago`}, still not done`;
+}

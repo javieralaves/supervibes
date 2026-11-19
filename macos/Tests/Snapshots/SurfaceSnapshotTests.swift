@@ -202,7 +202,30 @@ final class SurfaceSnapshotTests: XCTestCase {
             .padding(.horizontal, 32)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.background),
-            width: 832, height: 820
+            width: 832, height: 1320
+        )
+    }
+
+    func testTasksSectionWithLater() {
+        assertAppearances(
+            TasksSection(
+                tasks: Fixtures.tasks, suggestions: [], hasRead: false, reading: false,
+                clock: .twelveHour, today: "2026-11-18", initiallyShowsLater: true, now: now
+            )
+            .padding(.horizontal, 32)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Theme.background),
+            width: 832, height: 1120
+        )
+    }
+
+    func testTasksSectionEmpty() {
+        assertAppearances(
+            TasksSection(tasks: [], suggestions: [], hasRead: false, reading: false, clock: .twelveHour, today: "2026-11-18", now: now)
+                .padding(.horizontal, 32)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Theme.background),
+            width: 832, height: 360
         )
     }
 

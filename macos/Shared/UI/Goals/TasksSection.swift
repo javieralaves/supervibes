@@ -2,22 +2,27 @@ import SwiftUI
 
 /// What the Tasks section asks of whoever owns the data.
 struct TaskActions {
-    var add: (String) -> Void = { _ in }
+    /// A new task's title, and the week it's for (its Monday), or nil for Later.
+    var add: (String, String?) -> Void = { _, _ in }
     var toggle: (TaskItem) -> Void = { _ in }
     var edit: (TaskItem, TaskPatch) -> Void = { _, _ in }
     var delete: (TaskItem) -> Void = { _ in }
     /// The open tasks' ids in their new order.
     var reorder: ([String]) -> Void = { _ in }
+    /// Moves a task to a day, week or Later: the patch's planned day and week, an empty string clearing.
+    var place: (TaskItem, TaskPatch) -> Void = { _, _ in }
     var acceptSuggestion: (TaskSuggestion) -> Void = { _ in }
     var passOnSuggestion: (TaskSuggestion) -> Void = { _ in }
     /// Runs a new read, which brings new suggestions.
     var refresh: () -> Void = {}
 }
 
-/// A goal's open tasks, matching tasks-section.tsx. Click one to open it in place and add a
+/// A goal's open tasks, grouped by how they're planned: for a day, for this week, for next week, or
+/// Later (captured, not committed to yet, and folded away). Click one to open it in place and add a
 /// description; it saves when it closes (Esc, ⌘Return, a click elsewhere, or opening another).
-/// Drag a row, or press ⌥↑ / ⌥↓ on it, to reorder: the order is the priority reads, agendas and
-/// the calendar follow. Under the list, the latest read's suggestions to add or pass on.
+/// Within a week or Later, drag a row, or press ⌥↑ / ⌥↓ on it, to reorder: that order is what reads
+/// and agendas follow. A row's plan pill gives it a day; its ⋯ menu moves it to another week or
+/// Later. Under the list, the latest read's suggestions to add or pass on.
 struct TasksSection: View {
     let tasks: [TaskItem]
     let suggestions: [TaskSuggestion]
@@ -32,12 +37,15 @@ struct TasksSection: View {
     var closeSignal = 0
     /// Opens with this task open, for snapshot tests.
     var initiallyOpen: String?
+    /// Opens with Later unfolded, for snapshot tests.
+    var initiallyShowsLater = false
     /// For "Today 2:00 PM"; fixed in snapshots.
     var now = Date()
     var actions = TaskActions()
 
     @State private var draft: Draft?
-    @State private var newTitle = ""
+    @State private var newTitles: [TaskHorizon.Group: String] = [:]
+    @State private var showsLater = false
     @State private var drag: Drag?
     /// After a drop: how far the dropped row still is from its new slot, gliding to zero.
     @State private var settle: Settle?
@@ -52,6 +60,7 @@ struct TasksSection: View {
 
     struct Drag: Equatable {
         let id: String
+        let group: TaskHorizon.Group
         let from: Int
         var to: Int
         var dy: CGFloat
@@ -63,33 +72,46 @@ struct TasksSection: View {
     }
 
     enum Field: Hashable {
-        case row(String), title, description, new
+        case row(String), title, description, new(TaskHorizon.Group)
     }
 
     /// The space between rows (`gap-0.5`).
     private static let gap: CGFloat = 2
 
-    private var canReorder: Bool {
-        draft == nil && tasks.count > 1 && !tasks.contains { $0.isPending }
+    /// The Mondays this week and next start on.
+    private var thisWeek: String { CalendarDay.weekStart(today) }
+    private var nextWeek: String { CalendarDay.addDays(thisWeek, 7) }
+
+    /// The open tasks by where they stand, each group in the person's order; planned days soonest first.
+    private var groups: [TaskHorizon.Group: [TaskItem]] {
+        var groups = Dictionary(grouping: tasks) { $0.horizon(today: today).group }
+        groups[.day] = groups[.day]?.enumerated()
+            .sorted { ($0.element.plannedFor ?? "", $0.offset) < ($1.element.plannedFor ?? "", $1.offset) }
+            .map(\.element)
+        return groups
+    }
+
+    /// Planned days follow their dates; weeks and Later can be put in order.
+    private func canReorder(_ rows: [TaskItem], in group: TaskHorizon.Group) -> Bool {
+        group != .day && draft == nil && rows.count > 1 && !tasks.contains { $0.isPending }
     }
 
     var body: some View {
+        let groups = self.groups
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Tasks").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-                Text("What you’ve decided to do for this goal.").appText(.sm).foregroundStyle(Theme.muted)
+                Text("What you’ve decided to do for this goal, and when.").appText(.sm).foregroundStyle(Theme.muted)
             }
             .padding(.bottom, 16)
 
-            VStack(spacing: 0) {
-                if !tasks.isEmpty {
-                    VStack(spacing: Self.gap) {
-                        ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
-                            row(task, index: index)
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                if let planned = groups[.day], !planned.isEmpty {
+                    section(.day, rows: planned)
                 }
-                newTaskField
+                section(.thisWeek, rows: groups[.thisWeek] ?? [])
+                section(.nextWeek, rows: groups[.nextWeek] ?? [])
+                section(.later, rows: groups[.later] ?? [])
             }
             .padding(6)
             .background(Theme.card, in: .rect(cornerRadius: 16))
@@ -106,6 +128,7 @@ struct TasksSection: View {
         }
         .padding(.top, 48)
         .onAppear {
+            showsLater = initiallyShowsLater
             if let id = initiallyOpen, let task = tasks.first(where: { $0.id == id }) {
                 draft = Draft(id: task.id, title: task.title, description: task.description ?? "")
             }
@@ -113,9 +136,67 @@ struct TasksSection: View {
         .onChange(of: closeSignal) { closeTask() }
     }
 
+    // MARK: Sections
+
+    @ViewBuilder private func section(_ group: TaskHorizon.Group, rows: [TaskItem]) -> some View {
+        sectionHeader(group, count: rows.count)
+        if group == .thisWeek, let carried = rows.first(where: { !$0.isPending && $0.horizon(today: today).carriedWeeks >= 2 }) {
+            CarriedOverPrompt(
+                task: carried,
+                weeks: carried.horizon(today: today).carriedWeeks,
+                keep: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: thisWeek)) },
+                later: { actions.place(carried, TaskPatch(plannedFor: "", plannedWeek: "")) }
+            )
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
+        }
+        if !rows.isEmpty, group != .later || showsLater {
+            VStack(spacing: Self.gap) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, task in
+                    row(task, index: index, rows: rows, group: group)
+                }
+            }
+        }
+        if group != .day { newTaskField(group) }
+    }
+
+    @ViewBuilder private func sectionHeader(_ group: TaskHorizon.Group, count: Int) -> some View {
+        let label = HStack(spacing: 6) {
+            switch group {
+            case .day:
+                Text("Planned").appText(.xs, .medium).foregroundStyle(Theme.muted)
+            case .thisWeek:
+                Text("This week").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                Text(CalendarDay.formatWeek(thisWeek)).appText(.xs).foregroundStyle(Theme.muted.opacity(0.7))
+            case .nextWeek:
+                Text("Next week").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                Text(CalendarDay.formatWeek(nextWeek)).appText(.xs).foregroundStyle(Theme.muted.opacity(0.7))
+            case .later:
+                Text("Later").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                if count > 0 {
+                    Text("\(count)").appText(.xs).foregroundStyle(Theme.muted.opacity(0.7)).monospacedDigit()
+                    Icon.chevronDown.image(size: 12).foregroundStyle(Theme.muted)
+                        .rotationEffect(.degrees(showsLater ? 0 : -90))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, group == .day || (group == .thisWeek && groups[.day]?.isEmpty != false) ? 6 : 14)
+        .padding(.bottom, 4)
+
+        if group == .later, count > 0 {
+            Button { withAnimation(.easeOut(duration: 0.15)) { showsLater.toggle() } } label: { label.contentShape(.rect) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showsLater ? "Fold away Later" : "Show Later")
+        } else {
+            label
+        }
+    }
+
     // MARK: Rows
 
-    @ViewBuilder private func row(_ task: TaskItem, index: Int) -> some View {
+    @ViewBuilder private func row(_ task: TaskItem, index: Int, rows: [TaskItem], group: TaskHorizon.Group) -> some View {
         if let draft, draft.id == task.id {
             OpenTaskRow(
                 task: task,
@@ -126,64 +207,81 @@ struct TasksSection: View {
                 onClose: closeTask
             )
         } else {
+            let reorderable = canReorder(rows, in: group)
             TaskRow(
                 task: task,
+                horizon: task.horizon(today: today),
                 clock: clock,
                 today: today,
+                thisWeek: thisWeek,
+                nextWeek: nextWeek,
                 now: now,
                 isDragging: drag?.id == task.id,
-                isReorderable: canReorder,
+                isReorderable: reorderable,
                 actions: actions,
                 onOpen: { open(task) }
             )
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { heights[task.id] = $0 }
-            .offset(y: offset(for: task, at: index))
+            .offset(y: offset(for: task, at: index, in: group))
             .zIndex(drag?.id == task.id ? 1 : 0)
             // Rows the dragged one passes slide aside; the dragged one follows the pointer exactly.
             .animation(drag?.id == task.id ? nil : .easeOut(duration: 0.15), value: drag)
             // High priority, so a press on the title (a button) still becomes a drag once it moves
             // past a few points; a click without moving still opens the task.
-            .highPriorityGesture(dragGesture(task, index: index), including: canReorder ? .all : .subviews)
-            .focusable(canReorder && !task.isPending)
+            .highPriorityGesture(dragGesture(task, index: index, rows: rows, group: group), including: reorderable ? .all : .subviews)
+            .focusable(reorderable && !task.isPending)
             .focusEffectDisabled()
             .focused($focus, equals: .row(task.id))
             .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
                 guard press.modifiers.contains(.option) else { return .ignored }
-                move(task, by: press.key == .upArrow ? -1 : 1)
+                move(task, by: press.key == .upArrow ? -1 : 1, in: rows, group: group)
                 return .handled
             }
         }
     }
 
-    private var newTaskField: some View {
-        HStack(spacing: 12) {
+    private func newTaskField(_ group: TaskHorizon.Group) -> some View {
+        let title = Binding(get: { newTitles[group] ?? "" }, set: { newTitles[group] = $0 })
+        let placeholder = switch group {
+        case .thisWeek: "Add to this week"
+        case .nextWeek: "Add to next week"
+        default: "Add a task for later"
+        }
+        return HStack(spacing: 12) {
             Icon.add.image(size: 16).foregroundStyle(Theme.muted).frame(width: 18)
-            TextField("", text: $newTitle)
+            TextField("", text: title)
                 .textFieldStyle(.plain)
                 .font(.app(15.2))
                 .foregroundStyle(Theme.foreground)
-                .focused($focus, equals: .new)
-                .placeholder("Add a task", when: newTitle.isEmpty, font: .app(15.2), color: Theme.muted.opacity(0.8))
-                .accessibilityLabel("New task")
-                .onSubmit(addTask)
-                .onExitCommand { newTitle = "" }
-            if !newTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                .focused($focus, equals: .new(group))
+                .placeholder(placeholder, when: title.wrappedValue.isEmpty, font: .app(15.2), color: Theme.muted.opacity(0.8))
+                .accessibilityLabel(placeholder)
+                .onSubmit { addTask(to: group) }
+                .onExitCommand { newTitles[group] = "" }
+            if !title.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("↵ to add").appText(.xs).foregroundStyle(Theme.muted)
             }
         }
         .padding(.horizontal, 12)
-        .frame(minHeight: 48)
+        .frame(minHeight: 44)
     }
 
     // MARK: Editing
 
-    private func addTask() {
-        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func addTask(to group: TaskHorizon.Group) {
+        let title = (newTitles[group] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        newTitle = ""
-        actions.add(String(title.prefix(TaskItem.maxTitle)))
+        newTitles[group] = ""
+        let week: String? = switch group {
+        case .thisWeek: thisWeek
+        case .nextWeek: nextWeek
+        default: nil
+        }
+        actions.add(String(title.prefix(TaskItem.maxTitle)), week)
+        // So what was just added shows.
+        if group == .later { showsLater = true }
         // Enter adds it and keeps the cursor here for the next.
-        focus = .new
+        focus = .new(group)
     }
 
     private func open(_ task: TaskItem) {
@@ -213,10 +311,10 @@ struct TasksSection: View {
     // MARK: Reordering
 
     /// Where a row sits while a task is dragged: the dragged one follows the pointer, the ones it
-    /// passes slide aside to make room.
-    private func offset(for task: TaskItem, at index: Int) -> CGFloat {
+    /// passes in its group slide aside to make room.
+    private func offset(for task: TaskItem, at index: Int, in group: TaskHorizon.Group) -> CGFloat {
         if let settle, settle.id == task.id { return settle.dy }
-        guard let drag else { return 0 }
+        guard let drag, drag.group == group else { return 0 }
         if task.id == drag.id { return drag.dy }
         let shift = (heights[drag.id] ?? 48) + Self.gap
         if drag.from < drag.to, index > drag.from, index <= drag.to { return -shift }
@@ -224,30 +322,30 @@ struct TasksSection: View {
         return 0
     }
 
-    private func dragGesture(_ task: TaskItem, index: Int) -> some Gesture {
+    private func dragGesture(_ task: TaskItem, index: Int, rows: [TaskItem], group: TaskHorizon.Group) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
-                guard canReorder || drag != nil else { return }
+                guard canReorder(rows, in: group) || drag != nil else { return }
                 let dy = value.translation.height
-                // Its landing spot: past every other row whose middle it has crossed.
+                // Its landing spot: past every other row in its group whose middle it has crossed.
                 var top: CGFloat = 0
                 var tops: [CGFloat] = []
-                for item in tasks {
+                for item in rows {
                     tops.append(top)
                     top += (heights[item.id] ?? 48) + Self.gap
                 }
                 let center = tops[index] + (heights[task.id] ?? 48) / 2 + dy
-                let to = tasks.indices.reduce(0) { count, i in
-                    i != index && tops[i] + (heights[tasks[i].id] ?? 48) / 2 < center ? count + 1 : count
+                let to = rows.indices.reduce(0) { count, i in
+                    i != index && tops[i] + (heights[rows[i].id] ?? 48) / 2 < center ? count + 1 : count
                 }
-                drag = Drag(id: task.id, from: index, to: to, dy: dy)
+                drag = Drag(id: task.id, group: group, from: index, to: to, dy: dy)
             }
             .onEnded { _ in
                 guard let ended = drag else { return }
                 // How far the new slot is from the old one: the rows it passed, and the gaps.
                 let passed = ended.to > ended.from
-                    ? Array(tasks[(ended.from + 1)...ended.to])
-                    : ended.to < ended.from ? Array(tasks[ended.to..<ended.from]) : []
+                    ? Array(rows[(ended.from + 1)...ended.to])
+                    : ended.to < ended.from ? Array(rows[ended.to..<ended.from]) : []
                 let distance = passed.reduce(0) { $0 + (heights[$1.id] ?? 48) + Self.gap }
                 let slot = ended.to > ended.from ? distance : -distance
 
@@ -258,9 +356,9 @@ struct TasksSection: View {
                 instant.disablesAnimations = true
                 withTransaction(instant) {
                     if ended.to != ended.from {
-                        var ids = tasks.map(\.id)
+                        var ids = rows.map(\.id)
                         ids.insert(ids.remove(at: ended.from), at: ended.to)
-                        actions.reorder(ids)
+                        reorder(group: ids)
                     }
                     drag = nil
                     settle = Settle(id: ended.id, dy: ended.dy - slot)
@@ -269,15 +367,46 @@ struct TasksSection: View {
             }
     }
 
-    /// ⌥↑ / ⌥↓ on a task: one place up or down.
-    private func move(_ task: TaskItem, by step: Int) {
-        guard canReorder, let from = tasks.firstIndex(where: { $0.id == task.id }) else { return }
+    /// ⌥↑ / ⌥↓ on a task: one place up or down in its group.
+    private func move(_ task: TaskItem, by step: Int, in rows: [TaskItem], group: TaskHorizon.Group) {
+        guard canReorder(rows, in: group), let from = rows.firstIndex(where: { $0.id == task.id }) else { return }
         let to = from + step
-        guard tasks.indices.contains(to) else { return }
-        var ids = tasks.map(\.id)
+        guard rows.indices.contains(to) else { return }
+        var ids = rows.map(\.id)
         ids.insert(ids.remove(at: from), at: to)
-        withAnimation(.easeOut(duration: 0.18)) { actions.reorder(ids) }
+        withAnimation(.easeOut(duration: 0.18)) { reorder(group: ids) }
         focus = .row(task.id)
+    }
+
+    /// A group's new order, as the whole list: its tasks take the same slots among the others, in this order.
+    private func reorder(group ids: [String]) {
+        let moved = Set(ids)
+        var next = ids.makeIterator()
+        actions.reorder(tasks.map { moved.contains($0.id) ? next.next() ?? $0.id : $0.id })
+    }
+}
+
+/// "This has carried over twice": keep it for this week, or let it go to Later.
+private struct CarriedOverPrompt: View {
+    let task: TaskItem
+    let weeks: Int
+    let keep: () -> Void
+    let later: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Icon.refresh.image(size: 14).foregroundStyle(Theme.muted)
+            Text("\(Text(task.title).foregroundStyle(Theme.foreground)) has carried over \(weeks == 2 ? "twice" : "\(weeks) weeks"). Keep it this week?")
+                .foregroundStyle(Theme.muted)
+                .appText(.sm)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            SmallButton(icon: .tick, title: "Keep", action: keep)
+            SmallButton(icon: .dashedCircle, title: "Move to Later", action: later)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Theme.wash.opacity(0.6), in: .rect(cornerRadius: 12))
     }
 }
 
@@ -286,8 +415,12 @@ struct TasksSection: View {
 /// `group relative flex min-h-12 items-start gap-3 rounded-xl px-3 py-1.5 hover:bg-wash/50`
 private struct TaskRow: View {
     let task: TaskItem
+    let horizon: TaskHorizon
     let clock: Clock
     let today: String
+    /// The Mondays this week and next start on, for moving it.
+    let thisWeek: String
+    let nextWeek: String
     let now: Date
     let isDragging: Bool
     let isReorderable: Bool
@@ -371,6 +504,10 @@ private struct TaskRow: View {
     @ViewBuilder private var pills: some View {
         HStack(spacing: 10) {
             EstimatePill(minutes: task.minutes, isPending: task.isPending, owner: task.id) { actions.edit(task, TaskPatch(minutes: $0)) }
+            if horizon.carriedWeeks > 0 {
+                TaskPill(icon: .refresh, text: horizon.carriedWeeks == 1 ? "Carried over" : "Carried over ×\(horizon.carriedWeeks)", tone: Self.amber)
+                    .help("Planned for an earlier week and not done yet")
+            }
             if let at = task.scheduledAt {
                 HStack(spacing: 4) {
                     Icon.calendarSmall.image(size: 12)
@@ -390,6 +527,9 @@ private struct TaskRow: View {
             }
         }
     }
+
+    /// As a planned day that slipped (TaskDayKind.describe).
+    private static let amber = Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24))
 
     private var planPill: TaskDayPill {
         TaskDayPill(kind: .plan, value: task.plannedFor, today: today, isQuiet: !isEngaged, owner: task.id) {
@@ -411,12 +551,29 @@ private struct TaskRow: View {
                     overlays.dismiss()
                     onOpen()
                 }
+                MenuSeparator()
+                // Moving to a week drops its day; Later clears both.
+                if horizon.group != .thisWeek {
+                    MenuItem(icon: .calendarSmall, title: "Move to this week") { move(week: thisWeek) }
+                }
+                if horizon.group != .nextWeek {
+                    MenuItem(icon: .arrowForward, title: "Move to next week") { move(week: nextWeek) }
+                }
+                if horizon.group != .later {
+                    MenuItem(icon: .dashedCircle, title: "Move to Later") { move(week: "") }
+                }
+                MenuSeparator()
                 MenuItem(icon: .delete, title: "Delete", isDestructive: true) {
                     overlays.dismiss()
                     actions.delete(task)
                 }
             }
         }
+    }
+
+    private func move(week: String) {
+        overlays?.dismiss()
+        actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week))
     }
 
     /// "Today 2:00 PM", "Tomorrow 09:30" or "Thu 14:00", in this Mac's time zone.
@@ -688,6 +845,6 @@ private struct RefreshSuggestionsButton: View {
         clock: .twelveHour, today: "2026-11-18", now: Fixtures.referenceNow
     )
     .padding(.horizontal, 32)
-    .frame(width: 832, height: 820, alignment: .top)
+    .frame(width: 832, height: 1320, alignment: .top)
     .background(Theme.background)
 }

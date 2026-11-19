@@ -167,22 +167,26 @@ final class GoalPageModel {
     /// What the Tasks section can do, wired to this model.
     var taskActions: TaskActions {
         TaskActions(
-            add: { [weak self] in self?.addTask($0) },
+            add: { [weak self] in self?.addTask($0, week: $1) },
             toggle: { [weak self] in self?.toggle($0) },
             edit: { [weak self] in self?.edit($0, $1) },
             delete: { [weak self] in self?.deleteTask($0) },
             reorder: { [weak self] in self?.reorder($0) },
+            place: { [weak self] in self?.place($0, $1) },
             acceptSuggestion: { [weak self] in self?.accept($0) },
             passOnSuggestion: { [weak self] in self?.passOn($0) },
             refresh: { [weak self] in self?.updateStatus() }
         )
     }
 
-    private func addTask(_ title: String) {
-        let pending = TaskItem(id: "pending-\(UUID().uuidString)", title: title, minutes: TaskItem.defaultMinutes, isPending: true)
+    /// Adds a task at the end, planned for `week` (a Monday), or for Later when it's nil.
+    private func addTask(_ title: String, week: String?) {
+        let pending = TaskItem(
+            id: "pending-\(UUID().uuidString)", title: title, minutes: TaskItem.defaultMinutes, plannedWeek: week, isPending: true
+        )
         detail?.tasks.append(pending)
         taskRequest(undo: { [weak self] in self?.detail?.tasks.removeAll { $0.id == pending.id } }) { client, id in
-            switch try await client.addTask(path: .init(id: id), body: .json(.init(title: title))) {
+            switch try await client.addTask(path: .init(id: id), body: .json(.init(title: title, plannedWeek: week))) {
             case .created(let created): .replace(pending.id, TaskItem(api: try created.body.json))
             case .badRequest(let bad): .failed((try? bad.body.json.error.message) ?? "Couldn’t add that task.")
             case .notFound: .gone
@@ -214,13 +218,15 @@ final class GoalPageModel {
         if let title = patch.title { after.title = title }
         if let description = patch.description { after.description = description.isEmpty ? nil : description }
         if let minutes = patch.minutes { after.minutes = minutes }
-        if let day = patch.plannedFor { after.plannedFor = day.isEmpty ? nil : day }
+        if patch.plannedFor != nil || patch.plannedWeek != nil, let today = detail?.today {
+            after = after.placed(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, today: today)
+        }
         if let day = patch.dueOn { after.dueOn = day.isEmpty ? nil : day }
         detail?.tasks[index] = after
         taskRequest(undo: { [weak self] in self?.replace(task.id, with: before) }) { client, _ in
             let body = Components.Schemas.TaskPatch(
                 title: patch.title, description: patch.description, minutes: patch.minutes,
-                plannedFor: patch.plannedFor, dueOn: patch.dueOn
+                plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, dueOn: patch.dueOn
             )
             return switch try await client.editTask(path: .init(taskId: task.id), body: .json(body)) {
             case .ok(let ok): .replace(task.id, TaskItem(api: try ok.body.json, keeping: after))
@@ -256,6 +262,25 @@ final class GoalPageModel {
             case .notFound: .gone
             case .unauthorized: .signedOut
             case .undocumented(let status, _): .failed("Couldn’t reorder (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Moves a task to a day, a week or Later (the patch's planned day and week), at the end of its
+    /// new group. Shows it there at once and saves in the background.
+    private func place(_ task: TaskItem, _ patch: TaskPatch) {
+        guard let tasks = detail?.tasks, let index = tasks.firstIndex(where: { $0.id == task.id }), let today = detail?.today else { return }
+        let after = tasks[index].placed(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, today: today)
+        detail?.tasks.remove(at: index)
+        detail?.tasks.append(after)
+        taskRequest(undo: { [weak self] in self?.detail?.tasks = tasks }) { client, _ in
+            let body = Components.Schemas.TaskPlacement(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek)
+            return switch try await client.placeTask(path: .init(taskId: task.id), body: .json(body)) {
+            case .ok(let ok): .replace(task.id, TaskItem(api: try ok.body.json, keeping: after))
+            case .badRequest(let bad): .failed((try? bad.body.json.error.message) ?? "Couldn’t move that task.")
+            case .notFound: .failed("That task doesn’t exist anymore.")
+            case .unauthorized: .signedOut
+            case .undocumented(let status, _): .failed("Couldn’t move that task (the server answered \(status)).")
             }
         }
     }
@@ -625,6 +650,7 @@ extension TaskItem {
             minutes: task.minutes,
             done: task.doneAt != nil,
             plannedFor: task.plannedFor,
+            plannedWeek: task.plannedWeek,
             dueOn: task.dueOn,
             scheduledAt: task.scheduledAt
         )

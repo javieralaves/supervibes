@@ -12,8 +12,9 @@ import { listPosts } from "@/lib/posts";
 import { listStatuses, recordStatus } from "@/lib/goal-statuses";
 import { CONFIDENCES, STATUSES, type Outlook, type StatusBasis } from "@/lib/status-schema";
 import { getTimeZone } from "@/lib/settings";
+import { carriedForPrompt, inPlanOrder, planningWeeks, TASK_GROUPS, type TaskGroup } from "@/lib/task-horizon";
 import { minutesLabel } from "@/lib/task-schema";
-import { listTasksForRead } from "@/lib/tasks";
+import { listTasksForRead, type TaskDTO } from "@/lib/tasks";
 import { addDays, formatWeek, targetDateForPrompt, taskDaysForPrompt, todayIn, weekStartOf } from "@/lib/target-date";
 import { listWeekObjectives } from "@/lib/week-objectives";
 
@@ -33,7 +34,8 @@ How to work:
 - If there's a target date, weigh pace against the time left: say plainly if they're on track, behind, or past it. Without one, don't invent a deadline.
 - The person may have set an objective for this week: what the week should move, as a step toward the goal. When they have, judge the week against it too (on track for the week, behind, or already there) and let it shape the suggestions. Objectives from earlier weeks show what they meant to do then; say whether those landed when it matters. Never invent an objective for a week that has none.
 - The person's tasks are their own plan for the goal. Tasks they've finished are first-hand evidence of progress: weigh them by when they were finished, and let their descriptions say what was actually done. Open tasks show what they intend to do next; a long-open list with nothing finished is worth noticing.
-- An open task may have a day the person planned to do it and a due date they set: their own commitments, not yours to invent. Overdue tasks and plans that slipped are worth naming when they matter for the goal; a due date coming up shapes what matters most right now. A task's due date is not the goal's target date.
+- Open tasks come grouped by how the person has planned them: for a day, for this week, for next week, or Later. Days and weeks are their own commitments, not yours to invent. Later holds what they've captured but not committed to: don't count it as stalling or hold it against them, though a Later task that's due soon is worth naming.
+- An open task may have a due date they set. Overdue tasks, planned days that slipped and tasks carried over from earlier weeks are worth naming when they matter for the goal; a due date coming up shapes what matters most right now. A task's due date is not the goal's target date.
 - The person's notes are their own first-hand account: offline work, decisions, context and corrections no app can show. Treat them as more reliable than what you infer from app activity, and let them change how you read that activity (for example, "ignore X" or "paused on purpose"). Weigh each note by its date: recent notes matter most, but standing context stays true until a later note says otherwise.
 - For each source, read recent activity in the app (only within the time window), guided by the person's own description of where to look and what counts. Skip anything they said to ignore.
 - Weigh everything together. You're judging momentum toward the goal, not listing activity.
@@ -135,6 +137,34 @@ function taskLine(t: { title: string; description: string | null }, days = "") {
   const description = t.description?.replace(/\s+/g, " ").trim();
   const title = days ? `${t.title} [${days}]` : t.title;
   return description ? `${title} — ${description.slice(0, 400)}` : title;
+}
+
+/** How many Later tasks a prompt lists by name; the rest are counted. */
+const MAX_LATER = 15;
+
+/** Open tasks as prompt lines, grouped by how they're planned, each group in the person's order. */
+function openTaskLines(open: TaskDTO[], today: string): string[] {
+  const { thisWeek, nextWeek } = planningWeeks(today);
+  const heading: Record<TaskGroup, string> = {
+    day: "Planned for a day:",
+    thisWeek: `Planned for this week (${formatWeek(thisWeek)}), no day:`,
+    nextWeek: `Planned for next week (${formatWeek(nextWeek)}):`,
+    later: "Later: captured, not committed to yet:",
+  };
+  const planned = inPlanOrder(open, today);
+  return TASK_GROUPS.flatMap((group) => {
+    const all = planned.filter((t) => t.horizon.group === group);
+    if (all.length === 0) return [];
+    const shown = group === "later" ? all.slice(0, MAX_LATER) : all;
+    return [
+      heading[group],
+      ...shown.map((t) => {
+        const days = [taskDaysForPrompt(t, today), carriedForPrompt(t.horizon)].filter(Boolean).join("; ");
+        return `- [${minutesLabel(t.minutes)}] ${taskLine(t, days)}`;
+      }),
+      ...(all.length > shown.length ? [`- …and ${all.length - shown.length} more.`] : []),
+    ];
+  });
 }
 
 /** Stored shape; minutes is 30, 60 or 120. */
@@ -255,12 +285,7 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
     ...(hasTasks
       ? [
           "Tasks the person has set for this goal (their own plan):",
-          ...(tasks.open.length > 0
-            ? [
-                "Open, in their order:",
-                ...tasks.open.map((t) => `- [${minutesLabel(t.minutes)}] ${taskLine(t, taskDaysForPrompt(t, today))}`),
-              ]
-            : ["No open tasks."]),
+          ...(tasks.open.length > 0 ? openTaskLines(tasks.open, today) : ["No open tasks."]),
           ...(tasks.done.length > 0
             ? [
                 "Finished within the time window, newest first:",
