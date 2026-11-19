@@ -973,6 +973,13 @@
                 "type": "integer",
                 "description": "Time on the calendar for this goal this week, in minutes."
               },
+              "protectedBlocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProtectedBlock"
+                },
+                "description": "The goal's time on the calendar this week and next, clipped to those two weeks, earliest first. For weighing what's planned against it."
+              },
               "done": {
                 "type": "array",
                 "items": {
@@ -986,6 +993,7 @@
               "objective",
               "lastWeek",
               "protectedMinutes",
+              "protectedBlocks",
               "done"
             ]
           },
@@ -1172,6 +1180,23 @@
           "reason",
           "outlook",
           "at"
+        ]
+      },
+      "ProtectedBlock": {
+        "type": "object",
+        "properties": {
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "startsAt",
+          "endsAt"
         ]
       },
       "Task": {
