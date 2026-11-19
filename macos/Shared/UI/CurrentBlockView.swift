@@ -96,3 +96,16 @@ struct NoBlockView: View {
         }
     }
 }
+
+#Preview("Widget, during a block") {
+    let now = Fixtures.referenceNow
+    if let block = Fixtures.current(at: now) {
+        CurrentBlockView(block: block, now: now).padding(16).frame(width: 170, height: 170, alignment: .topLeading)
+    }
+}
+
+#Preview("Widget, between blocks") {
+    let now = Fixtures.referenceNow
+    NoBlockView(next: Fixtures.upcoming(at: now).first, signedIn: true)
+        .padding(16).frame(width: 170, height: 170, alignment: .topLeading)
+}

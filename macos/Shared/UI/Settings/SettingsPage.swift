@@ -463,3 +463,12 @@ private struct ChartTooltip: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
     }
 }
+
+#Preview("Settings") {
+    @Previewable @State var settings = SleepSettings(sleepStart: 23 * 60 + 30, wakeTime: 8 * 60, clock: .twelveHour)
+    ScrollView {
+        SettingsPage(settings: $settings, usage: UsageSummary(calls: Fixtures.usageCalls, today: Fixtures.referenceNow))
+    }
+    .background(Theme.background)
+    .frame(width: 900, height: 900)
+}

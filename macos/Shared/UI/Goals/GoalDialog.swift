@@ -375,3 +375,17 @@ private struct IconChoice: View {
         .accessibilityLabel(icon.label)
     }
 }
+
+#Preview("Edit goal") {
+    GoalDialog(
+        input: GoalInput(title: "Run a half marathon", description: "Finish under two hours.",
+                         targetDate: "2027-04-12", icon: "Rocket01Icon", color: "sky"),
+        today: "2026-11-18"
+    )
+    .padding(24)
+    .background(Theme.shell)
+}
+
+#Preview("New goal") {
+    GoalDialog(input: GoalInput(), today: "2026-11-18").padding(24).background(Theme.shell)
+}

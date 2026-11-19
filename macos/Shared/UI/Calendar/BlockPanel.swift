@@ -699,3 +699,20 @@ private struct QuietButton: View {
         .padding(.leading, -8)
     }
 }
+
+#Preview("Block panels") {
+    let data = Fixtures.calendar
+    let now = Fixtures.referenceNow
+    HStack(alignment: .top, spacing: 16) {
+        ForEach(Fixtures.panelBlocks) { block in
+            BlockPanel(
+                block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
+                when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: ["t5"],
+                ended: block.endsAt <= now, now: now, actions: nil
+            )
+            .frame(width: 320, height: 640)
+        }
+    }
+    .padding(16)
+    .background(Theme.background)
+}

@@ -462,3 +462,12 @@ struct SmallGhostButton: View {
         .onHover { isHovered = $0 }
     }
 }
+
+#Preview("Notes") {
+    ScrollView {
+        NotesSection(notes: Fixtures.notes, author: Fixtures.author, clock: .twelveHour, now: Fixtures.referenceNow)
+            .padding(.horizontal, 32)
+    }
+    .frame(width: 832, height: 900)
+    .background(Theme.background)
+}

@@ -681,3 +681,13 @@ private struct RefreshSuggestionsButton: View {
         .onHover { isHovered = $0 }
     }
 }
+
+#Preview("Tasks") {
+    TasksSection(
+        tasks: Fixtures.tasks, suggestions: Fixtures.suggestions, hasRead: true, reading: false,
+        clock: .twelveHour, today: "2026-11-18", now: Fixtures.referenceNow
+    )
+    .padding(.horizontal, 32)
+    .frame(width: 832, height: 820, alignment: .top)
+    .background(Theme.background)
+}

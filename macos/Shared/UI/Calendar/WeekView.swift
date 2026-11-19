@@ -563,3 +563,11 @@ private struct DraftOutline: View {
             .allowsHitTesting(false)
     }
 }
+
+#Preview("Week") {
+    @Previewable @State var showsOverview = true
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, isWeek: true, onSetWeek: { _ in },
+            showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+        .background(Theme.background)
+        .frame(width: 1400, height: 760)
+}

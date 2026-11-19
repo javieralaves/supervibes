@@ -1370,3 +1370,11 @@ extension GoalPalette {
         })
     }
 }
+
+#Preview("Day") {
+    @Previewable @State var showsTasks = true
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow,
+            showsTasks: showsTasks, onToggleTasks: { showsTasks.toggle() })
+        .background(Theme.background)
+        .frame(width: 1180, height: 760)
+}

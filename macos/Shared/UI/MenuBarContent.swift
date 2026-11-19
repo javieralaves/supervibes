@@ -83,3 +83,18 @@ private struct UpcomingRow: View {
         }
     }
 }
+
+// Previews use the snapshot fixtures, at Fixtures.referenceNow (Wednesday Nov 18, 10:18).
+#Preview("During a block") {
+    let now = Fixtures.referenceNow
+    MenuBarContent(current: Fixtures.current(at: now), upcoming: Fixtures.upcoming(at: now), now: now)
+        .frame(width: 300)
+}
+
+#Preview("Nothing scheduled") {
+    MenuBarContent(current: nil, upcoming: [], now: Fixtures.referenceNow).frame(width: 300)
+}
+
+#Preview("Signed out") {
+    MenuBarContent(current: nil, upcoming: [], now: Fixtures.referenceNow, isSignedIn: false).frame(width: 300)
+}

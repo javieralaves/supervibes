@@ -416,3 +416,9 @@ private struct BasedOn: View {
         }
     }
 }
+
+#Preview("Goal page") {
+    GoalPage(detail: Fixtures.goalDetail, now: Fixtures.referenceNow)
+        .background(Theme.background)
+        .frame(width: 900, height: 880)
+}

@@ -233,3 +233,15 @@ private struct EmptyGoals: View {
         }
     }
 }
+
+#Preview("Goals") {
+    GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18")
+        .background(Theme.background)
+        .frame(width: 1180, height: 900)
+}
+
+#Preview("No goals yet") {
+    GoalsHome(firstName: "Javier", goals: [], today: "2026-11-18")
+        .background(Theme.background)
+        .frame(width: 900, height: 760)
+}

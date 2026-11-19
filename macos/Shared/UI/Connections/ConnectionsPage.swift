@@ -162,3 +162,9 @@ struct ProviderMark: View {
         .accessibilityHidden(true)
     }
 }
+
+#Preview("Connections") {
+    ConnectionsPage(items: Fixtures.connections, notice: .connected("Linear"))
+        .background(Theme.background)
+        .frame(width: 900, height: 620)
+}

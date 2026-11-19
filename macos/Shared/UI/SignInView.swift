@@ -44,3 +44,11 @@ struct SignInView: View {
         .background(.background)
     }
 }
+
+#Preview("Sign in") {
+    SignInView().frame(width: 640, height: 360)
+}
+
+#Preview("With a message") {
+    SignInView(message: "This Google account isn't on the access list.").frame(width: 640, height: 360)
+}

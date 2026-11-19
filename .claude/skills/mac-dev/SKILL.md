@@ -59,6 +59,16 @@ Debug builds load the local Next.js server. Start it with the preview tool's `de
 
 Debug and Release are separate apps: Debug is "Supervibes Dev" (`Supervibes Dev.app`, `com.supervibes.mac.debug`, "Dev" after its menu bar title, localhost, token in a file), Release is "Supervibes" (`com.supervibes.mac`, production, token in the Keychain), so the user can keep the installed Release app open while you work. `run.sh` only ever quits the Debug one. Release is signed with the user's Apple Developer team once an Apple Development certificate is in the Keychain: `release.sh` then writes the gitignored `Config/Signing.local.xcconfig` from it; until then it's signed ad hoc.
 
+## Seeing changes live: previews and Xcode's tools
+
+- Every screen in `Shared/UI/` ends with `#Preview` blocks built from `Fixtures` at `Fixtures.referenceNow`, mirroring its snapshot tests. `Rail.swift` has a "Window" preview of the whole window on Goals. When you add or change a screen, add or update its preview alongside the snapshot test. Use `@Previewable @State` for bindings so toggles work in the canvas.
+- The person keeps `macos/Supervibes.xcodeproj` open in Xcode with the canvas showing (⌥⌘↩). Xcode reloads files edited on disk, so the canvas follows your edits in a second or two, with no rebuild or relaunch. If `xcodegen generate` rewrites the project while it's open, Xcode may ask to revert to the version on disk; that's expected.
+- Xcode's own tools are registered with Claude Code as the `xcode` MCP server (`xcrun mcpbridge`, user scope). Xcode must be running with the project open. The first time, call `XcodeOpenWorkspace` with the project's path; Xcode then asks the person to approve the agent. Useful tools:
+  - `RenderPreview`: renders a `#Preview` and returns an image to look at, without launching the app. Use it to check a view while iterating; keep snapshot tests as the record.
+  - `XcodeRefreshCodeIssuesInFile`: compiler errors for one file, faster than a full build.
+  - `BuildProject`, `RunProject` / `StopProject`, `GetConsoleOutput`: build, run and read the app's console through Xcode.
+- The scripts below stay the source of truth for builds, tests and release; Xcode's tools are for fast looks.
+
 ## Verifying a change
 
 1. **Views:** add or update a test in `Tests/Snapshots/` using `assertAppearances(view, width:)`, which renders light and dark. Run `scripts/snapshot.sh --record`, then **open the PNGs it lists with the Read tool and look at them.** Re-run without `--record` to confirm the run is green. On a failed comparison, the new image and a diff are in `build/snapshot-failures/`.

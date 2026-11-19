@@ -198,3 +198,18 @@ struct AppWindowFrame<Content: View>: View {
             .padding(.trailing, 8)
     }
 }
+
+/// The whole window as it opens, on Goals: rail, frame and backdrop.
+#Preview("Window") {
+    HStack(spacing: 0) {
+        Rail(active: .goals, account: RailAccount(name: "Javi", email: "you@example.com", imageURL: nil), topInset: 28)
+        AppWindowFrame {
+            ZStack {
+                Backdrop()
+                GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18")
+            }
+        }
+    }
+    .background(Theme.shell)
+    .frame(width: 1280, height: 820)
+}

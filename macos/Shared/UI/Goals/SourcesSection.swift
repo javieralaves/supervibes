@@ -347,3 +347,19 @@ private struct DialogCloseButton: View {
         .accessibilityLabel("Close")
     }
 }
+
+#Preview("Sources") {
+    VStack(spacing: 0) {
+        SourcesSection(sources: Fixtures.sources, options: Fixtures.connectionOptions, goal: Fixtures.goals[0])
+        SourcesSection(sources: [], options: Fixtures.connectionOptions, goal: Fixtures.goals[0])
+    }
+    .padding(.horizontal, 32)
+    .frame(width: 832, height: 600, alignment: .top)
+    .background(Theme.background)
+}
+
+#Preview("Source dialog") {
+    SourceDialog(goal: Fixtures.goals[0], connection: Fixtures.connectionOptions[0], relation: "", isEditing: false)
+        .padding(24)
+        .background(Theme.shell)
+}
