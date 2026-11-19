@@ -5,7 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PROJECT=Supervibes.xcodeproj
 SCHEME=Supervibes
 DERIVED=build
-APP="$DERIVED/Build/Products/Debug/Supervibes.app"
+APP="$DERIVED/Build/Products/Debug/Supervibes Dev.app"
 
 generate() {
   xcodegen generate --quiet

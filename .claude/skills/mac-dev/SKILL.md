@@ -58,7 +58,7 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 
 Debug builds load the local Next.js server. Start it with the preview tool's `dev` configuration (or `npm run dev` at the repo root) before `scripts/run.sh`.
 
-Debug and Release are separate apps: Debug is "Supervibes Dev" (`com.supervibes.mac.debug`, localhost, token in a file), Release is "Supervibes" (`com.supervibes.mac`, production, token in the Keychain), so the user can keep the installed Release app open while you work. `run.sh` only ever quits the Debug one. Release is signed with the user's Apple Developer team once an Apple Development certificate is in the Keychain: `release.sh` then writes the gitignored `Config/Signing.local.xcconfig` from it; until then it's signed ad hoc.
+Debug and Release are separate apps: Debug is "Supervibes Dev" (`Supervibes Dev.app`, `com.supervibes.mac.debug`, "Dev" after its menu bar title, localhost, token in a file), Release is "Supervibes" (`com.supervibes.mac`, production, token in the Keychain), so the user can keep the installed Release app open while you work. `run.sh` only ever quits the Debug one. Release is signed with the user's Apple Developer team once an Apple Development certificate is in the Keychain: `release.sh` then writes the gitignored `Config/Signing.local.xcconfig` from it; until then it's signed ad hoc.
 
 ## Verifying a change
 

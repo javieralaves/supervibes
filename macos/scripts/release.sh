@@ -6,6 +6,9 @@
 # Keychain (Xcode → Settings → Accounts → Manage Certificates), and ad hoc until then.
 source "$(dirname "$0")/_common.sh"
 
+# Its own build folder, which Spotlight skips (macOS doesn't index folders ending in .noindex), so
+# the only "Supervibes" Spotlight finds is the one in /Applications.
+DERIVED=build/release.noindex
 RELEASE_APP="$DERIVED/Build/Products/Release/Supervibes.app"
 SIGNING=Config/Signing.local.xcconfig
 

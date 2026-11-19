@@ -1,7 +1,8 @@
 // Shared by every target and configuration.
 
-// The app's identity. Debug builds are a separate app ("Supervibes Dev", .debug) so they can run
-// next to an installed Release build without macOS mixing up their widgets, menu bar and settings.
+// The app's identity. Debug builds are a separate app, "Supervibes Dev" (.debug), with that name in
+// the Dock, Finder and app menu and "Dev" on its menu bar item, so they can run next to an installed
+// Release build without macOS (or you) mixing them up.
 SUPERVIBES_BUNDLE_ID = com.supervibes.mac
 SUPERVIBES_DISPLAY_NAME = Supervibes
 

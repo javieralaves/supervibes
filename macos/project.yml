@@ -59,7 +59,8 @@ targets:
           NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_NAME: Supervibes
+        # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.
+        PRODUCT_NAME: $(SUPERVIBES_DISPLAY_NAME)
         PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID)
     dependencies:
       - target: SupervibesWidgets

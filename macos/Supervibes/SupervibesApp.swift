@@ -17,7 +17,7 @@ struct SupervibesApp: App {
     var body: some Scene {
         // The main window: the native rail beside the app's window, which shows web pages and,
         // one by one, native screens in their place.
-        Window("Supervibes", id: "main") {
+        Window(appName, id: "main") {
             MainView(auth: auth, shell: shell)
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await auth.restore() }
@@ -42,7 +42,12 @@ struct SupervibesApp: App {
         MenuBarExtra {
             MenuBarRoot(model: model)
         } label: {
+            #if DEBUG
+            // Next to the installed app's item, this one says it's the Dev build.
+            Text("\(model.menuBarTitle) Dev")
+            #else
             model.menuBarTitle
+            #endif
         }
         .menuBarExtraStyle(.window)
     }
@@ -64,6 +69,9 @@ private struct OpenSettingsButton: View {
     }
 }
 
+/// "Supervibes", or "Supervibes Dev" for Debug builds.
+let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Supervibes"
+
 /// Connects the shared menu bar view to app actions (opening the window, quitting).
 private struct MenuBarRoot: View {
     let model: AppModel
@@ -75,6 +83,7 @@ private struct MenuBarRoot: View {
             upcoming: model.upcoming,
             now: model.now,
             isSignedIn: model.isSignedIn,
+            appName: appName,
             onOpen: {
                 openWindow(id: "main")
                 NSApp.activate()

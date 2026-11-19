@@ -6,6 +6,8 @@ struct MenuBarContent: View {
     let upcoming: [Block]
     let now: Date
     var isSignedIn = true
+    /// "Supervibes", or "Supervibes Dev" for Debug builds.
+    var appName = "Supervibes"
     var onOpen: () -> Void = {}
     var onQuit: () -> Void = {}
 
@@ -43,7 +45,7 @@ struct MenuBarContent: View {
             Divider()
 
             HStack {
-                Button(isSignedIn ? "Open Supervibes" : "Sign In…", action: onOpen)
+                Button(isSignedIn ? "Open \(appName)" : "Sign In…", action: onOpen)
                     .keyboardShortcut("o")
                 Spacer()
                 Button("Quit", action: onQuit)
