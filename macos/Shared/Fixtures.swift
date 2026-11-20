@@ -339,7 +339,8 @@ enum Fixtures {
     }
 
     /// Planning tomorrow (Thursday Nov 19) across goals, as the Plan page's design has it: Build
-    /// Supervibes 2 h over its 2 h session, Superfocus with 30 min to spare, the essay 15 min under, and
+    /// Supervibes 2 h over its 2 h session, Superfocus with 30 min to spare, the essay with a task on the
+    /// calendar at 6 PM and 30 min to spare, and
     /// reserved time for the gym and lunch.
     static var plan: CalendarData {
         let today = Calendar.current.startOfDay(for: referenceNow)
@@ -360,6 +361,9 @@ enum Fixtures {
             CalendarBlock(id: "p3", goalId: "pg4", title: "Lunch", startsAt: at(1, 13), endsAt: at(1, 14), reserved: true),
             CalendarBlock(id: "p4", goalId: "pg2", title: nil, startsAt: at(1, 14), endsAt: at(1, 16)),
             CalendarBlock(id: "p5", goalId: "pg3", title: nil, startsAt: at(1, 16, 30), endsAt: at(1, 17, 30)),
+            // A task given a time: it has its own, and that time isn't room for the essay's others.
+            CalendarBlock(id: "p18", goalId: "pg3", title: "Edit last week's draft before it goes out",
+                          startsAt: at(1, 18), endsAt: at(1, 18, 15), taskId: "pt14"),
             // The rest of this week, and next.
             CalendarBlock(id: "p6", goalId: "pg1", title: nil, startsAt: at(-2, 9), endsAt: at(-2, 12)),
             CalendarBlock(id: "p7", goalId: "pg1", title: nil, startsAt: at(-1, 9), endsAt: at(-1, 12)),

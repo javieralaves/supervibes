@@ -27,9 +27,10 @@ final class PlanTests: XCTestCase {
         XCTAssertFalse(health.isActive)
         let budget = data.budget(day: 1, now: now)
         XCTAssertEqual(budget.awake, 16 * 60)
-        XCTAssertEqual(budget.sessionMinutes, 300)
+        // Five hours of sessions and the essay's quarter hour on the calendar.
+        XCTAssertEqual(budget.sessionMinutes, 315)
         XCTAssertEqual(budget.reserved, 120)
-        XCTAssertEqual(budget.free, 16 * 60 - 420)
+        XCTAssertEqual(budget.free, 16 * 60 - 435)
     }
 
     func testSpareAndGivingIt() throws {
@@ -46,6 +47,34 @@ final class PlanTests: XCTestCase {
         // Reserved time and intentions have nothing to give.
         let gym = try XCTUnwrap(data.blocks.first { $0.id == "p1" })
         XCTAssertEqual(data.spare(in: gym, lane: lanes(data)["pg4"], now: now), 0)
+    }
+
+    func testScheduledTaskKeepsItsOwnTime() throws {
+        let essay = try XCTUnwrap(lanes(data)["pg3"])
+        // The draft is on the calendar at 6 PM: it fits there, and its quarter hour isn't room for the outline.
+        XCTAssertEqual(essay.scheduled.map(\.id), ["pt14"])
+        XCTAssertNotNil(essay.scheduled.first?.scheduledAt)
+        XCTAssertEqual(essay.tasks.map(\.id), ["pt13"])
+        XCTAssertEqual(essay.room, 60)
+        XCTAssertEqual(essay.spare, 30)
+    }
+
+    func testScheduledTimeIsNoRoomForOtherTasks() throws {
+        // A goal with no session, a task on the calendar for 15 min, and another planned for the day,
+        // ranked first: the scheduled one fits on its own time; the other has no room.
+        var data = data
+        data.tasks += [
+            CalendarTask(id: "x1", goalId: "pg4", title: "Install Too Good to Go", minutes: 15, plannedFor: "2026-11-19"),
+            CalendarTask(id: "x2", goalId: "pg4", title: "Throw paper trash", minutes: 15, plannedFor: "2026-11-19"),
+        ]
+        let day = Calendar.current.startOfDay(for: now).addingTimeInterval(86_400)
+        data.blocks.append(CalendarBlock(id: "x3", goalId: "pg4", title: "Throw paper trash",
+                                         startsAt: day.addingTimeInterval(22 * 3600), endsAt: day.addingTimeInterval(22.25 * 3600), taskId: "x2"))
+        let health = try XCTUnwrap(lanes(data)["pg4"])
+        XCTAssertEqual(health.scheduled.map(\.id), ["x2"])
+        XCTAssertEqual(health.room, 0)
+        XCTAssertEqual(health.overflow.map(\.id), ["x1"])
+        XCTAssertTrue(health.isActive)
     }
 
     func testGivingAWholeBlock() {

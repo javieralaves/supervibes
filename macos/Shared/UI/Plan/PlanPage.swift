@@ -281,11 +281,15 @@ private struct PlanLaneView: View {
                 .padding(.top, 4)
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 6) {
+                    // On the calendar: they fit, on their own time, ahead of the rest.
+                    ForEach(lane.scheduled) { task in
+                        row(task)
+                    }
                     ForEach(Array(lane.tasks.enumerated()), id: \.element.id) { index, task in
                         if index == lane.fitting { cutLine }
                         card(task, fits: index < lane.fitting, gained: fitBefore.map { index >= $0 && index < lane.fitting } ?? false)
                     }
-                    if lane.tasks.isEmpty {
+                    if lane.tasks.isEmpty && lane.scheduled.isEmpty {
                         PlanNote(text: lane.day.protected > 0
                             ? "Nothing planned · \(BoardDuration.text(lane.room)) protected"
                             : "Nothing planned")
@@ -345,8 +349,18 @@ private struct PlanLaneView: View {
         .padding(.bottom, 4)
     }
 
-    /// Tasks against what's left of the session time: "3 h 45 min / 2 h", amber when over.
-    private var ring: some View {
+    /// Tasks against what's left of the session time: "3 h 45 min / 2 h", amber when over. With
+    /// only scheduled tasks and no sessions, how much is scheduled.
+    @ViewBuilder private var ring: some View {
+        if lane.room == 0, lane.open == 0, !lane.scheduled.isEmpty {
+            Text("\(BoardDuration.text(lane.scheduled.reduce(0) { $0 + $1.minutes })) scheduled")
+                .appText(.xs).monospacedDigit().foregroundStyle(Theme.muted).fixedSize()
+        } else {
+            capacity
+        }
+    }
+
+    private var capacity: some View {
         HStack(spacing: 6) {
             CapacityRing(planned: lane.open, protected: lane.room, color: lane.goal.color)
             Group {
@@ -359,7 +373,8 @@ private struct PlanLaneView: View {
         .help(lane.room == 0 ? "No session time" : lane.spare < 0 ? "\(BoardDuration.text(-lane.spare)) over" : "\(BoardDuration.text(lane.spare)) to spare")
     }
 
-    private func card(_ task: TaskItem, fits: Bool, gained: Bool) -> some View {
+    /// A card, as on the planning board.
+    private func row(_ task: TaskItem) -> some View {
         GoalTaskRow(
             task: task,
             horizon: task.horizon(today: today),
@@ -376,6 +391,11 @@ private struct PlanLaneView: View {
             onOpen: {}
         )
         .modifier(CardStyle(isOpen: false))
+    }
+
+    /// A task that needs room in the sessions: ranked by dragging, faded under the cut line.
+    private func card(_ task: TaskItem, fits: Bool, gained: Bool) -> some View {
+        row(task)
         .overlay {
             // Fits now, thanks to the time being given.
             if gained {

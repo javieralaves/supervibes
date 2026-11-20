@@ -3,8 +3,12 @@ import Foundation
 /*
  * Planning a day across goals (the Plan page): for each goal, the tasks planned for the day in its
  * order, weighed against its session time that day, with a cut line where that time runs out; and
- * how its weeks stand, for deciding where what doesn't fit goes. Reserved time isn't room for
- * tasks, as on the planning board. Designed in supervibes-design ("Cross-goal planning").
+ * how its weeks stand, for deciding where what doesn't fit goes. Designed in supervibes-design
+ * ("Cross-goal planning").
+ *
+ * Only sessions are room for tasks. Reserved time is kept for its own sake, and a task with a time
+ * on the calendar (an intention) already has its own: it always fits, on that time, and that time
+ * isn't room for anything else.
  */
 
 /// One goal's lane on the Plan page.
@@ -12,9 +16,11 @@ struct PlanLane: Identifiable, Hashable, Sendable {
     let goal: CalendarGoal
     /// This week's objective, if it has one.
     let objective: String?
-    /// Its open tasks planned for the day, in its order.
+    /// Its open tasks with a time on the calendar that day, earliest first, each with that time.
+    let scheduled: [TaskItem]
+    /// Its other open tasks planned for the day, in its order: these need room in its sessions.
     let tasks: [TaskItem]
-    /// The day's tasks against its sessions that day, as the planning board weighs a day.
+    /// The day's unscheduled tasks against its sessions that day.
     let day: Capacity
     let thisWeek: Capacity
     let nextWeek: Capacity
@@ -44,7 +50,7 @@ struct PlanLane: Identifiable, Hashable, Sendable {
     var spare: Int { room - open }
 
     /// Something to plan here: tasks for the day, or sessions to put them in.
-    var isActive: Bool { !tasks.isEmpty || day.protected > 0 }
+    var isActive: Bool { !tasks.isEmpty || !scheduled.isEmpty || day.protected > 0 }
 }
 
 /// The waking day, split into sessions (by goal), reserved time, and what's free.
@@ -80,9 +86,11 @@ extension CalendarTask {
 }
 
 extension CalendarData {
-    /// A goal's protected time that tasks can go in: everything but reserved time.
+    /// A goal's sessions: the protected time its unscheduled tasks can go in. Not reserved time,
+    /// and not an intention's, which is its own task's.
     func sessionBlocks(_ goalId: String) -> [ProtectedBlock] {
-        blocks.filter { $0.goalId == goalId && !$0.reserved }.map { ProtectedBlock(start: $0.startsAt, end: $0.endsAt) }
+        blocks.filter { $0.goalId == goalId && !$0.reserved && !$0.isIntention }
+            .map { ProtectedBlock(start: $0.startsAt, end: $0.endsAt) }
     }
 
     /// Every goal's lane for `day` ("YYYY-MM-DD"), in the goals' order.
@@ -91,17 +99,37 @@ extension CalendarData {
         let thisWeek = CalendarDay.weekStart(today)
         let nextWeek = CalendarDay.addDays(thisWeek, 7)
         let objectives = objectives(weekStart: CalendarDay.weekStart(day))
+        // Each open task's intentions, earliest first: on the calendar, it has its own time.
+        var intentions: [String: [CalendarBlock]] = [:]
+        for block in blocks.sorted(by: { $0.startsAt < $1.startsAt }) {
+            if let taskId = block.taskId { intentions[taskId, default: []].append(block) }
+        }
         return goals.map { goal in
             let mine = tasks.filter { $0.goalId == goal.id }.map(\.item)
             let blocks = sessionBlocks(goal.id)
-            let planned = mine.filter { $0.plannedFor == day }
+            // On the calendar that day: it fits, on its own time.
+            let scheduled: [TaskItem] = mine.compactMap { task in
+                guard let block = intentions[task.id]?.first(where: { CalendarDay.today($0.startsAt) == day }) else { return nil }
+                var item = task
+                item.scheduledAt = block.startsAt
+                return item
+            }
+            .sorted { ($0.scheduledAt ?? .distantPast) < ($1.scheduledAt ?? .distantPast) }
+            let onCalendar = Set(scheduled.map(\.id))
+            let planned = mine.filter { $0.plannedFor == day && !onCalendar.contains($0.id) }
+            // A week weighs its tasks without a time in it against its sessions, as the day does.
             func week(_ start: String) -> Capacity {
-                let open = mine.filter { BoardColumn.week(of: $0, today: today) == start }.reduce(0) { $0 + $1.minutes }
+                let open = mine.filter { task in
+                    BoardColumn.week(of: task, today: today) == start
+                        && !(intentions[task.id] ?? []).contains { CalendarDay.weekStart(CalendarDay.today($0.startsAt)) == start }
+                }
+                .reduce(0) { $0 + $1.minutes }
                 return .week(start, open: open, blocks: blocks, now: now, calendar: calendar)
             }
             return PlanLane(
                 goal: goal,
                 objective: objectives[goal.id],
+                scheduled: scheduled,
                 tasks: planned,
                 day: .day(day, open: planned.reduce(0) { $0 + $1.minutes }, blocks: blocks, now: now, calendar: calendar),
                 thisWeek: week(thisWeek),
