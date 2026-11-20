@@ -24,6 +24,7 @@ final class ShellModel {
     var activeRailItem: RailItem? {
         switch route {
         case .goals, .goal: .goals
+        case .plan: .plan
         case .calendar: .calendar
         case .connections: .connections
         case .settings: nil
@@ -35,6 +36,7 @@ final class ShellModel {
         isAccountMenuOpen = false
         overlays.dismiss()
         route = switch item {
+        case .plan: .plan
         case .calendar: .calendar
         case .connections: .connections
         default: .goals
@@ -45,6 +47,16 @@ final class ShellModel {
     func openGoal(_ id: String) {
         overlays.dismiss()
         route = .goal(id)
+    }
+
+    /// A day (in days from today) for the calendar to show once it has loaded, from the Plan page.
+    var pendingDay: Int?
+
+    /// The calendar, on a day.
+    func openCalendar(day: Int) {
+        overlays.dismiss()
+        pendingDay = day
+        route = .calendar
     }
 
     /// A block to select once the calendar has loaded, from clicking its notice.

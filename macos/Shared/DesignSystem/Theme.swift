@@ -127,6 +127,8 @@ enum Icon: String {
     case target = "Target02-1_8"
     case calendar = "Calendar03-1_8"
     case plug = "Plug01-1_8"
+    case plan = "TaskDaily01-1_8"
+    case preferences = "PreferenceHorizontal-1_5"
     case settings = "Settings02-1_5"
     case settingsBold = "Settings02-1_8"
     case logout = "Logout01-1_5"

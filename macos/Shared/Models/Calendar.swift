@@ -115,14 +115,17 @@ struct CalendarGoal: Identifiable, Hashable, Sendable {
     let color: String
 }
 
-/// An open task, for the day strip and (later) the task panel.
+/// An open task, for the day strip, the task panel and the Plan page.
 struct CalendarTask: Identifiable, Hashable, Sendable {
     let id: String
     let goalId: String
     var title: String
     var minutes: Int
     var plannedFor: String?
+    /// The Monday of the week they mean to do it.
+    var plannedWeek: String?
     var dueOn: String?
+    var isPending = false
 }
 
 struct CalendarData: Hashable, Sendable {

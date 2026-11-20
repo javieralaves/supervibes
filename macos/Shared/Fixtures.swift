@@ -337,4 +337,64 @@ enum Fixtures {
                                 .init(goalId: "g1", weekStart: "2026-11-16", objective: "Finish the native calendar, week view included."),
                             ])
     }
+
+    /// Planning tomorrow (Thursday Nov 19) across goals, as the Plan page's design has it: Build
+    /// Supervibes 2 h over its 2 h session, Superfocus with 30 min to spare, the essay 15 min under, and
+    /// reserved time for the gym and lunch.
+    static var plan: CalendarData {
+        let today = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+            CalendarDayMath.midnight(day, from: today).addingTimeInterval(Double(hour * 3600 + minute * 60))
+        }
+        let goals = [
+            CalendarGoal(id: "pg1", title: "Build Supervibes as a fresh take on productivity", icon: "Rocket01Icon", color: "sky"),
+            CalendarGoal(id: "pg2", title: "Lead design for Superfocus's next sprint", icon: "Briefcase01Icon", color: "indigo"),
+            CalendarGoal(id: "pg3", title: "Publish an essay every week", icon: "Edit02Icon", color: "violet"),
+            CalendarGoal(id: "pg4", title: "Feel strong and rested", icon: "Dumbbell01Icon", color: "green"),
+            CalendarGoal(id: "pg5", title: "Hold a conversation in Italian", icon: "LanguageSkillIcon", color: "amber"),
+        ]
+        let blocks = [
+            // Tomorrow.
+            CalendarBlock(id: "p1", goalId: "pg4", title: "Gym", startsAt: at(1, 7, 30), endsAt: at(1, 8, 30), reserved: true),
+            CalendarBlock(id: "p2", goalId: "pg1", title: nil, startsAt: at(1, 9), endsAt: at(1, 11)),
+            CalendarBlock(id: "p3", goalId: "pg4", title: "Lunch", startsAt: at(1, 13), endsAt: at(1, 14), reserved: true),
+            CalendarBlock(id: "p4", goalId: "pg2", title: nil, startsAt: at(1, 14), endsAt: at(1, 16)),
+            CalendarBlock(id: "p5", goalId: "pg3", title: nil, startsAt: at(1, 16, 30), endsAt: at(1, 17, 30)),
+            // The rest of this week, and next.
+            CalendarBlock(id: "p6", goalId: "pg1", title: nil, startsAt: at(-2, 9), endsAt: at(-2, 12)),
+            CalendarBlock(id: "p7", goalId: "pg1", title: nil, startsAt: at(-1, 9), endsAt: at(-1, 12)),
+            CalendarBlock(id: "p8", goalId: "pg1", title: nil, startsAt: at(0, 9), endsAt: at(0, 11)),
+            CalendarBlock(id: "p9", goalId: "pg1", title: nil, startsAt: at(2, 9), endsAt: at(2, 12)),
+            CalendarBlock(id: "p10", goalId: "pg2", title: nil, startsAt: at(0, 14), endsAt: at(0, 17)),
+            CalendarBlock(id: "p11", goalId: "pg2", title: nil, startsAt: at(2, 14), endsAt: at(2, 17)),
+            CalendarBlock(id: "p12", goalId: "pg3", title: nil, startsAt: at(-1, 16), endsAt: at(-1, 17)),
+            CalendarBlock(id: "p13", goalId: "pg1", title: nil, startsAt: at(5, 9), endsAt: at(5, 12)),
+            CalendarBlock(id: "p14", goalId: "pg1", title: nil, startsAt: at(6, 9), endsAt: at(6, 12)),
+            CalendarBlock(id: "p15", goalId: "pg1", title: nil, startsAt: at(7, 9), endsAt: at(7, 12)),
+            CalendarBlock(id: "p16", goalId: "pg2", title: nil, startsAt: at(6, 14), endsAt: at(6, 17)),
+            CalendarBlock(id: "p17", goalId: "pg2", title: nil, startsAt: at(8, 14), endsAt: at(8, 17)),
+        ]
+        let tomorrow = "2026-11-19"
+        let tasks = [
+            CalendarTask(id: "pt1", goalId: "pg1", title: "Reason through Supervibes in the context of Pablo's latest sprint memo", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt2", goalId: "pg1", title: "Think about goal page information architecture", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt3", goalId: "pg1", title: "Add line breaks in posts hitting enter", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt4", goalId: "pg1", title: "Introduce keyboard shortcuts for common actions", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt5", goalId: "pg1", title: "Adjust feed as it gets larger over time", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt6", goalId: "pg1", title: "Introduce native right click dropdown menus", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt7", goalId: "pg1", title: "Identify opportunities to improve performance and speed", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt8", goalId: "pg1", title: "Bringing in events from external calendars", minutes: 120, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt9", goalId: "pg1", title: "Add Slack as a connection option", minutes: 60, plannedWeek: "2026-11-23"),
+            CalendarTask(id: "pt10", goalId: "pg2", title: "Walk Denis through the focus mode flows", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt11", goalId: "pg2", title: "Sketch onboarding for focus mode", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt13", goalId: "pg3", title: "Outline the essay", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+            CalendarTask(id: "pt14", goalId: "pg3", title: "Edit last week's draft before it goes out", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
+        ]
+        return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60, wakeTime: 7 * 60,
+                            clock: .twelveHour, objectives: [
+                                .init(goalId: "pg1", weekStart: "2026-11-16", objective: "Inspire new ideas for the Superfocus sprint"),
+                                .init(goalId: "pg2", weekStart: "2026-11-16", objective: "Hand off the focus mode designs"),
+                                .init(goalId: "pg3", weekStart: "2026-11-16", objective: "Draft “Why plans break at 4 PM”"),
+                            ])
+    }
 }

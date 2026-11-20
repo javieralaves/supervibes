@@ -12,9 +12,11 @@ struct RailItem: Identifiable, Hashable {
     let icon: Icon
 
     static let goals = RailItem(id: "goals", label: "Goals", icon: .target)
+    /// Planning a day across goals.
+    static let plan = RailItem(id: "plan", label: "Plan", icon: .plan)
     static let calendar = RailItem(id: "calendar", label: "Calendar", icon: .calendar)
     static let connections = RailItem(id: "connections", label: "Connections", icon: .plug)
-    static let all = [goals, calendar, connections]
+    static let all = [goals, plan, calendar, connections]
 }
 
 /// The person shown at the bottom of the rail and in its menu.

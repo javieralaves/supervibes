@@ -1298,18 +1298,20 @@ struct Hatch: View {
 }
 
 /// The current time: a red line across the day, a dot at its start, and the time in the gutter.
-private struct NowLine: View {
+/// The Plan page's timeline draws it too, with its narrower gutter.
+struct NowLine: View {
     let label: String
+    var gutter: CGFloat = DayGrid.gutter
 
     var body: some View {
         ZStack(alignment: .leading) {
             Text(label).font(.app(11, .semibold)).monospacedDigit()
                 .foregroundStyle(Color(nsColor: .rgb(0xef4444)))
-                .frame(width: DayGrid.gutter - 8, alignment: .trailing)
+                .frame(width: gutter - 8, alignment: .trailing)
             Rectangle().fill(Color(nsColor: .rgb(0xef4444))).frame(height: 2)
-                .padding(.leading, DayGrid.gutter)
+                .padding(.leading, gutter)
             Circle().fill(Color(nsColor: .rgb(0xef4444))).frame(width: 10, height: 10)
-                .offset(x: DayGrid.gutter - 5)
+                .offset(x: gutter - 5)
         }
         .frame(height: 14)
         .offset(y: -7)

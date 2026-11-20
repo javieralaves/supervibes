@@ -8,6 +8,8 @@ enum Route: Hashable {
     case goal(String)
     case settings
     case connections
+    /// Planning a day across goals.
+    case plan
     case calendar
 }
 
@@ -73,6 +75,8 @@ struct MainView: View {
                             Backdrop()
                             ConnectionsScreen(auth: auth)
                         }
+                    case .plan:
+                        PlanScreen(auth: auth, shell: shell)
                     case .calendar:
                         CalendarScreen(auth: auth, shell: shell)
                     }
@@ -408,6 +412,13 @@ private struct CalendarScreen: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task { await model.start() }
         .onDisappear { model.stop() }
+        // Opened from the Plan page: show its day once it's loaded.
+        .onChange(of: PendingDay(load: model.load, day: shell.pendingDay), initial: true) { _, pending in
+            guard pending.load == .loaded, let day = pending.day else { return }
+            shell.pendingDay = nil
+            view = "day"
+            model.step(day - model.offset)
+        }
         // A notice was clicked: show its block once it's loaded.
         .onChange(of: PendingSelection(load: model.load, blockId: shell.pendingBlockId), initial: true) { _, pending in
             guard pending.load == .loaded, let id = pending.blockId else { return }
@@ -422,6 +433,77 @@ private struct CalendarScreen: View {
                 }
             }
         }
+    }
+}
+
+/// What the calendar waits on to show a day from the Plan page.
+private struct PendingDay: Equatable {
+    let load: CalendarModel.Load
+    let day: Int?
+}
+
+/// The Plan page with the calendar's data, in the app's window: it opens on tomorrow.
+private struct PlanScreen: View {
+    @State private var model: CalendarModel
+    @State private var offset = 1
+    /// How tall an hour is on the timeline, as last pinched; 0 fits the waking day.
+    @AppStorage("sv-plan-hour") private var hour = 0.0
+    /// Taken on arrival, so ← and → step through days straight away.
+    @FocusState private var isFocused: Bool
+    let shell: ShellModel
+
+    init(auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: CalendarModel(auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load your plan", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                PlanPage(
+                    data: model.data,
+                    offset: offset,
+                    now: model.now,
+                    error: model.error,
+                    actions: PlanActions(
+                        tasks: model.taskActions,
+                        giveTime: { model.giveTime($0, minutes: $1, to: $2) },
+                        giveBlock: { model.giveBlock($0, to: $1) },
+                        setReserved: model.setReserved,
+                        openGoal: { shell.openGoal($0) },
+                        openCalendar: { shell.openCalendar(day: offset) }
+                    ),
+                    onStep: { step($0) },
+                    onToday: { offset = 0 },
+                    hour: Binding(get: { hour > 0 ? CGFloat(hour) : nil }, set: { hour = $0.map(Double.init) ?? 0 })
+                )
+                .focusable()
+                .focusEffectDisabled()
+                .focused($isFocused)
+                .onAppear { isFocused = true }
+                .onKeyPress(.leftArrow) { step(-1); return .handled }
+                .onKeyPress(.rightArrow) { step(1); return .handled }
+            }
+        }
+        .background(Theme.background)
+        .task { await model.start() }
+        .onDisappear { model.stop() }
+    }
+
+    /// A day back or forward, within the calendar's loaded days.
+    private func step(_ by: Int) {
+        offset = min(max(offset + by, model.range.lowerBound), model.range.upperBound)
     }
 }
 

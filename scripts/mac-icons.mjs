@@ -41,6 +41,8 @@ const ICONS = {
   ArrowTurnBackwardIcon: [1.5],
   ArrowRight02Icon: [1.5],
   CircleIcon: [1.5],
+  TaskDaily01Icon: [1.8],
+  PreferenceHorizontalIcon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

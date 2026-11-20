@@ -372,8 +372,8 @@ private extension String {
     var lowercasedIfRelative: String { self == "Today" || self == "Tomorrow" ? lowercased() : self }
 }
 
-/// A card on the board: white, on top of its lane.
-private struct CardStyle: ViewModifier {
+/// A card on the board (and the Plan page's lanes): white, on top of its lane.
+struct CardStyle: ViewModifier {
     let isOpen: Bool
 
     func body(content: Content) -> some View {
@@ -570,7 +570,7 @@ private struct BoardColumnView<Card: View>: View {
 }
 
 /// A lane's fill: a step darker than the page, so the white cards stand out on it.
-private let laneFill = Color.adaptive(light: .rgb(0x0f1114, alpha: 0.045), dark: .rgb(0x000000, alpha: 0.45))
+let laneFill = Color.adaptive(light: .rgb(0x0f1114, alpha: 0.045), dark: .rgb(0x000000, alpha: 0.45))
 
 /// An empty lane: a dashed area saying nothing's planned, and what time there is for it, so the
 /// space reads as room to plan into rather than a blank.

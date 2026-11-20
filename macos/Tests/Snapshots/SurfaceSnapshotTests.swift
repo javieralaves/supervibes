@@ -243,6 +243,52 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    private func plan(_ page: PlanPage) -> some View {
+        let defaults = UserDefaults(suiteName: "SurfaceSnapshotTests.plan")!
+        defaults.removeObject(forKey: PlanGoalsMenu.hiddenKey)
+        defaults.set(true, forKey: PlanGoalsMenu.onlyActiveKey)
+        return page.background(Theme.background).overlayHost(OverlayCenter()).defaultAppStorage(defaults)
+    }
+
+    func testPlanTomorrow() {
+        // Build Supervibes over its session, with three tasks under the cut line.
+        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 1, now: now, scrollsTimeline: false)), width: 1540, height: 1000)
+    }
+
+    func testPlanToday() {
+        // Today, with the now line at 10:18 across Build Supervibes' session under way.
+        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 0, now: now, scrollsTimeline: false)), width: 1540, height: 1000)
+    }
+
+    func testPlanGivingTime() {
+        // Superfocus's session open, previewing its 30 min to spare going to Build Supervibes.
+        assertAppearances(
+            plan(PlanPage(
+                data: Fixtures.plan, offset: 1, now: now,
+                initialGive: GiveTime(blockId: "p4", goalId: "pg1", minutes: 30), initiallySelected: "p4", scrollsTimeline: false
+            )),
+            width: 1540, height: 1000
+        )
+    }
+
+    func testPlanMovingOverflow() {
+        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 1, now: now, initiallyMoving: "pg1", scrollsTimeline: false)), width: 1540, height: 1000)
+    }
+
+    func testPlanWindow() {
+        // The whole window, with Plan on the rail.
+        assertAppearances(
+            HStack(spacing: 0) {
+                Rail(active: .plan, account: nil, topInset: 28)
+                AppWindowFrame { PlanPage(data: Fixtures.plan, offset: 1, now: now, scrollsTimeline: false) }
+            }
+            .background(Theme.shell)
+            .overlayHost(OverlayCenter())
+            .defaultAppStorage(UserDefaults(suiteName: "SurfaceSnapshotTests.plan")!),
+            width: 1620, height: 1016
+        )
+    }
+
     func testPlanningBoardWeekCapacity() {
         assertAppearances(
             board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initialCapacity: .thisWeek)),
