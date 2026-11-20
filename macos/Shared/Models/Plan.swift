@@ -53,7 +53,7 @@ struct PlanLane: Identifiable, Hashable, Sendable {
     var isActive: Bool { !tasks.isEmpty || !scheduled.isEmpty || day.protected > 0 }
 }
 
-/// The waking day, split into sessions (by goal), reserved time, and what's free.
+/// The waking day, split into sessions and scheduled tasks (by goal), reserved time, and what's free.
 struct DayBudget: Hashable, Sendable {
     struct Share: Hashable, Sendable {
         let goalId: String
@@ -61,12 +61,15 @@ struct DayBudget: Hashable, Sendable {
     }
 
     let awake: Int
-    /// Each goal's sessions, in the goals' order.
+    /// Each goal's sessions, in the goals' order: room for its tasks.
     let sessions: [Share]
+    /// Each goal's tasks on the calendar, in the goals' order: time that's already a task's.
+    let scheduled: [Share]
     let reserved: Int
 
     var sessionMinutes: Int { sessions.reduce(0) { $0 + $1.minutes } }
-    var free: Int { max(0, awake - sessionMinutes - reserved) }
+    var scheduledMinutes: Int { scheduled.reduce(0) { $0 + $1.minutes } }
+    var free: Int { max(0, awake - sessionMinutes - scheduledMinutes - reserved) }
 }
 
 /// Some of a session's time, previewed as given to another goal: the session ends `minutes` earlier
@@ -142,16 +145,27 @@ extension CalendarData {
     func budget(day offset: Int, now: Date) -> DayBudget {
         let awake = (sleepStart - wakeTime + CalendarDayMath.dayMinutes) % CalendarDayMath.dayMinutes
         var sessions: [String: Int] = [:]
+        var scheduled: [String: Int] = [:]
         var reserved = 0
         for block in blocks {
             for segment in DaySegment.of(block, today: now) where segment.day == offset {
                 let minutes = segment.end - segment.start
-                if block.reserved { reserved += minutes } else { sessions[block.goalId, default: 0] += minutes }
+                if block.reserved {
+                    reserved += minutes
+                } else if block.isIntention {
+                    scheduled[block.goalId, default: 0] += minutes
+                } else {
+                    sessions[block.goalId, default: 0] += minutes
+                }
             }
+        }
+        func shares(_ minutes: [String: Int]) -> [DayBudget.Share] {
+            goals.compactMap { goal in minutes[goal.id].map { DayBudget.Share(goalId: goal.id, minutes: $0) } }
         }
         return DayBudget(
             awake: awake == 0 ? CalendarDayMath.dayMinutes : awake,
-            sessions: goals.compactMap { goal in sessions[goal.id].map { DayBudget.Share(goalId: goal.id, minutes: $0) } },
+            sessions: shares(sessions),
+            scheduled: shares(scheduled),
             reserved: reserved
         )
     }

@@ -27,8 +27,10 @@ final class PlanTests: XCTestCase {
         XCTAssertFalse(health.isActive)
         let budget = data.budget(day: 1, now: now)
         XCTAssertEqual(budget.awake, 16 * 60)
-        // Five hours of sessions and the essay's quarter hour on the calendar.
-        XCTAssertEqual(budget.sessionMinutes, 315)
+        // Five hours of sessions, and the essay's draft on the calendar for a quarter hour.
+        XCTAssertEqual(budget.sessionMinutes, 300)
+        XCTAssertEqual(budget.scheduledMinutes, 15)
+        XCTAssertEqual(budget.scheduled.map(\.goalId), ["pg3"])
         XCTAssertEqual(budget.reserved, 120)
         XCTAssertEqual(budget.free, 16 * 60 - 435)
     }

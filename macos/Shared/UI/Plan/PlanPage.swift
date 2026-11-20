@@ -17,6 +17,8 @@ struct PlanActions {
     /// Give a whole block to another goal.
     var giveBlock: (_ blockId: String, _ goalId: String) -> Void = { _, _ in }
     var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
+    /// The timeline's blocks, as on the calendar: draw, move, resize, edit, remove.
+    var calendar: CalendarActions?
     var openGoal: (String) -> Void = { _ in }
     var openCalendar: () -> Void = {}
 }
@@ -101,6 +103,7 @@ struct PlanPage: View {
                     now: now,
                     clock: clock,
                     dayLabel: "\(PlanDay.weekday(day)), \(CalendarDay.format(day, today: today))",
+                    actions: actions.calendar,
                     ghostId: preview.map { $0.whole ? $0.blockId : Self.previewId },
                     ghostGoal: preview.flatMap { data.goal($0.goalId) },
                     initiallySelected: initiallySelected,

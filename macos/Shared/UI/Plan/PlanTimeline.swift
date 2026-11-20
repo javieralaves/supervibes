@@ -3,9 +3,11 @@ import SwiftUI
 /*
  * The Plan page's day, beside the lanes: the waking day split into sessions, reserved time and
  * what's free, then the day hour by hour with its blocks drawn as the day view draws them (sessions
- * hatched, reserved time plain), opening on the waking hours, with the now line on today. Pinch to make the hours taller or
- * shorter, as on the day view. Click protected time to give some or all of it to another goal, or
- * to switch it between a session and reserved.
+ * hatched, reserved time plain), opening on the waking hours. It is the calendar's own day
+ * (DayTimeline): drag on free time to protect some, drag a block or its edges to move or resize it,
+ * ⋯ to edit, reserve, move or remove it, and pinch to make the hours taller or shorter. Click
+ * protected time to give some or all of it to another goal, or to switch it between a session and
+ * reserved; click a scheduled task's block to edit it.
  */
 
 struct PlanTimeline: View {
@@ -16,6 +18,8 @@ struct PlanTimeline: View {
     let clock: Clock
     /// "Fri, Nov 20".
     let dayLabel: String
+    /// Moving, resizing, drawing and editing blocks, as on the calendar; without it the day is read-only.
+    var actions: CalendarActions?
     /// The block standing for time being given, drawn as a dashed outline.
     var ghostId: String?
     /// Who it's being given to.
@@ -26,7 +30,7 @@ struct PlanTimeline: View {
     var storedHour: Binding<CGFloat?>?
     /// False draws the day without a scroll view, opened on waking: snapshot tests can't scroll.
     var scrolls = true
-    /// A protected block was clicked, with its frame in the overlay layer.
+    /// Protected time was clicked, with its frame in the overlay layer.
     let onSelect: (CalendarBlock, CGRect) -> Void
 
     @Environment(\.overlays) private var overlays
@@ -40,10 +44,13 @@ struct PlanTimeline: View {
     @State private var pinchHour: CGFloat?
     /// Where a pinch last scrolled to, applied again once the content has its new height.
     @State private var pinchY: CGFloat?
+    /// A block being named or given a goal in the calendar's popover: one just drawn, or one opened.
+    @State private var editing: BlockEditing?
+    /// The day's frame in the overlay layer, to anchor a block's popover beside it.
+    @State private var dayFrame = CGRect.zero
+    @State private var didShowInitially = false
 
-    private static let pad: CGFloat = 10
-    /// The day view's, so the now line's time fits.
-    private static let gutter: CGFloat = DayGrid.gutter
+    private static let pad: CGFloat = DayGrid.pad
 
     /// Pinching goes from the whole day in view up to the day view's tallest hours.
     private var range: ClosedRange<CGFloat> { HourGrid.range(viewport: viewport, pad: Self.pad, most: DayGrid.maxHour) }
@@ -60,39 +67,51 @@ struct PlanTimeline: View {
         return HourGrid(hour: min(max(hour, range.lowerBound), range.upperBound), pad: Self.pad)
     }
 
+    /// The block whose give-time popover is open.
+    private var openBlockId: String? {
+        guard let owner = overlays?.presented?.owner, owner.hasPrefix("plan-block#") else { return nil }
+        return String(owner.dropFirst("plan-block#".count))
+    }
+
     var body: some View {
+        let grid = grid
         VStack(spacing: 0) {
             DayBudgetView(budget: data.budget(day: offset, now: now), goals: data.goals, dayLabel: dayLabel, awake: awakeLabel)
             Rectangle().fill(Theme.cardBorder).frame(height: 1)
-            if scrolls {
-                ScrollView(.vertical) {
-                    content(grid)
-                }
-                .scrollIndicators(.never)
-                .scrollPosition($position)
-                .onScrollGeometryChange(for: [CGFloat].self) {
-                    [$0.contentOffset.y, $0.containerSize.height]
-                } action: { _, value in
-                    scrollY = value[0]
-                    viewport = value[1]
-                    if let y = pinchY {
-                        // The scroll may have been held to the old height; once the new one is in, go there.
-                        pinchY = nil
-                        if abs(scrollY - y) > 0.5 { position.scrollTo(y: y) }
+            ScrollViewReader { proxy in
+                if scrolls {
+                    ScrollView(.vertical) {
+                        content(grid, proxy: proxy)
                     }
-                    if focusedOffset != offset { scrollToFocus() }
-                }
-                .onChange(of: offset) { scrollToFocus() }
-            } else {
-                // Over a frame that takes only the room it's given, so the whole day doesn't size the page.
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
-                    .overlay(alignment: .top) {
-                        content(grid)
-                            .offset(y: -grid.scrollY(keeping: CGFloat(focus / 60 * 60), at: Self.pad, viewport: viewport))
+                    .scrollIndicators(.never)
+                    .scrollPosition($position)
+                    .onScrollGeometryChange(for: [CGFloat].self) {
+                        [$0.contentOffset.y, $0.containerSize.height]
+                    } action: { _, value in
+                        scrollY = value[0]
+                        viewport = value[1]
+                        if let y = pinchY {
+                            // The scroll may have been held to the old height; once the new one is in, go there.
+                            pinchY = nil
+                            if abs(scrollY - y) > 0.5 { position.scrollTo(y: y) }
+                        }
+                        if focusedOffset != offset { scrollToFocus() }
                     }
-                    .clipped()
+                    .onChange(of: offset) {
+                        editing = nil
+                        scrollToFocus()
+                    }
+                } else {
+                    // Over a frame that takes only the room it's given, so the whole day doesn't size the page.
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
+                        .overlay(alignment: .top) {
+                            content(grid, proxy: proxy)
+                                .offset(y: -grid.scrollY(keeping: CGFloat(focus / 60 * 60), at: Self.pad, viewport: viewport))
+                        }
+                        .clipped()
+                }
             }
         }
         .background(Theme.card, in: .rect(cornerRadius: 16))
@@ -100,22 +119,27 @@ struct PlanTimeline: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
     }
 
-    /// The day's hours, its blocks, and pinching.
-    private func content(_ grid: HourGrid) -> some View {
+    /// The calendar's own day, with time being given drawn over it, and pinching.
+    private func content(_ grid: HourGrid, proxy: ScrollViewProxy) -> some View {
         ZStack(alignment: .topLeading) {
-            sleep(grid)
-            hourLines(grid)
-            ForEach(segments, id: \.segment.id) { item in
-                block(item.block, item.segment, grid: grid)
-            }
-            if offset == 0 {
-                NowLine(label: clock.format(minutes: nowMinutes), gutter: Self.gutter)
-                    .offset(y: grid.y(nowMinutes))
+            DayTimeline(
+                data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
+                selectedId: openBlockId, onSelect: { select($0, grid: grid) }, proxy: proxy
+            )
+            if let ghostId, let ghostGoal {
+                ForEach(segments(of: ghostId), id: \.id) { segment in
+                    GhostBlock(minutes: segment.end - segment.start, goal: ghostGoal)
+                        .frame(height: max(grid.height(segment.end - segment.start), 16) - 2)
+                        .padding(.leading, DayGrid.gutter + 4)
+                        .padding(.trailing, 8)
+                        .offset(y: grid.y(segment.start) + 1)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .frame(height: grid.height, alignment: .top)
-        .frame(maxWidth: .infinity)
         .environment(\.dayGrid, grid)
+        .modifier(AnchorReader(frame: $dayFrame))
         .modifier(HourPinch(
             grid: grid, range: range, scrollY: scrollY, viewport: viewport,
             onChange: { hour, y in
@@ -129,6 +153,34 @@ struct PlanTimeline: View {
                 self.pinchHour = nil
             }
         ))
+        .onChange(of: dayFrame) {
+            guard let initiallySelected, !didShowInitially, dayFrame != .zero else { return }
+            didShowInitially = true
+            select(initiallySelected, grid: grid)
+        }
+    }
+
+    /// A click on a block: protected time opens its popover beside it; a scheduled task edits in place.
+    private func select(_ blockId: String, grid: HourGrid) {
+        guard let block = data.blocks.first(where: { $0.id == blockId }),
+              let segment = DaySegment.of(block, today: now).first(where: { $0.day == offset }) else { return }
+        if block.isIntention {
+            editing = BlockEditing(
+                mode: .edit(blockId: block.id, intention: true), day: segment.day, start: segment.start, end: segment.end,
+                goalId: block.goalId, title: block.title
+            )
+            return
+        }
+        let top = grid.y(segment.start)
+        let anchor = CGRect(
+            x: dayFrame.minX + DayGrid.gutter + 4, y: dayFrame.minY + top,
+            width: dayFrame.width - DayGrid.gutter - 12, height: grid.y(segment.end) - top
+        )
+        onSelect(block, anchor)
+    }
+
+    private func segments(of blockId: String) -> [DaySegment] {
+        data.blocks.first { $0.id == blockId }.map { DaySegment.of($0, today: now).filter { $0.day == offset } } ?? []
     }
 
     /// Where it opens: waking up, or on today an hour before now.
@@ -145,120 +197,6 @@ struct PlanTimeline: View {
     /// "Awake 7:00 AM – 11:00 PM".
     private var awakeLabel: String {
         "Awake \(clock.format(minutes: data.wakeTime)) – \(clock.format(minutes: data.sleepStart))"
-    }
-
-    /// The day's blocks, or their parts on this day, earliest first.
-    private var segments: [(block: CalendarBlock, segment: DaySegment)] {
-        data.blocks.flatMap { block in
-            DaySegment.of(block, today: now).filter { $0.day == offset }.map { (block, $0) }
-        }
-        .sorted { $0.segment.start < $1.segment.start }
-    }
-
-    /// Sleep, finely hatched, as on the day view.
-    private func sleep(_ grid: HourGrid) -> some View {
-        ForEach(CalendarDayMath.sleepSpans(sleepStart: data.sleepStart, wakeTime: data.wakeTime), id: \.lowerBound) { span in
-            Hatch(color: Theme.foreground(0.06), spacing: 7)
-                .frame(height: grid.height(span.upperBound - span.lowerBound))
-                .padding(.leading, Self.gutter)
-                .offset(y: grid.y(span.lowerBound))
-                .allowsHitTesting(false)
-        }
-    }
-
-    private var nowMinutes: Int { CalendarDayMath.minutes(now) }
-
-    /// How close (in points) an hour's label can come to the now line's before it hides, as on the day view.
-    private static let nowClearance: CGFloat = 40
-
-    private func hourLines(_ grid: HourGrid) -> some View {
-        ForEach(0...24, id: \.self) { hour in
-            let nearNow = offset == 0 && abs(grid.y(hour * 60) - grid.y(nowMinutes)) < Self.nowClearance
-            HStack(spacing: 8) {
-                Text(hour < 24 ? clock.formatHour(hour) : "")
-                    .font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted)
-                    .frame(width: Self.gutter - 8, height: 14, alignment: .trailing)
-                    .opacity(nearNow ? 0 : 1)
-                Rectangle().fill(Theme.cardBorder).frame(height: 1)
-            }
-            .offset(y: grid.y(hour * 60) - 7)
-        }
-    }
-
-    @ViewBuilder private func block(_ block: CalendarBlock, _ segment: DaySegment, grid: HourGrid) -> some View {
-        let top = grid.y(segment.start)
-        let height = max(grid.height(segment.end - segment.start), 16)
-        Group {
-            if block.id == ghostId, let ghostGoal {
-                GhostBlock(minutes: segment.end - segment.start, goal: ghostGoal)
-            } else {
-                PlanBlock(
-                    block: block,
-                    goal: data.goal(block.goalId),
-                    segment: segment,
-                    clock: clock,
-                    elapsed: elapsed(segment),
-                    isSelected: overlays?.presented?.owner == "plan-block#\(block.id)",
-                    showsInitially: initiallySelected == block.id,
-                    onSelect: onSelect
-                )
-            }
-        }
-        .frame(height: height - 2)
-        .padding(.leading, Self.gutter + 4)
-        .padding(.trailing, 10)
-        .offset(y: top + 1)
-    }
-
-    /// How much of it has happened, 0 to 1.
-    private func elapsed(_ segment: DaySegment) -> Double {
-        let midnight = CalendarDayMath.midnight(segment.day, from: now)
-        let from = midnight.addingTimeInterval(Double(segment.start) * 60)
-        let to = midnight.addingTimeInterval(Double(segment.end) * 60)
-        guard to > from else { return 0 }
-        return min(max(now.timeIntervalSince(from) / to.timeIntervalSince(from), 0), 1)
-    }
-}
-
-/// A block on the Plan page's timeline, as the day view draws it. Protected time opens its popover.
-private struct PlanBlock: View {
-    let block: CalendarBlock
-    let goal: CalendarGoal?
-    let segment: DaySegment
-    let clock: Clock
-    let elapsed: Double
-    let isSelected: Bool
-    var showsInitially = false
-    let onSelect: (CalendarBlock, CGRect) -> Void
-
-    @State private var anchor = CGRect.zero
-    @State private var isHovered = false
-    @State private var didShowInitially = false
-
-    var body: some View {
-        BlockCardView(
-            block: block, goal: goal, start: segment.start, end: segment.end, clock: clock,
-            elapsed: elapsed, isHovered: isHovered
-        )
-        .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(GoalPalette.color(goal?.color ?? "slate").opacity(0.6), lineWidth: 2)
-                    .padding(-2)
-            }
-        }
-        .contentShape(.rect(cornerRadius: 8))
-        .modifier(AnchorReader(frame: $anchor))
-        .onHover { isHovered = $0 && !block.isIntention }
-        .onTapGesture {
-            guard !block.isIntention, !block.isPending else { return }
-            onSelect(block, anchor)
-        }
-        .onChange(of: anchor) {
-            guard showsInitially, !didShowInitially, anchor != .zero else { return }
-            didShowInitially = true
-            onSelect(block, anchor)
-        }
     }
 }
 
@@ -282,7 +220,8 @@ private struct GhostBlock: View {
     }
 }
 
-/// The waking day as one bar: each goal's sessions in its colour, reserved time, then what's free.
+/// The waking day as one bar: each goal's scheduled tasks and sessions in its colour, reserved time,
+/// then what's free.
 private struct DayBudgetView: View {
     let budget: DayBudget
     let goals: [CalendarGoal]
@@ -308,13 +247,29 @@ private struct DayBudgetView: View {
                 .clipShape(Capsule())
             }
             .frame(height: 8)
-            HStack(spacing: 14) {
-                figure(budget.sessionMinutes, "in sessions")
-                figure(budget.reserved, "reserved")
-                figure(budget.free, "free")
+            // On one line when it fits, else two.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) { figures }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 14) {
+                        figure(budget.sessionMinutes, "in sessions")
+                        if budget.scheduledMinutes > 0 { figure(budget.scheduledMinutes, "scheduled") }
+                    }
+                    HStack(spacing: 14) {
+                        figure(budget.reserved, "reserved")
+                        figure(budget.free, "free")
+                    }
+                }
             }
         }
         .padding(14)
+    }
+
+    @ViewBuilder private var figures: some View {
+        figure(budget.sessionMinutes, "in sessions")
+        if budget.scheduledMinutes > 0 { figure(budget.scheduledMinutes, "scheduled") }
+        figure(budget.reserved, "reserved")
+        figure(budget.free, "free")
     }
 
     private struct Part {
@@ -322,9 +277,18 @@ private struct DayBudgetView: View {
         let color: Color
     }
 
+    /// Each goal's time, scheduled first and solid, then its sessions lighter, as the timeline
+    /// draws an intention fuller than a session; then reserved time, then what's free.
     private var segments: [Part] {
-        var parts = budget.sessions.map { share in
-            Part(minutes: share.minutes, color: GoalPalette.color(goals.first { $0.id == share.goalId }?.color ?? "slate"))
+        var parts: [Part] = []
+        for goal in goals {
+            let color = GoalPalette.color(goal.color)
+            if let scheduled = budget.scheduled.first(where: { $0.goalId == goal.id }) {
+                parts.append(Part(minutes: scheduled.minutes, color: color))
+            }
+            if let session = budget.sessions.first(where: { $0.goalId == goal.id }) {
+                parts.append(Part(minutes: session.minutes, color: color.opacity(0.45)))
+            }
         }
         if budget.reserved > 0 { parts.append(Part(minutes: budget.reserved, color: Theme.foreground(0.22))) }
         if budget.free > 0 { parts.append(Part(minutes: budget.free, color: Theme.foreground(0.08))) }

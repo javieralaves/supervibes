@@ -481,6 +481,18 @@ private struct PlanScreen: View {
                         giveTime: { model.giveTime($0, minutes: $1, to: $2) },
                         giveBlock: { model.giveBlock($0, to: $1) },
                         setReserved: model.setReserved,
+                        calendar: CalendarActions(
+                            create: model.create(day:start:end:goalId:title:),
+                            saveDetails: model.saveDetails(_:goalId:title:),
+                            setReserved: model.setReserved,
+                            move: model.move(_:edge:delta:days:),
+                            moveToTomorrow: model.moveToTomorrow,
+                            toggleDone: model.toggleDone,
+                            remove: model.remove,
+                            place: model.place(_:day:start:minutes:),
+                            plan: model.plan(_:day:),
+                            defaultGoalId: { model.defaultGoalId }
+                        ),
                         openGoal: { shell.openGoal($0) },
                         openCalendar: { shell.openCalendar(day: offset) }
                     ),
