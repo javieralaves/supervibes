@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// What the Activity section asks of whoever owns the data.
@@ -77,7 +78,7 @@ private struct Composer: View {
                 )
                 .accessibilityLabel("New note")
                 .onKeyPress(.return, phases: .down) { press in
-                    guard press.modifiers.contains(.command) else { return .ignored }
+                    guard press.modifiers.contains(.command) else { return insertLineBreak() }
                     onPost()
                     return .handled
                 }
@@ -270,7 +271,7 @@ private struct NoteCard: View {
                 .focused($editorFocused)
                 .accessibilityLabel("Edit note")
                 .onKeyPress(.return, phases: .down) { press in
-                    guard press.modifiers.contains(.command) else { return .ignored }
+                    guard press.modifiers.contains(.command) else { return insertLineBreak() }
                     save()
                     return .handled
                 }
@@ -326,6 +327,15 @@ private struct NoteCard: View {
 }
 
 // MARK: - Pieces
+
+/// A vertical `TextField` on macOS treats Return as "submit" and drops it, so notes
+/// would be stuck on one paragraph. Ask the field editor for the line break ⌥↵ gives,
+/// which lands at the cursor and replaces any selection, and keep ⌘↵ for posting.
+@MainActor
+private func insertLineBreak() -> KeyPress.Result {
+    let inserted = NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+    return inserted ? .handled : .ignored
+}
 
 /// A finished task or suggestion: a small filled tick before its title.
 private struct CompletedTitle: View {
