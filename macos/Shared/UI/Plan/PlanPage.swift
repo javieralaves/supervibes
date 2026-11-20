@@ -391,7 +391,8 @@ private struct PlanLaneView: View {
             actions: actions.tasks,
             showsNotes: false,
             showsPlan: false,
-            onOpen: {}
+            onOpen: nil,
+            onOpenGoal: { actions.openGoal(lane.goal.id) }
         )
         .modifier(CardStyle(isOpen: false))
     }
@@ -416,11 +417,6 @@ private struct PlanLaneView: View {
             guard let id = ids.first, id != task.id, let moved = lane.tasks.first(where: { $0.id == id }) else { return false }
             actions.tasks.place(moved, TaskPatch(), task.id)
             return true
-        }
-        .contextMenu {
-            Button("Move to this week") { actions.tasks.place(task, TaskPatch(plannedFor: "", plannedWeek: thisWeek), nil) }
-            Button("Move to next week") { actions.tasks.place(task, TaskPatch(plannedFor: "", plannedWeek: nextWeek), nil) }
-            Button("Move to Unplanned") { actions.tasks.place(task, TaskPatch(plannedFor: "", plannedWeek: ""), nil) }
         }
     }
 

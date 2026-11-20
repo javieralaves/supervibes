@@ -145,11 +145,16 @@ private struct TaskDoneCard: View {
         .padding(.vertical, 16)
         .background(Theme.card, in: .rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+        .contextPanel { menu }
     }
 
     private func openMenu() {
-        guard let overlays else { return }
-        overlays.showMenu(anchor: anchor) {
+        overlays?.showMenu(anchor: anchor) { menu }
+    }
+
+    /// The same for ⋯ and a right-click.
+    @ViewBuilder private var menu: some View {
+        if let overlays {
             MenuPanel {
                 if note.taskId != nil {
                     MenuItem(icon: .reopen, title: "Reopen task") {
@@ -259,6 +264,7 @@ private struct NoteCard: View {
             }
         }
         .opacity(note.isPending ? 0.6 : 1)
+        .contextPanel(isEnabled: !isEditing && !note.isPending) { menu }
     }
 
     private var editor: some View {
@@ -286,14 +292,23 @@ private struct NoteCard: View {
     }
 
     private func openMenu() {
-        guard let overlays else { return }
-        overlays.showMenu(anchor: anchor) {
+        overlays?.showMenu(anchor: anchor) { menu }
+    }
+
+    /// The same for ⋯ and a right-click.
+    @ViewBuilder private var menu: some View {
+        if let overlays {
             MenuPanel {
                 MenuItem(icon: .edit, title: "Edit") {
                     overlays.dismiss()
                     draft = note.body
                     isEditing = true
                     editorFocused = true
+                }
+                MenuItem(icon: .note, title: "Copy text") {
+                    overlays.dismiss()
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(note.body, forType: .string)
                 }
                 MenuItem(icon: .delete, title: "Delete", isDestructive: true) {
                     overlays.showDialog {

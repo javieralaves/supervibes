@@ -777,6 +777,19 @@ struct CalendarActions {
     var plan: (_ taskId: String, _ day: Int?) -> Void
     /// The goal a new block starts with.
     var defaultGoalId: () -> String?
+    /// A block's menu offers its goal's page.
+    var openGoal: ((String) -> Void)?
+}
+
+extension CalendarActions {
+    /// Does nothing: for previews and snapshot tests.
+    static var preview: CalendarActions {
+        CalendarActions(
+            create: { _, _, _, _, _ in }, saveDetails: { _, _, _ in }, move: { _, _, _, _ in }, moveToTomorrow: { _ in },
+            toggleDone: { _ in }, remove: { _ in }, place: { _, _, _, _ in }, plan: { _, _ in }, defaultGoalId: { nil },
+            openGoal: { _ in }
+        )
+    }
 }
 
 /// A block being named or given a goal in the popover: one being drawn, or one already there.
@@ -816,6 +829,8 @@ struct DayTimeline: View {
     var selectedId: String?
     /// Clicking a block opens its panel; without it, the click edits it in place.
     var onSelect: ((String) -> Void)?
+    /// A block's menu offers to give its time to another goal (the Plan page).
+    var onGive: ((String) -> Void)?
     var proxy: ScrollViewProxy?
 
     @State private var drawing: Drawing?
@@ -832,7 +847,7 @@ struct DayTimeline: View {
 
     init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil,
          editing: Binding<BlockEditing?> = .constant(nil), selectedId: String? = nil, onSelect: ((String) -> Void)? = nil,
-         proxy: ScrollViewProxy? = nil) {
+         onGive: ((String) -> Void)? = nil, proxy: ScrollViewProxy? = nil) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -841,6 +856,7 @@ struct DayTimeline: View {
         _editing = editing
         self.selectedId = selectedId
         self.onSelect = onSelect
+        self.onGive = onGive
         self.proxy = proxy
     }
 
@@ -942,6 +958,7 @@ struct DayTimeline: View {
                         onMenu: { anchor in showMenu(block, segment, anchor: anchor) }
                     )
                     .frame(height: max(grid.y(end) - grid.y(start) - 2, 14))
+                    .contextPanel(owner: block.id, isEnabled: actions != nil && !block.isPending) { menu(block, segment) }
                     .padding(.leading, DayGrid.gutter + 4)
                     .padding(.trailing, 8)
                     .offset(y: grid.y(start) + 1)
@@ -1104,35 +1121,21 @@ struct DayTimeline: View {
     }
 
     private func showMenu(_ block: CalendarBlock, _ segment: DaySegment, anchor: CGRect) {
-        guard let overlays, let actions else { return }
         editing = nil
-        overlays.showMenu(anchor: anchor, owner: block.id) {
-            MenuPanel {
-                MenuItem(icon: .edit, title: "Edit") {
-                    overlays.dismiss()
+        overlays?.showMenu(anchor: anchor, owner: block.id) { menu(block, segment) }
+    }
+
+    /// The same for ⋯ and a right-click.
+    @ViewBuilder private func menu(_ block: CalendarBlock, _ segment: DaySegment) -> some View {
+        if let actions {
+            BlockMenu(
+                block: block, day: segment.day, actions: actions,
+                onEdit: {
+                    editing = nil
                     edit(block, segment)
-                }
-                if block.taskId != nil {
-                    MenuItem(icon: block.taskDone ? .reopen : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
-                        overlays.dismiss()
-                        actions.toggleDone(block.id)
-                    }
-                }
-                if !block.isIntention {
-                    MenuItem(icon: block.reserved ? .target : .clock, title: block.reserved ? "Make it a session" : "Reserve this time") {
-                        overlays.dismiss()
-                        actions.setReserved(block.id, !block.reserved)
-                    }
-                }
-                MenuItem(icon: .arrowForward, title: "Move to tomorrow") {
-                    overlays.dismiss()
-                    actions.moveToTomorrow(block.id)
-                }
-                MenuItem(icon: .delete, title: "Remove", isDestructive: true) {
-                    overlays.dismiss()
-                    actions.remove(block.id)
-                }
-            }
+                },
+                onGive: onGive.map { give in { give(block.id) } }
+            )
         }
     }
 
@@ -1166,6 +1169,55 @@ struct DayTimeline: View {
         case .create: actions?.create(value.day, value.start, value.end, goalId, title)
         case .edit(let id, _): actions?.saveDetails(id, goalId, title)
         }
+    }
+}
+
+/// What a block's ⋯ menu and a right-click on it offer: edit or open it, tick off its task, switch
+/// a session and reserved time, give its time away (on the Plan page), move it a day on, open its
+/// goal, and remove it.
+struct BlockMenu: View {
+    let block: CalendarBlock
+    /// Its day, in days from today.
+    let day: Int
+    let actions: CalendarActions
+    var editTitle = "Edit"
+    let onEdit: () -> Void
+    var onGive: (() -> Void)?
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 208) {
+            MenuItem(icon: .edit, title: editTitle) { run(onEdit) }
+            if block.taskId != nil {
+                MenuItem(icon: block.taskDone ? .reopen : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
+                    run { actions.toggleDone(block.id) }
+                }
+            }
+            if !block.isIntention {
+                MenuItem(icon: block.reserved ? .target : .clock, title: block.reserved ? "Make it a session" : "Reserve this time") {
+                    run { actions.setReserved(block.id, !block.reserved) }
+                }
+                if let onGive {
+                    // Opens the give-time panel beside the block, in place of this menu.
+                    MenuItem(icon: .plan, title: "Give time…") { run(onGive) }
+                }
+            }
+            MenuItem(icon: .arrowForward, title: day == 0 ? "Move to tomorrow" : "Move to next day") {
+                run { actions.moveToTomorrow(block.id) }
+            }
+            if let openGoal = actions.openGoal {
+                MenuSeparator()
+                MenuItem(icon: .target, title: "Open goal") { run { openGoal(block.goalId) } }
+            }
+            MenuSeparator()
+            MenuItem(icon: .delete, title: "Remove", isDestructive: true) { run { actions.remove(block.id) } }
+        }
+    }
+
+    private func run(_ action: () -> Void) {
+        overlays?.dismiss()
+        action()
     }
 }
 

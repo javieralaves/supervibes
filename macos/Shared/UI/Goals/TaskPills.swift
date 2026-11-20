@@ -121,73 +121,120 @@ struct TaskDayPill: View {
 
     private func openMenu() {
         guard let overlays else { return }
-        let week = (0..<7).compactMap { offset in
+        // Lined up with the pill's left edge (`align="start"`), so the anchor's right edge is pushed out.
+        let menuAnchor = CGRect(x: anchor.minX, y: anchor.minY, width: 224, height: anchor.height)
+        overlays.showMenu(anchor: menuAnchor, owner: menuOwner) {
+            DayMenu(kind: kind, value: value, today: today, week: week, onWeek: onWeek, onChange: onChange)
+        }
+    }
+}
+
+/// A plan or due day's choices, as a whole panel: this week and next (for a plan), the next seven
+/// days, any other day, and Clear. A pill opens it, and so does a task's own menu.
+struct DayMenu: View {
+    let kind: TaskDayKind
+    let value: String?
+    let today: String
+    /// A plan's week (its Monday), when it has no day.
+    var week: String?
+    /// For a plan, offers this week and next above the days.
+    var onWeek: ((String) -> Void)?
+    let onChange: (String?) -> Void
+
+    @Environment(\.overlays) private var overlays
+    @Environment(\.isSubmenu) private var isSubmenu
+
+    private var thisWeek: String { CalendarDay.weekStart(today) }
+    private var nextWeek: String { CalendarDay.addDays(thisWeek, 7) }
+
+    /// "This week" or "Next week" for a week-only plan (a carried-over week counts as this one).
+    private var weekLabel: String? {
+        guard value == nil, onWeek != nil, let week else { return nil }
+        if week <= thisWeek { return "This week" }
+        return week == nextWeek ? "Next week" : nil
+    }
+
+    private var days: [String] {
+        (0..<7).compactMap { offset in
             CalendarDay.date(today).map { CalendarDay.string($0.addingTimeInterval(Double(offset) * 86_400)) }
         }
-        // Lined up with the pill's left edge (`align="start"`), so the anchor's right edge is pushed out.
-        let menuAnchor = CGRect(x: anchor.minX, y: anchor.minY, width: 208, height: anchor.height)
-        overlays.showMenu(anchor: menuAnchor, owner: menuOwner) {
-            MenuPanel(width: 208) {
-                MenuLabel(kind.menuTitle)
-                if let onWeek {
-                    DayRow(title: "This week", detail: CalendarDay.formatWeek(thisWeek), isSelected: weekLabel == "This week") {
-                        overlays.dismiss()
-                        onWeek(thisWeek)
-                    }
-                    DayRow(title: "Next week", detail: CalendarDay.formatWeek(nextWeek), isSelected: weekLabel == "Next week") {
-                        overlays.dismiss()
-                        onWeek(nextWeek)
-                    }
-                    MenuSeparator()
+    }
+
+    var body: some View {
+        let days = days
+        MenuPanel(width: 224) {
+            MenuLabel(kind.menuTitle)
+            if let onWeek {
+                DayRow(title: "This week", detail: CalendarDay.formatWeek(thisWeek), isSelected: weekLabel == "This week") {
+                    overlays?.dismiss()
+                    onWeek(thisWeek)
                 }
-                ForEach(Array(week.enumerated()), id: \.offset) { index, day in
-                    DayRow(
-                        title: index == 0 ? "Today" : index == 1 ? "Tomorrow" : CalendarDay.weekday(day),
-                        detail: CalendarDay.format(day, today: today),
-                        isSelected: day == value
-                    ) {
-                        overlays.dismiss()
-                        onChange(day)
-                    }
+                DayRow(title: "Next week", detail: CalendarDay.formatWeek(nextWeek), isSelected: weekLabel == "Next week") {
+                    overlays?.dismiss()
+                    onWeek(nextWeek)
                 }
                 MenuSeparator()
+            }
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 DayRow(
-                    title: "Another day…",
-                    detail: value.flatMap { week.contains($0) ? nil : CalendarDay.format($0, today: today) },
-                    isSelected: value.map { !week.contains($0) } ?? false
+                    title: index == 0 ? "Today" : index == 1 ? "Tomorrow" : CalendarDay.weekday(day),
+                    detail: CalendarDay.format(day, today: today),
+                    isSelected: day == value
                 ) {
-                    pickAnotherDay(overlays, anchor: menuAnchor)
+                    overlays?.dismiss()
+                    onChange(day)
                 }
-                if value != nil || weekLabel != nil {
-                    DayRow(title: kind.clearTitle, isDestructive: true) {
-                        overlays.dismiss()
-                        onChange(nil)
-                    }
+            }
+            MenuSeparator()
+            DayRow(
+                title: "Another day…",
+                detail: value.flatMap { days.contains($0) ? nil : CalendarDay.format($0, today: today) },
+                isSelected: value.map { !days.contains($0) } ?? false
+            ) {
+                // In a submenu the calendar takes the submenu's place; from a pill, the menu's.
+                if isSubmenu {
+                    overlays?.replaceSubmenu { AnotherDayMenu(kind: kind, value: value, today: today, onChange: onChange) }
+                } else {
+                    overlays?.replaceMenu { AnotherDayMenu(kind: kind, value: value, today: today, onChange: onChange) }
+                }
+            }
+            if value != nil || weekLabel != nil {
+                DayRow(title: kind.clearTitle, isDestructive: true) {
+                    overlays?.dismiss()
+                    onChange(nil)
                 }
             }
         }
     }
+}
 
-    private func pickAnotherDay(_ overlays: OverlayCenter, anchor: CGRect) {
-        overlays.showMenu(anchor: anchor, owner: menuOwner) {
-            MenuPanel(width: 260) {
-                MenuLabel(kind.menuTitle)
-                DatePicker(
-                    kind.menuTitle,
-                    selection: Binding(
-                        get: { value.flatMap(CalendarDay.date) ?? CalendarDay.date(today) ?? Date() },
-                        set: { picked in
-                            overlays.dismiss()
-                            onChange(CalendarDay.string(picked))
-                        }
-                    ),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .environment(\.timeZone, TimeZone(identifier: "UTC")!)
-                .padding(4)
-            }
+/// Any day, on a month's calendar.
+private struct AnotherDayMenu: View {
+    let kind: TaskDayKind
+    let value: String?
+    let today: String
+    let onChange: (String?) -> Void
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 260) {
+            MenuLabel(kind.menuTitle)
+            DatePicker(
+                kind.menuTitle,
+                selection: Binding(
+                    get: { value.flatMap(CalendarDay.date) ?? CalendarDay.date(today) ?? Date() },
+                    set: { picked in
+                        overlays?.dismiss()
+                        onChange(CalendarDay.string(picked))
+                    }
+                ),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+            .padding(4)
         }
     }
 }
@@ -216,13 +263,28 @@ struct EstimatePill: View {
     private func openMenu() {
         guard let overlays else { return }
         overlays.showMenu(anchor: anchor, owner: owner.map { "\($0)#estimate" }) {
-            MenuPanel(width: 144) {
-                MenuLabel("Estimate")
-                ForEach(TaskItem.estimates, id: \.self) { option in
-                    DayRow(title: label(option), isSelected: option == minutes) {
-                        overlays.dismiss()
-                        onChange(option)
-                    }
+            EstimateMenu(minutes: minutes, shortHours: shortHours, onChange: onChange)
+        }
+    }
+}
+
+/// An estimate's choices, 15 min to 2 hr, as a whole panel.
+struct EstimateMenu: View {
+    let minutes: Int
+    /// "2 h" rather than "2 hr", as on the planning board. Passed in: the menu draws in the overlay
+    /// layer, outside the board's environment.
+    var shortHours = false
+    let onChange: (Int) -> Void
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 144) {
+            MenuLabel("Estimate")
+            ForEach(TaskItem.estimates, id: \.self) { option in
+                DayRow(title: shortHours ? BoardDuration.text(option) : TaskItem.minutesLabel(option), isSelected: option == minutes) {
+                    overlays?.dismiss()
+                    onChange(option)
                 }
             }
         }
@@ -271,7 +333,7 @@ struct DayRow: View {
                 Text(title).appText(.sm).foregroundStyle(isDestructive ? Theme.danger : Theme.foreground)
                 Spacer(minLength: 0)
                 HStack(spacing: 6) {
-                    if let detail { Text(detail).appText(.xs).monospacedDigit() }
+                    if let detail { Text(detail).appText(.xs).monospacedDigit().lineLimit(1).fixedSize() }
                     if isSelected { Icon.tick.image(size: 13) }
                 }
                 .foregroundStyle(Theme.muted)

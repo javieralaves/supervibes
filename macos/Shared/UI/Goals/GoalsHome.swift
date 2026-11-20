@@ -11,6 +11,8 @@ struct GoalsHome: View {
     var error: String?
     var onOpen: (Goal) -> Void = { _ in }
     var onNew: (GoalInput) -> Void = { _ in }
+    /// What a goal card's right-click menu offers besides opening it.
+    var actions = GoalCardActions()
 
     @State private var width: CGFloat = 1024
 
@@ -88,6 +90,9 @@ struct GoalsHome: View {
         switch cell {
         case .goal(let goal):
             GoalCard(goal: goal, today: today) { onOpen(goal) }
+                .contextPanel(owner: GoalCard.menuOwner(goal), isEnabled: !goal.isPending) {
+                    GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
+                }
         case .new:
             NewGoalButton { onNew(GoalInput()) }
         }
@@ -96,11 +101,61 @@ struct GoalsHome: View {
 
 /// `rounded-2xl border bg-card p-5`, hover `border-line-strong`: who it is at the top, how it's going
 /// pinned to the bottom, so footers line up across a row.
+/// A goal card's menu, beyond opening it: each nil leaves its row out.
+struct GoalCardActions {
+    /// Opens its planning board.
+    var plan: ((Goal) -> Void)?
+    /// Opens it and starts a new read.
+    var updateStatus: ((Goal) -> Void)?
+    var edit: ((Goal) -> Void)?
+    /// Asks first.
+    var delete: ((Goal) -> Void)?
+}
+
+/// What right-clicking a goal card offers: the goal page's own ⋯ menu, plus opening it or its board.
+struct GoalCardMenu: View {
+    let goal: Goal
+    let actions: GoalCardActions
+    let onOpen: () -> Void
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 200) {
+            MenuItem(icon: .view, title: "Open") { run(onOpen) }
+            if let plan = actions.plan {
+                MenuItem(icon: .calendarSmall, title: "Plan tasks") { run { plan(goal) } }
+            }
+            if let updateStatus = actions.updateStatus {
+                MenuItem(icon: .refresh, title: "Update status") { run { updateStatus(goal) } }
+            }
+            if let edit = actions.edit {
+                MenuSeparator()
+                MenuItem(icon: .edit, title: "Edit goal") { run { edit(goal) } }
+            }
+            if let delete = actions.delete {
+                MenuItem(icon: .delete, title: "Delete goal", isDestructive: true) { run { delete(goal) } }
+            }
+        }
+    }
+
+    private func run(_ action: () -> Void) {
+        overlays?.dismiss()
+        action()
+    }
+}
+
 private struct GoalCard: View {
     let goal: Goal
     let today: String
     let action: () -> Void
     @State private var isHovered = false
+    @Environment(\.overlays) private var overlays
+
+    static func menuOwner(_ goal: Goal) -> String { "goal-card#\(goal.id)" }
+
+    /// Hovered, or its menu is open.
+    private var isEngaged: Bool { isHovered || overlays?.presented?.owner == Self.menuOwner(goal) }
 
     var body: some View {
         Button(action: action) {
@@ -119,7 +174,7 @@ private struct GoalCard: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     Icon.arrowRight.image(size: 16).foregroundStyle(Theme.muted)
-                        .opacity(isHovered ? 1 : 0)
+                        .opacity(isEngaged ? 1 : 0)
                         .offset(x: 4)
                 }
 
@@ -145,14 +200,14 @@ private struct GoalCard: View {
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Theme.card, in: .rect(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isEngaged ? Theme.lineStrong : Theme.cardBorder))
             .contentShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(.plain)
         .inactive(goal.isPending)
         .opacity(goal.isPending ? 0.6 : 1)
         .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .animation(.easeOut(duration: 0.12), value: isEngaged)
     }
 }
 

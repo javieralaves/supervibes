@@ -148,11 +148,16 @@ private struct SourceRow: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+        .contextPanel { menu }
     }
 
     private func openMenu() {
-        guard let overlays else { return }
-        overlays.showMenu(anchor: anchor) {
+        overlays?.showMenu(anchor: anchor) { menu }
+    }
+
+    /// The same for ⋯ and a right-click.
+    @ViewBuilder private var menu: some View {
+        if let overlays {
             MenuPanel {
                 MenuItem(icon: .edit, title: "Edit") {
                     overlays.dismiss()

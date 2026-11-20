@@ -91,6 +91,76 @@ final class GoalsModel {
         }
     }
 
+    /// Saves a goal's edits from its card, showing them right away and going back if the server says no.
+    func update(_ goal: Goal, _ input: GoalInput) {
+        error = nil
+        let before = goals
+        goals = goals.map { current in
+            guard current.id == goal.id else { return current }
+            var edited = current
+            edited.title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            edited.description = input.description.isEmpty ? nil : input.description
+            edited.targetDate = input.targetDate
+            edited.icon = input.icon
+            edited.color = input.color
+            return edited
+        }
+        Task {
+            let body = Components.Schemas.GoalInput(
+                title: input.title,
+                description: input.description.isEmpty ? nil : input.description,
+                targetDate: input.targetDate,
+                icon: .init(rawValue: input.icon) ?? .target02Icon,
+                color: .init(rawValue: input.color) ?? .violet
+            )
+            do {
+                switch try await client.updateGoal(path: .init(id: goal.id), body: .json(body)) {
+                case .ok(let ok):
+                    let saved = Goal(api: try ok.body.json)
+                    goals = goals.map { $0.id == saved.id ? saved : $0 }
+                case .badRequest(let bad):
+                    goals = before
+                    error = (try? bad.body.json.error.message) ?? "Couldn’t save that."
+                case .notFound:
+                    goals.removeAll { $0.id == goal.id }
+                case .unauthorized:
+                    goals = before
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    goals = before
+                    error = "Couldn’t save (the server answered \(status))."
+                }
+            } catch {
+                goals = before
+                self.error = "Couldn’t save. Check your connection."
+            }
+        }
+    }
+
+    /// Deletes a goal from its card: it goes right away, and comes back if the server says no.
+    func delete(_ goal: Goal) {
+        error = nil
+        let before = goals
+        goals.removeAll { $0.id == goal.id }
+        Task {
+            do {
+                switch try await client.deleteGoal(path: .init(id: goal.id)) {
+                case .noContent, .notFound:
+                    Log.app.info("Goal deleted")
+                case .unauthorized:
+                    goals = before
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    goals = before
+                    error = "Couldn’t delete that goal (the server answered \(status))."
+                }
+            } catch {
+                goals = before
+                self.error = "Couldn’t delete that goal. Check your connection."
+            }
+        }
+    }
+
     private func fail(_ pendingID: String, _ message: String) {
         goals.removeAll { $0.id == pendingID }
         error = message

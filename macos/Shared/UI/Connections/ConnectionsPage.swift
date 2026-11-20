@@ -77,6 +77,7 @@ private struct ConnectionRow: View {
         .padding(20)
         .background(Theme.card, in: .rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+        .contextPanel(isEnabled: item.isConnected && !isBusy) { menu }
     }
 
     private var subtitle: String {
@@ -104,9 +105,13 @@ private struct ConnectionRow: View {
     }
 
     private func openMenu() {
-        guard let overlays else { return }
         isMenuOpen = true
-        overlays.showMenu(anchor: menuAnchor) {
+        overlays?.showMenu(anchor: menuAnchor) { menu }
+    }
+
+    /// The same for ⋯ and a right-click.
+    @ViewBuilder private var menu: some View {
+        if let overlays {
             MenuPanel {
                 MenuItem(icon: .refresh, title: "Reconnect") {
                     overlays.dismiss()

@@ -141,11 +141,53 @@ private struct GoalsScreen: View {
                     max: model.max,
                     error: model.error,
                     onOpen: { shell.openGoal($0.id) },
-                    onNew: newGoal
+                    onNew: newGoal,
+                    actions: GoalCardActions(
+                        plan: { shell.openGoal($0.id, then: .plan) },
+                        updateStatus: { shell.openGoal($0.id, then: .updateStatus) },
+                        edit: edit,
+                        delete: confirmDelete
+                    )
                 )
             }
         }
         .task { await model.refresh() }
+    }
+
+    private func edit(_ goal: Goal) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            GoalDialog(
+                input: GoalInput(editing: goal),
+                mode: .edit,
+                today: model.today,
+                onCancel: { overlays.dismiss() },
+                onSave: { saved in
+                    overlays.dismiss()
+                    model.update(goal, saved)
+                },
+                onDelete: {
+                    overlays.dismiss()
+                    model.delete(goal)
+                }
+            )
+        }
+    }
+
+    private func confirmDelete(_ goal: Goal) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            ConfirmDialog(
+                title: "Delete this goal?",
+                message: "Its sources and progress read will be removed too. Your connected apps aren’t affected.",
+                confirmTitle: "Delete goal",
+                onCancel: { overlays.dismiss() },
+                onConfirm: {
+                    overlays.dismiss()
+                    model.delete(goal)
+                }
+            )
+        }
     }
 
     private func newGoal(_ input: GoalInput) {
@@ -256,7 +298,16 @@ private struct GoalScreen: View {
                 }
             }
         }
-        .task { await model.refresh() }
+        .task {
+            await model.refresh()
+            // Asked for from a goal card's menu on the home page.
+            guard let intent = shell.goalIntent else { return }
+            shell.goalIntent = nil
+            switch intent {
+            case .plan: isPlanning = true
+            case .updateStatus: if model.detail?.canRead == true { model.updateStatus() }
+            }
+        }
         .onDisappear { model.stop() }
     }
 
@@ -269,16 +320,9 @@ private struct GoalScreen: View {
 
     private func edit(_ goal: Goal) {
         guard let overlays else { return }
-        let input = GoalInput(
-            title: goal.title,
-            description: goal.description ?? "",
-            targetDate: goal.targetDate,
-            icon: GoalPalette.iconName(goal.icon),
-            color: GoalPalette.colorInfo(goal.color).key
-        )
         overlays.showDialog {
             GoalDialog(
-                input: input,
+                input: GoalInput(editing: goal),
                 mode: .edit,
                 today: model.detail?.today ?? CalendarDay.today(),
                 onCancel: { overlays.dismiss() },
@@ -371,7 +415,8 @@ private struct CalendarScreen: View {
                         remove: model.remove,
                         place: model.place(_:day:start:minutes:),
                         plan: model.plan(_:day:),
-                        defaultGoalId: { model.defaultGoalId }
+                        defaultGoalId: { model.defaultGoalId },
+                        openGoal: { shell.openGoal($0) }
                     ),
                     showsTasks: showsTasks,
                     onToggleTasks: { showsTasks.toggle() },
@@ -491,7 +536,8 @@ private struct PlanScreen: View {
                             remove: model.remove,
                             place: model.place(_:day:start:minutes:),
                             plan: model.plan(_:day:),
-                            defaultGoalId: { model.defaultGoalId }
+                            defaultGoalId: { model.defaultGoalId },
+                            openGoal: { shell.openGoal($0) }
                         ),
                         openGoal: { shell.openGoal($0) },
                         openCalendar: { shell.openCalendar(day: offset) }

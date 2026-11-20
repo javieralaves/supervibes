@@ -232,11 +232,6 @@ struct PlanningBoard: View {
                     .frame(width: 220, alignment: .leading)
                     .background(Theme.card, in: .rect(cornerRadius: 12))
             }
-            .contextMenu {
-                ForEach(moves(for: task, from: column), id: \.0) { item in
-                    Button(item.0, action: item.1)
-                }
-            }
         }
     }
 
@@ -351,19 +346,6 @@ struct PlanningBoard: View {
         guard let task = detail.tasks.first(where: { $0.id == id }), before != id else { return }
         let patch = BoardColumn.of(task, today: today) == column ? TaskPatch() : column.patch(today: today)
         actions.place(task, patch, before)
-    }
-
-    /// The right-click menu's moves: to each column it isn't in.
-    private func moves(for task: TaskItem, from column: BoardColumn) -> [(String, () -> Void)] {
-        BoardColumn.all(today: today).filter { $0 != column }.map { target in
-            let name = switch target {
-            case .unplanned: "Move to Unplanned"
-            case .day(let day): "Plan for \(CalendarDay.relativeLabel(day, today: today).lowercasedIfRelative)"
-            case .thisWeek: "Move to this week"
-            case .nextWeek: "Move to next week"
-            }
-            return (name, { actions.place(task, target.patch(today: today), nil) })
-        }
     }
 }
 

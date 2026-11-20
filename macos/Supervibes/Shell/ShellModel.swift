@@ -43,9 +43,14 @@ final class ShellModel {
         }
     }
 
-    /// A goal's own page.
-    func openGoal(_ id: String) {
+    /// What to do once a goal's page opens, from a goal card's menu on the home page.
+    enum GoalIntent { case plan, updateStatus }
+    var goalIntent: GoalIntent?
+
+    /// A goal's own page, and what to do there once it's loaded.
+    func openGoal(_ id: String, then intent: GoalIntent? = nil) {
         overlays.dismiss()
+        goalIntent = intent
         route = .goal(id)
     }
 

@@ -49,18 +49,22 @@ struct GoalTaskRow: View {
     var showsNotes = true
     /// The plan pill. The planning board leaves it out where the column already says as much.
     var showsPlan = true
-    let onOpen: () -> Void
+    /// Opens it in place; nil where it can't be (the Plan page's lanes).
+    let onOpen: (() -> Void)?
+    /// Its menu offers its goal's page, away from the goal (the Plan page).
+    var onOpenGoal: (() -> Void)?
 
     @State private var isHovered = false
     @State private var moreAnchor = CGRect.zero
     @Environment(\.overlays) private var overlays
+    @Environment(\.shortHours) private var shortHours
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Checkbox(isDone: task.done, isDisabled: task.isPending) { actions.toggle(task) }
                 .padding(.top, 8)
             VStack(alignment: .leading, spacing: 6) {
-                Button(action: onOpen) {
+                Button { onOpen?() } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(task.title).font(.app(15.2)).foregroundStyle(Theme.foreground)
                             .fixedSize(horizontal: false, vertical: true)
@@ -111,6 +115,15 @@ struct GoalTaskRow: View {
         .opacity(task.isPending ? 0.6 : 1)
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isEngaged)
+        .contextPanel(owner: task.id, isEnabled: !task.isPending) { menu }
+    }
+
+    /// The same for ⋯ and a right-click.
+    private var menu: TaskMenu {
+        TaskMenu(
+            task: task, horizon: horizon, today: today, thisWeek: thisWeek, nextWeek: nextWeek,
+            shortHours: shortHours, actions: actions, onOpen: onOpen, onOpenGoal: onOpenGoal
+        )
     }
 
     /// One of this row's menus is open (its pills or ⋯): the pointer is off in the menu, but the row
@@ -163,36 +176,7 @@ struct GoalTaskRow: View {
     }
 
     private func openMenu() {
-        guard let overlays else { return }
-        overlays.showMenu(anchor: moreAnchor, owner: task.id) {
-            MenuPanel {
-                MenuItem(icon: .view, title: "Open") {
-                    overlays.dismiss()
-                    onOpen()
-                }
-                MenuSeparator()
-                // Moving to a week drops its day; Unplanned clears both.
-                if horizon.group != .thisWeek {
-                    MenuItem(icon: .calendarSmall, title: "Move to this week") { move(week: thisWeek) }
-                }
-                if horizon.group != .nextWeek {
-                    MenuItem(icon: .arrowForward, title: "Move to next week") { move(week: nextWeek) }
-                }
-                if horizon.group != .later {
-                    MenuItem(icon: .dashedCircle, title: "Move to Unplanned") { move(week: "") }
-                }
-                MenuSeparator()
-                MenuItem(icon: .delete, title: "Delete", isDestructive: true) {
-                    overlays.dismiss()
-                    actions.delete(task)
-                }
-            }
-        }
-    }
-
-    private func move(week: String) {
-        overlays?.dismiss()
-        actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week), nil)
+        overlays?.showMenu(anchor: moreAnchor, owner: task.id) { menu }
     }
 
     /// "Today 2:00 PM", "Tomorrow 09:30" or "Thu 14:00", in this Mac's time zone.
@@ -202,6 +186,75 @@ struct GoalTaskRow: View {
         let day = days == 0 ? "Today" : days == 1 ? "Tomorrow" : at.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "en_US")))
         let parts = calendar.dateComponents([.hour, .minute], from: at)
         return "\(day) \(clock.format(minutes: (parts.hour ?? 0) * 60 + (parts.minute ?? 0)))"
+    }
+}
+
+// MARK: - Its menu
+
+/// What a task's ⋯ menu and a right-click on it offer: open it, tick it off, move it to a week or
+/// Unplanned, give it a day, a due date or an estimate (each a submenu beside it),
+/// its goal's page where that's elsewhere, and delete it.
+struct TaskMenu: View {
+    let task: TaskItem
+    let horizon: TaskHorizon
+    let today: String
+    let thisWeek: String
+    let nextWeek: String
+    /// Durations as "2 h", as on the planning board.
+    var shortHours = false
+    let actions: TaskActions
+    var onOpen: (() -> Void)?
+    var onOpenGoal: (() -> Void)?
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 216) {
+            if let onOpen {
+                MenuItem(icon: .view, title: "Open") { run(onOpen) }
+            }
+            MenuItem(icon: task.done ? .reopen : .tick, title: task.done ? "Reopen" : "Mark done") { run { actions.toggle(task) } }
+            MenuSeparator()
+            // Moving to a week drops its day; Unplanned clears both.
+            if horizon.group != .thisWeek {
+                MenuItem(icon: .calendarSmall, title: "Move to this week") { move(week: thisWeek) }
+            }
+            if horizon.group != .nextWeek {
+                MenuItem(icon: .arrowForward, title: "Move to next week") { move(week: nextWeek) }
+            }
+            if horizon.group != .later {
+                MenuItem(icon: .dashedCircle, title: "Move to Unplanned") { move(week: "") }
+            }
+            SubmenuItem(icon: .calendarSmall, title: "Plan for a day") {
+                DayMenu(
+                    kind: .plan, value: task.plannedFor, today: today, week: task.plannedWeek,
+                    onWeek: { actions.edit(task, TaskPatch(plannedFor: "", plannedWeek: $0)) }
+                ) { day in
+                    actions.edit(task, day.map { TaskPatch(plannedFor: $0) } ?? TaskPatch(plannedFor: "", plannedWeek: ""))
+                }
+            }
+            SubmenuItem(icon: .flag, title: task.dueOn == nil ? "Set due date" : "Change due date") {
+                DayMenu(kind: .due, value: task.dueOn, today: today) { actions.edit(task, TaskPatch(dueOn: $0 ?? "")) }
+            }
+            SubmenuItem(icon: .clock, title: "Estimate") {
+                EstimateMenu(minutes: task.minutes, shortHours: shortHours) { actions.edit(task, TaskPatch(minutes: $0)) }
+            }
+            if let onOpenGoal {
+                MenuSeparator()
+                MenuItem(icon: .target, title: "Open goal") { run(onOpenGoal) }
+            }
+            MenuSeparator()
+            MenuItem(icon: .delete, title: "Delete", isDestructive: true) { run { actions.delete(task) } }
+        }
+    }
+
+    private func run(_ action: () -> Void) {
+        overlays?.dismiss()
+        action()
+    }
+
+    private func move(week: String) {
+        run { actions.place(task, TaskPatch(plannedFor: "", plannedWeek: week), nil) }
     }
 }
 

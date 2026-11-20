@@ -124,7 +124,7 @@ struct PlanTimeline: View {
         ZStack(alignment: .topLeading) {
             DayTimeline(
                 data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
-                selectedId: openBlockId, onSelect: { select($0, grid: grid) }, proxy: proxy
+                selectedId: openBlockId, onSelect: { select($0, grid: grid) }, onGive: { select($0, grid: grid) }, proxy: proxy
             )
             if let ghostId, let ghostGoal {
                 ForEach(segments(of: ghostId), id: \.id) { segment in

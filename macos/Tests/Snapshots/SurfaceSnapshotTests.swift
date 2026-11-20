@@ -131,6 +131,60 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// Right-click menus: a task's, a block's (on the Plan page, with Give time) and a goal card's.
+    func testRightClickMenus() {
+        let task = Fixtures.tasks[0]
+        let blocks = Fixtures.panelBlocks
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                TaskMenu(
+                    task: task, horizon: task.horizon(today: "2026-11-18"), today: "2026-11-18",
+                    thisWeek: "2026-11-16", nextWeek: "2026-11-23", actions: TaskActions(), onOpen: {}, onOpenGoal: {}
+                )
+                BlockMenu(block: blocks[0], day: 0, actions: .preview, onEdit: {}, onGive: {})
+                GoalCardMenu(goal: Fixtures.goals[0], actions: GoalCardActions(plan: { _ in }, updateStatus: { _ in }, edit: { _ in }, delete: { _ in }), onOpen: {})
+            }
+            .padding(16)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Theme.background),
+            width: 720, height: 480
+        )
+    }
+
+    /// A right-click near the window's bottom right corner opens the menu up and to the left of the pointer.
+    func testRightClickMenuStaysInTheWindow() {
+        let center = OverlayCenter()
+        let task = Fixtures.tasks[2]
+        center.showMenu(at: CGPoint(x: 380, y: 300), owner: task.id) {
+            TaskMenu(
+                task: task, horizon: task.horizon(today: "2026-11-18"), today: "2026-11-18",
+                thisWeek: "2026-11-16", nextWeek: "2026-11-23", actions: TaskActions()
+            )
+        }
+        assertAppearances(
+            Theme.background.overlayHost(center),
+            width: 400, height: 320
+        )
+    }
+
+    /// "Plan for a day" open beside a task's menu, its first row level with the row it came from.
+    func testRightClickSubmenu() {
+        let center = OverlayCenter()
+        let task = Fixtures.tasks[2]
+        center.showMenu(at: CGPoint(x: 20, y: 20), owner: task.id) {
+            TaskMenu(
+                task: task, horizon: task.horizon(today: "2026-11-18"), today: "2026-11-18",
+                thisWeek: "2026-11-16", nextWeek: "2026-11-23", actions: TaskActions()
+            )
+        }
+        // Below the panel's padding, Mark done, a separator, and two moves.
+        let row = CGRect(x: 28, y: 22 + 6 + 36 + 9 + 36 + 36, width: 204, height: 36)
+        center.showSubmenu(id: "Plan for a day", row: row, content: AnyView(
+            DayMenu(kind: .plan, value: nil, today: "2026-11-18", week: task.plannedWeek, onWeek: { _ in }) { _ in }
+        ))
+        assertAppearances(Theme.background.overlayHost(center), width: 520, height: 520)
+    }
+
     func testConnectionsPage() {
         assertAppearances(
             ConnectionsPage(items: Fixtures.connections, notice: .connected("Linear"))

@@ -485,6 +485,27 @@ private struct SuggestedRow: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Theme.foreground(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
+        .contextPanel(isEnabled: !disabled) { SuggestionMenu(suggestion: suggestion, actions: actions) }
+    }
+}
+
+/// Right-clicking a suggestion: the same two choices as its buttons.
+private struct SuggestionMenu: View {
+    let suggestion: TaskSuggestion
+    let actions: TaskActions
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel {
+            MenuItem(icon: .add, title: "Add as task") {
+                overlays?.dismiss()
+                actions.acceptSuggestion(suggestion)
+            }
+            MenuItem(icon: .close, title: "Not now") {
+                overlays?.dismiss()
+                actions.passOnSuggestion(suggestion)
+            }
+        }
     }
 }
 

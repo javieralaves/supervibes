@@ -56,6 +56,19 @@ func statusLabel(_ status: GoalStatus, _ basis: StatusBasis) -> String {
 }
 
 /// What a new goal starts as, from the dialog (src/lib/goal-schema.ts).
+extension GoalInput {
+    /// A goal as it is, for its edit dialog.
+    init(editing goal: Goal) {
+        self.init(
+            title: goal.title,
+            description: goal.description ?? "",
+            targetDate: goal.targetDate,
+            icon: GoalPalette.iconName(goal.icon),
+            color: GoalPalette.colorInfo(goal.color).key
+        )
+    }
+}
+
 struct GoalInput: Hashable, Sendable {
     var title = ""
     var description = ""
