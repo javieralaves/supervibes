@@ -288,17 +288,10 @@ private struct TargetDateField: View {
             .buttonStyle(.plain)
             .onHover { isHovered = $0 }
             .popover(isPresented: $isPicking, arrowEdge: .bottom) {
-                DatePicker(
-                    "Target date",
-                    selection: Binding(
-                        get: { date.flatMap(CalendarDay.date) ?? CalendarDay.date(today) ?? Date() },
-                        set: { date = CalendarDay.string($0); isPicking = false }
-                    ),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+                DayCalendar(title: "Target date", selected: date ?? today) { day in
+                    date = day
+                    isPicking = false
+                }
                 .padding(12)
             }
 

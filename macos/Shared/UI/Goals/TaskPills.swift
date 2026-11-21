@@ -220,22 +220,43 @@ private struct AnotherDayMenu: View {
     var body: some View {
         MenuPanel(width: 260) {
             MenuLabel(kind.menuTitle)
-            DatePicker(
-                kind.menuTitle,
-                selection: Binding(
-                    get: { value.flatMap(CalendarDay.date) ?? CalendarDay.date(today) ?? Date() },
-                    set: { picked in
-                        overlays?.dismiss()
-                        onChange(CalendarDay.string(picked))
-                    }
-                ),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+            DayCalendar(title: kind.menuTitle, selected: value ?? today) { day in
+                overlays?.dismiss()
+                onChange(day)
+            }
             .padding(4)
         }
+    }
+}
+
+/// A month's calendar for picking a day, "YYYY-MM-DD", opening on `selected`. One click hands over
+/// one day: the calendar reports a click twice, the day clicked and then, as it goes away, the day
+/// it opened on, and acting on both saved twice, the second putting the old day back. So only the
+/// first day other than `selected` counts (clicking `selected` itself does nothing).
+struct DayCalendar: View {
+    let title: String
+    let selected: String
+    let onPick: (String) -> Void
+
+    @State private var picked = false
+
+    var body: some View {
+        DatePicker(
+            title,
+            selection: Binding(
+                get: { CalendarDay.date(selected) ?? Date() },
+                set: { date in
+                    let day = CalendarDay.string(date)
+                    guard !picked, day != selected else { return }
+                    picked = true
+                    onPick(day)
+                }
+            ),
+            displayedComponents: .date
+        )
+        .datePickerStyle(.graphical)
+        .labelsHidden()
+        .environment(\.timeZone, TimeZone(identifier: "UTC")!)
     }
 }
 
