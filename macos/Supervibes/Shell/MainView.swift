@@ -405,6 +405,9 @@ private struct CalendarScreen: View {
                     error: model.error,
                     onStep: model.step,
                     onToday: model.goToToday,
+                    weekFirst: model.weekFirst,
+                    weekRange: model.weekRange,
+                    onStepWeek: model.stepWeek,
                     actions: CalendarActions(
                         create: model.create(day:start:end:goalId:title:),
                         saveDetails: model.saveDetails(_:goalId:title:),
@@ -449,8 +452,8 @@ private struct CalendarScreen: View {
                     selectedId = nil
                     return .handled
                 }
-                .onKeyPress(.leftArrow) { model.step(isWeek ? -7 : -1); return .handled }
-                .onKeyPress(.rightArrow) { model.step(isWeek ? 7 : 1); return .handled }
+                .onKeyPress(.leftArrow) { if isWeek { model.stepWeek(-7) } else { model.step(-1) }; return .handled }
+                .onKeyPress(.rightArrow) { if isWeek { model.stepWeek(7) } else { model.step(1) }; return .handled }
             }
         }
         .background(Theme.background)

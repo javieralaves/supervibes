@@ -1,10 +1,12 @@
 import SwiftUI
 
 /*
- * The week at a glance, Monday to Sunday, as week-view.tsx: seven days side by side with what's
- * planned for each without a time, then their blocks, filled in where time has passed. Drag on a
- * day's empty time (or click it) to protect time; drag a block to another time or day, or its top
- * or bottom edge to change its length; click a block to open it, or a day to step into it.
+ * The week at a glance, as week-view.tsx: seven days side by side with what's planned for each
+ * without a time, then their blocks, filled in where time has passed. Drag on a day's empty time
+ * (or click it) to protect time; drag a block to another time or day, or its top or bottom edge to
+ * change its length; click a block to open it, or a day to step into it. Scroll sideways (two
+ * fingers on a trackpad, or shift and the wheel) to move through the days; it settles on a whole
+ * day, so the seven can start on any day of the week.
  */
 
 /// The week's geometry: hours a little shorter than the day's, so blocks stay readable as the grid
@@ -25,8 +27,13 @@ enum WeekGrid {
 
 struct WeekView: View {
     let data: CalendarData
-    /// The week's Monday, in days from today.
-    let monday: Int
+    /// The first of the seven days, in days from today: a Monday, or any day once scrolled.
+    let first: Int
+    /// Where the first day can be scrolled to (what's loaded); past it the days give a little and
+    /// spring back.
+    var firstRange: ClosedRange<Int>?
+    /// Scrolling sideways moved the first day by that many days; without it the week doesn't scroll.
+    var onScroll: ((Int) -> Void)?
     let now: Date
     let clock: Clock
     var actions: CalendarActions?
@@ -46,8 +53,17 @@ struct WeekView: View {
     @State private var position = ScrollPosition()
     @State private var scrollY: CGFloat = 0
     @State private var viewport: CGFloat = 0
-    /// The week it last opened on its focus, so it does so once the scroll view has a size.
-    @State private var focusedMonday: Int?
+    /// The first day it last opened on its focus, so it does so once the scroll view has a size.
+    @State private var focusedFirst: Int?
+    /// How far the days are scrolled sideways past `shownFirst`, in points; right is earlier.
+    @State private var pan: CGFloat = 0
+    /// The first day while scrolling sideways, ahead of `first` catching up.
+    @State private var scrollingFirst: Int?
+    /// The first day scrolling last moved to, so arriving there doesn't jump to the focus as the arrows do.
+    @State private var scrolledTo: Int?
+    @State private var wheel = Wheel.idle
+    /// Bumped to cancel a settle that's waiting for momentum.
+    @State private var settleToken = 0
     @State private var ownHour = WeekGrid.hour
     /// The hour height mid-pinch, saved when it ends.
     @State private var pinchHour: CGFloat?
@@ -55,9 +71,16 @@ struct WeekView: View {
     @State private var pinchY: CGFloat?
     @Environment(\.overlays) private var overlays
 
-    private var days: [Int] { Array(monday...(monday + 6)) }
+    /// The first of the seven days as drawn.
+    private var shownFirst: Int { scrollingFirst ?? first }
+    /// The seven days, and one either side to scroll into view.
+    private var days: [Int] { Array((shownFirst - 1)...(shownFirst + 7)) }
+    /// The days at least partly in view.
+    private var daysInView: [Int] {
+        days.filter { x(of: $0) + columnWidth > 0.5 && x(of: $0) < columnWidth * 7 - 0.5 }
+    }
     private var columnWidth: CGFloat { max((width - WeekGrid.gutter) / 7, 1) }
-    private var thisWeek: Bool { monday <= 0 && monday + 6 >= 0 }
+    private var thisWeek: Bool { shownFirst <= 0 && shownFirst + 6 >= 0 }
 
     private var range: ClosedRange<CGFloat> { HourGrid.range(viewport: viewport, pad: WeekGrid.pad, most: WeekGrid.maxHour) }
 
@@ -104,9 +127,8 @@ struct WeekView: View {
     }
 
     var body: some View {
-        let strips = days.map { data.strip(day: $0, today: now) }
         VStack(spacing: 0) {
-            header(strips: strips)
+            header
             if scrolls {
                 ScrollView {
                     hours
@@ -133,9 +155,10 @@ struct WeekView: View {
                         pinchY = nil
                         if abs(scrollY - y) > 0.5 { position.scrollTo(y: y) }
                     }
-                    if focusedMonday != monday { scrollToFocus() }
+                    if focusedFirst == nil { scrollToFocus() }
                 }
-                .onChange(of: monday) { scrollToFocus() }
+                // The arrows and Today open on the focus again; scrolling sideways keeps the hours where they are.
+                .onChange(of: first) { if first != scrolledTo { scrollToFocus() } }
             } else {
                 hours
             }
@@ -144,52 +167,183 @@ struct WeekView: View {
         .clipShape(.rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .background {
+            if scrolls, onScroll != nil {
+                ScrollWheelMonitor { event, inside in scrollWheel(event, inside: inside) }
+            }
+        }
     }
 
     /// Open on the current time (or waking up, on other weeks), with about an hour above it. By
     /// position, as the day does: the hour lines are placed with `.offset`, which layout doesn't see.
     private func scrollToFocus() {
         guard viewport > 0 else { return }
-        focusedMonday = monday
+        focusedFirst = first
         let focus = thisWeek ? CalendarDayMath.minutes(now) : data.wakeTime
         position.scrollTo(y: grid.scrollY(keeping: CGFloat(max(0, focus / 60 - 1) * 60), at: WeekGrid.pad, viewport: viewport))
     }
 
+    // MARK: Scrolling sideways
+
+    /// A scroll gesture over the week: not yet one way or the other, sideways (the days follow it),
+    /// sideways and let go (waiting for momentum), or up and down (left to the hours).
+    private enum Wheel { case idle, undecided, sideways, coasting, vertical }
+
+    /// Not while time is being drawn or named, or a block dragged.
+    private var canScroll: Bool { onScroll != nil && creating == nil && drawing == nil && dragging == nil }
+
+    /// A scroll-wheel event over the week (`inside`), or one continuing a gesture that started
+    /// there. Returns true when it moved the days, so the hours don't scroll too.
+    private func scrollWheel(_ event: NSEvent, inside: Bool) -> Bool {
+        let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 16
+        let dx = event.scrollingDeltaX * scale, dy = event.scrollingDeltaY * scale
+
+        // A mouse wheel (shift turns it sideways) has no phases: each turn moves the days, and they
+        // settle once it stops.
+        if event.phase.isEmpty && event.momentumPhase.isEmpty {
+            guard inside, canScroll, abs(dx) > abs(dy) else { return false }
+            scrollBy(dx)
+            settle(after: .milliseconds(150))
+            return true
+        }
+
+        if !event.momentumPhase.isEmpty {
+            guard wheel == .coasting || wheel == .sideways else { return false }
+            wheel = .sideways
+            if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled) {
+                settle()
+            } else {
+                scrollBy(dx)
+            }
+            return true
+        }
+
+        if event.phase.contains(.mayBegin) || event.phase.contains(.began) {
+            // Fingers down: a gesture outside the week, or while it's busy, is left alone.
+            wheel = inside && canScroll ? .undecided : .vertical
+            settleToken += 1
+        }
+        if wheel == .undecided, dx != 0 || dy != 0 {
+            // The first movement decides the gesture's direction, so one leaning sideways doesn't
+            // drift the hours and one leaning down doesn't drift the days.
+            wheel = abs(dx) > abs(dy) ? .sideways : .vertical
+        }
+        guard wheel == .sideways || wheel == .coasting else {
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) { wheel = .idle }
+            return false
+        }
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            // Let go: momentum carries on, if any comes; otherwise settle now.
+            wheel = .coasting
+            settle(after: .milliseconds(80))
+        } else {
+            scrollBy(dx)
+        }
+        return true
+    }
+
+    /// Slide the days by `dx` points (right is earlier). Past half a column the next day becomes
+    /// the first, so the title, the overview and where it will settle follow as it goes. Beyond
+    /// what's loaded it gives less and less.
+    private func scrollBy(_ dx: CGFloat) {
+        let column = columnWidth
+        let before = shownFirst
+        var first = before
+        var offset = pan
+        let atStart = firstRange.map { first <= $0.lowerBound } ?? false
+        let atEnd = firstRange.map { first >= $0.upperBound } ?? false
+        if (atStart && offset >= 0 && dx > 0) || (atEnd && offset <= 0 && dx < 0) {
+            offset += dx * 0.3 * max(0, 1 - abs(offset) / column)
+        } else {
+            offset += dx
+        }
+        while offset > column / 2, firstRange.map({ first > $0.lowerBound }) ?? true {
+            first -= 1
+            offset -= column
+        }
+        while offset < -column / 2, firstRange.map({ first < $0.upperBound }) ?? true {
+            first += 1
+            offset += column
+        }
+        pan = offset
+        guard first != before else { return }
+        scrollingFirst = first
+        scrolledTo = first
+        onScroll?(first - before)
+    }
+
+    /// Settle on the nearest whole day, now or once a wait for momentum passes.
+    private func settle(after delay: Duration? = nil) {
+        settleToken += 1
+        let token = settleToken
+        guard let delay else { return settleNow() }
+        Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            if settleToken == token { settleNow() }
+        }
+    }
+
+    private func settleNow() {
+        wheel = .idle
+        scrollingFirst = nil
+        withAnimation(.spring(duration: 0.3, bounce: 0)) { pan = 0 }
+    }
+
     // MARK: Header
 
-    /// Day names, then each day's tasks planned without a time.
-    private func header(strips: [[StripItem]]) -> some View {
-        VStack(spacing: 0) {
+    /// Day names, then each day's tasks planned without a time, sliding with the days.
+    private var header: some View {
+        let strips = Dictionary(uniqueKeysWithValues: days.map { ($0, data.strip(day: $0, today: now)) })
+        // Only the days in view decide whether there's an Anytime row, and how tall it is.
+        let inView = Set(daysInView)
+        return VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: WeekGrid.gutter, height: 1)
-                ForEach(days, id: \.self) { day in
+                sliding { day in
                     DayHeader(date: CalendarDayMath.midnight(day, from: now), isToday: day == 0) { onOpenDay(day) }
                 }
             }
-            if strips.contains(where: { !$0.isEmpty }) {
+            if inView.contains(where: { !(strips[$0] ?? []).isEmpty }) {
                 HStack(alignment: .top, spacing: 0) {
                     Text("Anytime").font(.app(10, .medium)).foregroundStyle(Theme.muted)
                         .frame(width: WeekGrid.gutter - 8, alignment: .trailing)
                         .padding(.trailing, 8)
                         .padding(.top, 6)
-                    ForEach(Array(zip(days, strips)), id: \.0) { day, items in
-                        AnytimeDay(items: items, goals: data.goals) { onOpenDay(day) }
+                    sliding { day in
+                        AnytimeDay(items: strips[day] ?? [], goals: data.goals) { onOpenDay(day) }
+                            .frame(height: inView.contains(day) ? nil : 0, alignment: .top)
                     }
                 }
             }
         }
         .overlay {
             // The days' dividers, drawn once so they run the header's full height whatever each day holds.
-            GeometryReader { geometry in
-                let column = (geometry.size.width - WeekGrid.gutter) / 7
-                ForEach(0..<7, id: \.self) { index in
-                    Rectangle().fill(Theme.cardBorder).frame(width: 1)
-                        .offset(x: WeekGrid.gutter + column * CGFloat(index))
+            HStack(spacing: 0) {
+                Color.clear.frame(width: WeekGrid.gutter)
+                ZStack(alignment: .topLeading) {
+                    ForEach(days, id: \.self) { day in
+                        Rectangle().fill(Theme.cardBorder).frame(width: 1).offset(x: x(of: day))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
             }
+            .overlay(alignment: .leading) { Rectangle().fill(Theme.cardBorder).frame(width: 1).offset(x: WeekGrid.gutter) }
             .allowsHitTesting(false)
         }
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
+    }
+
+    /// Each day's piece of a row, a column wide and where the day is scrolled to; cut off at the
+    /// edges of the seven columns.
+    private func sliding<Content: View>(@ViewBuilder _ content: @escaping (Int) -> Content) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(days, id: \.self) { day in
+                content(day).frame(width: columnWidth).offset(x: x(of: day))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
     }
 
     // MARK: Grid
@@ -199,7 +353,7 @@ struct WeekView: View {
         let grid = self.grid
         let nowMinutes = CalendarDayMath.minutes(now)
         let segments = data.blocks.flatMap { DaySegment.of($0, today: now) }
-            .filter { $0.day >= monday && $0.day <= monday + 6 }
+            .filter { days.contains($0.day) }
 
         return ZStack(alignment: .topLeading) {
             // Hour lines and labels
@@ -216,50 +370,67 @@ struct WeekView: View {
                 .allowsHitTesting(false)
             }
 
-            // The days: sleep, time that's gone, and empty time to draw on
-            HStack(spacing: 0) {
-                ForEach(days, id: \.self) { day in
-                    column(day, nowMinutes: nowMinutes)
-                }
+            // The days, sliding sideways together and cut off at the gutter and the card's edge
+            ZStack(alignment: .topLeading) {
+                dayLayer(grid: grid, nowMinutes: nowMinutes, segments: segments)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
             .padding(.leading, WeekGrid.gutter)
 
-            // Blocks, in one layer over the days so one can be dragged from day to day
-            ForEach(segments) { segment in
-                if let block = data.blocks.first(where: { $0.id == segment.blockId }) {
-                    blockView(block, segment)
-                }
-            }
-
-            // Time being drawn, or drawn and waiting to be named
-            if let draft {
-                DraftOutline(label: clock.formatRange(draft.start, draft.end))
-                    .frame(width: columnWidth - 4, height: grid.y(draft.end) - grid.y(draft.start) - 2)
-                    .offset(x: x(of: draft.day) + 2, y: grid.y(draft.start) + 1)
-                    .zIndex(2)
-            }
-
-            // Now
-            if thisWeek {
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(Color(nsColor: .rgb(0xef4444))).frame(height: 2)
-                    Circle().fill(Color(nsColor: .rgb(0xef4444))).frame(width: 8, height: 8).offset(x: -4)
-                }
-                .frame(width: columnWidth, height: 8)
-                .offset(x: x(of: 0), y: grid.y(nowMinutes) - 4)
+            // Where the gutter meets the first day, as the days slide under it
+            Rectangle().fill(Theme.cardBorder).frame(width: 1, height: grid.height)
+                .offset(x: WeekGrid.gutter)
                 .allowsHitTesting(false)
-                .zIndex(3)
-            }
-
-            if let creating, creating.mode == .create, creating.day >= monday, creating.day <= monday + 6 {
-                popover(creating).zIndex(4)
-            }
         }
         .frame(height: grid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private func x(of day: Int) -> CGFloat { WeekGrid.gutter + columnWidth * CGFloat(day - monday) }
+    /// Sleep, time that's gone and empty time to draw on; then the blocks, what's being drawn and the
+    /// now line, placed from the left of the first day.
+    @ViewBuilder
+    private func dayLayer(grid: HourGrid, nowMinutes: Int, segments: [DaySegment]) -> some View {
+        ForEach(days, id: \.self) { day in
+            column(day, nowMinutes: nowMinutes)
+                .frame(width: columnWidth, height: grid.height)
+                .offset(x: x(of: day))
+        }
+
+        // Blocks, in one layer over the days so one can be dragged from day to day
+        ForEach(segments) { segment in
+            if let block = data.blocks.first(where: { $0.id == segment.blockId }) {
+                blockView(block, segment)
+            }
+        }
+
+        // Time being drawn, or drawn and waiting to be named
+        if let draft {
+            DraftOutline(label: clock.formatRange(draft.start, draft.end))
+                .frame(width: columnWidth - 4, height: grid.y(draft.end) - grid.y(draft.start) - 2)
+                .offset(x: x(of: draft.day) + 2, y: grid.y(draft.start) + 1)
+                .zIndex(2)
+        }
+
+        // Now
+        if days.contains(0) {
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color(nsColor: .rgb(0xef4444))).frame(height: 2)
+                Circle().fill(Color(nsColor: .rgb(0xef4444))).frame(width: 8, height: 8).offset(x: -4)
+            }
+            .frame(width: columnWidth, height: 8)
+            .offset(x: x(of: 0), y: grid.y(nowMinutes) - 4)
+            .allowsHitTesting(false)
+            .zIndex(3)
+        }
+
+        if let creating, creating.mode == .create, creating.day >= shownFirst, creating.day <= shownFirst + 6 {
+            popover(creating).zIndex(4)
+        }
+    }
+
+    /// Where a day's column starts, from the left of the first day, as scrolled.
+    private func x(of day: Int) -> CGFloat { columnWidth * CGFloat(day - shownFirst) + pan }
 
     private var draft: (day: Int, start: Int, end: Int)? {
         if let drawing, drawing.moved, !drawing.dismissing {
@@ -328,10 +499,10 @@ struct WeekView: View {
     /// Beside its day: to the right, or to the left on the weekend so it stays in view. Its top
     /// lines up with the drawn time's, or its bottom near the end of the day.
     private func popover(_ editing: BlockEditing) -> some View {
-        let index = editing.day - monday
+        let index = editing.day - shownFirst
         let left = index < 5
-            ? WeekGrid.gutter + columnWidth * CGFloat(index + 1) + 6
-            : WeekGrid.gutter + columnWidth * CGFloat(index) - WeekGrid.popoverWidth - 6
+            ? x(of: editing.day) + columnWidth + 6
+            : x(of: editing.day) - WeekGrid.popoverWidth - 6
         let top = grid.y(editing.start)
         let bottom = grid.y(editing.end)
         let above = top + BlockPopover.estimatedHeight > grid.height
@@ -416,7 +587,7 @@ struct WeekView: View {
         current.delta = min(max(raw, bounds.0), bounds.1)
         if edge == .move {
             let days = Int((translation.width / columnWidth).rounded())
-            current.dayDelta = min(max(days, monday - current.day), monday + 6 - current.day)
+            current.dayDelta = min(max(days, shownFirst - current.day), shownFirst + 6 - current.day)
         }
         dragging = current
     }
@@ -621,4 +792,52 @@ private struct DraftOutline: View {
             showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
         .background(Theme.background)
         .frame(width: 1400, height: 760)
+}
+
+/// Hands the window's scroll-wheel events to `onEvent` before anything else sees them, saying
+/// whether the pointer is over this view; when it returns true, nothing else gets the event.
+private struct ScrollWheelMonitor: NSViewRepresentable {
+    var onEvent: (NSEvent, Bool) -> Bool
+
+    final class Coordinator {
+        var onEvent: (NSEvent, Bool) -> Bool = { _, _ in false }
+        var monitor: Any?
+    }
+
+    /// Takes no clicks: it's only there for its place in the window.
+    private final class Spot: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = Spot()
+        let coordinator = context.coordinator
+        coordinator.onEvent = onEvent
+        coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view] event in
+            guard let view, let window = view.window, window.isVisible else { return event }
+            // An event without a window has its location on the screen.
+            let location: NSPoint
+            if event.window === window {
+                location = event.locationInWindow
+            } else if event.window == nil {
+                location = window.convertPoint(fromScreen: event.locationInWindow)
+            } else {
+                return event
+            }
+            let inside = view.bounds.contains(view.convert(location, from: nil))
+            return coordinator.onEvent(event, inside) ? nil : event
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        context.coordinator.onEvent = onEvent
+    }
+
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        if let monitor = coordinator.monitor { NSEvent.removeMonitor(monitor) }
+        coordinator.monitor = nil
+    }
 }

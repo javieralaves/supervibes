@@ -28,6 +28,13 @@ struct DayView: View {
     var error: String?
     var onStep: (Int) -> Void = { _ in }
     var onToday: () -> Void = {}
+    /// The week's first day, in days from today; without it, the Monday of `offset`'s week.
+    var weekFirst: Int?
+    /// Where the week's first day can go (what's loaded).
+    var weekRange: ClosedRange<Int>?
+    /// Moves the week's first day by that many days (the arrows, and scrolling it sideways);
+    /// without it the arrows step `offset` a week and the week doesn't scroll.
+    var onStepWeek: ((Int) -> Void)?
     /// Changing blocks; without it the day is read-only.
     var actions: CalendarActions?
     /// The task panel beside the day.
@@ -59,7 +66,8 @@ struct DayView: View {
     @State private var width: CGFloat = 0
 
     init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
-         onToday: @escaping () -> Void = {}, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
+         onToday: @escaping () -> Void = {}, weekFirst: Int? = nil, weekRange: ClosedRange<Int>? = nil,
+         onStepWeek: ((Int) -> Void)? = nil, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
          showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
          panel: BlockPanelActions? = nil, isWeek: Bool = false, onSetWeek: ((Bool) -> Void)? = nil,
          showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
@@ -71,6 +79,9 @@ struct DayView: View {
         self.error = error
         self.onStep = onStep
         self.onToday = onToday
+        self.weekFirst = weekFirst
+        self.weekRange = weekRange
+        self.onStepWeek = onStepWeek
         self.actions = actions
         self.showsTasks = showsTasks
         self.onToggleTasks = onToggleTasks
@@ -86,12 +97,27 @@ struct DayView: View {
         _editing = State(initialValue: editing)
     }
 
-    /// The week's Monday, in days from today, and as "YYYY-MM-DD".
-    private var monday: Int { CalendarDayMath.monday(of: offset, from: now) }
+    /// The week's first day, in days from today: any day of the week, once it's been scrolled.
+    private var first: Int { weekFirst ?? CalendarDayMath.monday(of: offset, from: now) }
+    /// The Monday-to-Sunday week the overview and the "This week" label go by: the one holding most
+    /// of the days shown (the fourth day's), in days from today and as "YYYY-MM-DD".
+    private var monday: Int { CalendarDayMath.monday(of: first + 3, from: now) }
     private var weekStart: String { CalendarDay.today(CalendarDayMath.midnight(monday, from: now)) }
-    private var thisWeek: Bool { monday <= 0 && monday + 6 >= 0 }
-    /// How far the arrows step: a day, or a week.
-    private var step: Int { isWeek ? 7 : 1 }
+    /// Showing this Monday-to-Sunday week, as Today brings back.
+    private var thisWeek: Bool { first == CalendarDayMath.monday(of: 0, from: now) }
+
+    /// The arrows: a day, or a week from whichever day the week starts on.
+    private func step(_ direction: Int) {
+        editing = nil
+        weekCreating = nil
+        if !isWeek {
+            onStep(direction)
+        } else if let onStepWeek {
+            onStepWeek(direction * 7)
+        } else {
+            onStep(direction * 7)
+        }
+    }
 
     /// "This week", "Next week" or "Last week"; nil further away.
     private var weekRelative: String? {
@@ -126,13 +152,13 @@ struct DayView: View {
                 weekPanel: isWeek,
                 onToggleTasks: { if isWeek { onToggleOverview?() } else { onToggleTasks?() } },
                 title: isWeek
-                    ? CalendarDay.formatWeek(weekStart)
+                    ? CalendarDay.formatWeek(CalendarDay.today(CalendarDayMath.midnight(first, from: now)))
                     : shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
                 relative: isWeek ? weekRelative : Self.dayLabel(offset),
                 showsToday: isWeek ? !thisWeek : !isToday,
                 onToday: onToday,
-                onPrevious: { editing = nil; weekCreating = nil; onStep(-step) },
-                onNext: { editing = nil; weekCreating = nil; onStep(step) }
+                onPrevious: { step(-1) },
+                onNext: { step(1) }
             )
 
             if isWeek { weekLayout } else { dayLayout }
@@ -197,7 +223,9 @@ struct DayView: View {
                 }
                 WeekView(
                     data: data,
-                    monday: monday,
+                    first: first,
+                    firstRange: weekRange,
+                    onScroll: onStepWeek,
                     now: now,
                     clock: clock,
                     actions: actions,

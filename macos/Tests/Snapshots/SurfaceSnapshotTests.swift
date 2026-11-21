@@ -562,11 +562,23 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testWeekFromThursday() {
+        // Scrolled to start on a Thursday: the title runs Thursday to Wednesday, and the overview
+        // keeps to the Monday-to-Sunday week holding most of those days.
+        let thursday = CalendarDayMath.monday(of: 0, from: now) + 3
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, weekFirst: thursday, onStepWeek: { _ in },
+                    isWeek: true, onSetWeek: { _ in }, showsOverview: true, onToggleOverview: {})
+                .background(Theme.background),
+            width: 1400, height: 720
+        )
+    }
+
     func testWeekGridMorning() {
         // 7 AM to 6 PM: the week's blocks, today's under way, the now line.
         let top = WeekGrid.standard.y(7 * 60)
         assertAppearances(
-            WeekView(data: Fixtures.calendar, monday: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
+            WeekView(data: Fixtures.calendar, first: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
                 .frame(width: 1100, height: 260 + WeekGrid.standard.height)
                 .offset(y: -top)
                 .frame(width: 1100, height: WeekGrid.standard.y(18 * 60) - top, alignment: .topLeading)

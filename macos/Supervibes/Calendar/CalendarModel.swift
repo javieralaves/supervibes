@@ -76,13 +76,37 @@ final class CalendarModel {
         }
     }
 
-    /// The arrows (and ← →): a day back or forward, within what's loaded.
+    /// The week's first day, in days from today: any day, not only a Monday, so the week can be
+    /// scrolled a day at a time. It always holds `offset`, the day stepped into from the week.
+    private(set) var weekFirst = CalendarDayMath.monday(of: 0, from: Date())
+
+    /// The arrows (and ← →): a day back or forward, within what's loaded. Leaving the week the
+    /// week view shows, it moves to that day's Monday-to-Sunday week.
     func step(_ by: Int) {
         offset = min(max(offset + by, range.lowerBound), range.upperBound)
+        if !(weekFirst...(weekFirst + 6)).contains(offset) {
+            weekFirst = clampedWeek(CalendarDayMath.monday(of: offset, from: now))
+        }
     }
 
+    /// The week view's arrows (a week) and scrolling (a day or more): the shown day moves with it.
+    func stepWeek(_ by: Int) {
+        let first = clampedWeek(weekFirst + by)
+        offset = min(max(offset + first - weekFirst, first), first + 6)
+        weekFirst = first
+    }
+
+    /// Where the week's first day can go: seven days, all within what's loaded.
+    var weekRange: ClosedRange<Int> { range.lowerBound...max(range.lowerBound, range.upperBound - 6) }
+
+    private func clampedWeek(_ first: Int) -> Int {
+        min(max(first, weekRange.lowerBound), weekRange.upperBound)
+    }
+
+    /// Today, and in the week view this Monday-to-Sunday week.
     func goToToday() {
         offset = 0
+        weekFirst = clampedWeek(CalendarDayMath.monday(of: 0, from: now))
     }
 
     /// Shows the day a block is on, for opening it from a notice. False if it isn't loaded.
@@ -90,7 +114,7 @@ final class CalendarModel {
         guard let block = block(blockId) else { return false }
         let calendar = Calendar.current
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: block.startsAt)).day ?? 0
-        offset = min(max(days, range.lowerBound), range.upperBound)
+        step(days - offset)
         return true
     }
 
