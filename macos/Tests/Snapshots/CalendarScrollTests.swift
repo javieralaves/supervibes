@@ -72,6 +72,21 @@ final class CalendarScrollTests: XCTestCase {
         XCTAssertEqual(hours?.documentVisibleRect.origin.y, top)
     }
 
+    func testSwipingThreeDaysMovesByTheirWiderColumns() {
+        var moved = 0
+        let window = weekWindow(span: .days(3)) { moved += $0 }
+        defer { window.orderOut(nil); window.contentView = nil }
+
+        // 1.6 of the three days' columns: two days on, as in the week.
+        let column = (1400 - WeekGrid.gutter) / 3
+        swipe(in: window, dx: -column * 1.6, dy: 3)
+        XCTAssertEqual(moved, 2)
+    }
+
+    func testThreeDaysOpenOnNow() {
+        XCTAssertEqual(scrollOffset(span: .days(3)), WeekGrid.standard.y(focusHour * 60) - WeekGrid.pad)
+    }
+
     func testTwoFingersDownLeaveTheDaysAlone() {
         var moved = 0
         let window = weekWindow { moved += $0 }
@@ -80,10 +95,10 @@ final class CalendarScrollTests: XCTestCase {
         XCTAssertEqual(moved, 0)
     }
 
-    /// The week in a window, scrolling sideways into `onStepWeek`.
-    private func weekWindow(onStepWeek: @escaping (Int) -> Void) -> NSWindow {
-        let view = DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, onStepWeek: onStepWeek,
-                           isWeek: true, onSetWeek: { _ in })
+    /// The week (or another multi-day view) in a window, scrolling sideways into `onScroll`.
+    private func weekWindow(span: CalendarSpan = .week, onScroll: @escaping (Int) -> Void) -> NSWindow {
+        let view = DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, onScroll: onScroll,
+                           span: span, onSetSpan: { _ in })
             .background(Theme.background)
             .frame(width: 1400, height: 760)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
@@ -118,11 +133,20 @@ final class CalendarScrollTests: XCTestCase {
     }
 
     private func scrollOffset(isWeek: Bool) -> CGFloat? {
-        scrollView(isWeek: isWeek)?.documentVisibleRect.origin.y
+        scrollOffset(span: isWeek ? .week : .day)
+    }
+
+    private func scrollOffset(span: CalendarSpan) -> CGFloat? {
+        scrollView(span: span)?.documentVisibleRect.origin.y
     }
 
     private func scrollView(isWeek: Bool, dayHour: CGFloat? = nil, weekHour: CGFloat? = nil) -> NSScrollView? {
-        let view = DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, isWeek: isWeek, onSetWeek: { _ in },
+        scrollView(span: isWeek ? .week : .day, dayHour: dayHour, weekHour: weekHour)
+    }
+
+    private func scrollView(span: CalendarSpan, dayHour: CGFloat? = nil, weekHour: CGFloat? = nil) -> NSScrollView? {
+        let view = DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: span.isMultiDay ? span.home(now: Fixtures.referenceNow) : nil,
+                           span: span, onSetSpan: { _ in },
                            dayHour: dayHour.map { .constant($0) }, weekHour: weekHour.map { .constant($0) })
             .background(Theme.background)
             .frame(width: 1400, height: 760)

@@ -12,8 +12,10 @@ final class CalendarModel {
 
     private(set) var load: Load = .loading
     private(set) var data = CalendarData(blocks: [], goals: [], tasks: [], sleepStart: 23 * 60, wakeTime: 7 * 60, clock: nil, objectives: [])
-    /// Days from today.
-    private(set) var offset = 0
+    /// Which days show: the day stepped into, and the first column of the multi-day views.
+    private(set) var window: CalendarWindow
+    /// The day shown, in days from today.
+    var offset: Int { window.offset }
     /// The calendar's clock, to the minute.
     private(set) var now = Date()
     private(set) var error: String?
@@ -27,8 +29,9 @@ final class CalendarModel {
     /// How often to check for recaps drafting themselves in the background, as the web page does.
     private static let recapPoll: Duration = .seconds(15)
 
-    init(auth: AuthModel) {
+    init(auth: AuthModel, span: CalendarSpan = .day) {
         self.auth = auth
+        window = CalendarWindow(span: span, now: Date())
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
     }
@@ -41,7 +44,16 @@ final class CalendarModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 guard let self else { return }
+                let before = self.now
                 self.now = Date()
+                // Past midnight: the days move on, and what's loaded is fetched for the new day.
+                let days = CalendarDayMath.dayOffset(self.now, from: before)
+                if days != 0 {
+                    self.window.dayChanged(by: days, before: before, now: self.now)
+                    await self.refresh()
+                    sincePoll = .zero
+                    continue
+                }
                 sincePoll += .seconds(15)
                 if sincePoll >= Self.recapPoll, self.data.blocks.contains(where: \.recapDrafting) {
                     sincePoll = .zero
@@ -63,6 +75,7 @@ final class CalendarModel {
                 let body = try ok.body.json
                 data = CalendarData(api: body)
                 range = -body.daysBack...body.daysAhead
+                window.setLoaded(range)
                 now = Date()
                 load = .loaded
             case .unauthorized:
@@ -76,45 +89,32 @@ final class CalendarModel {
         }
     }
 
-    /// The week's first day, in days from today: any day, not only a Monday, so the week can be
-    /// scrolled a day at a time. It always holds `offset`, the day stepped into from the week.
-    private(set) var weekFirst = CalendarDayMath.monday(of: 0, from: Date())
-
-    /// The arrows (and ← →): a day back or forward, within what's loaded. Leaving the week the
-    /// week view shows, it moves to that day's Monday-to-Sunday week.
+    /// The day back or forward (Day's arrows); a multi-day view moves to show it if it isn't shown.
     func step(_ by: Int) {
-        offset = min(max(offset + by, range.lowerBound), range.upperBound)
-        if !(weekFirst...(weekFirst + 6)).contains(offset) {
-            weekFirst = clampedWeek(CalendarDayMath.monday(of: offset, from: now))
-        }
+        window.step(by, now: now)
     }
 
-    /// The week view's arrows (a week) and scrolling (a day or more): the shown day moves with it.
-    func stepWeek(_ by: Int) {
-        let first = clampedWeek(weekFirst + by)
-        offset = min(max(offset + first - weekFirst, first), first + 6)
-        weekFirst = first
+    /// The multi-day views' first column by that many days: their arrows (a page) and scrolling.
+    func scroll(_ by: Int) {
+        window.scroll(by)
     }
 
-    /// Where the week's first day can go: seven days, all within what's loaded.
-    var weekRange: ClosedRange<Int> { range.lowerBound...max(range.lowerBound, range.upperBound - 6) }
-
-    private func clampedWeek(_ first: Int) -> Int {
-        min(max(first, weekRange.lowerBound), weekRange.upperBound)
-    }
-
-    /// Today, and in the week view this Monday-to-Sunday week.
+    /// Today, and in a multi-day view, its first column back where it starts.
     func goToToday() {
-        offset = 0
-        weekFirst = clampedWeek(CalendarDayMath.monday(of: 0, from: now))
+        window.today(now: now)
+    }
+
+    /// Day, Next N days or Week.
+    func setSpan(_ span: CalendarSpan) {
+        window.setSpan(span, now: now)
     }
 
     /// Shows the day a block is on, for opening it from a notice. False if it isn't loaded.
     func show(_ blockId: String) -> Bool {
         guard let block = block(blockId) else { return false }
         let calendar = Calendar.current
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: block.startsAt)).day ?? 0
-        step(days - offset)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: block.startsAt)).day ?? 0
+        window.show(day: days, now: now)
         return true
     }
 

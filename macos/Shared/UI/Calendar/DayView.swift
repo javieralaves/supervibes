@@ -28,13 +28,14 @@ struct DayView: View {
     var error: String?
     var onStep: (Int) -> Void = { _ in }
     var onToday: () -> Void = {}
-    /// The week's first day, in days from today; without it, the Monday of `offset`'s week.
-    var weekFirst: Int?
-    /// Where the week's first day can go (what's loaded).
-    var weekRange: ClosedRange<Int>?
-    /// Moves the week's first day by that many days (the arrows, and scrolling it sideways);
-    /// without it the arrows step `offset` a week and the week doesn't scroll.
-    var onStepWeek: ((Int) -> Void)?
+    /// The multi-day view's first day, in days from today; without it, where the view starts that
+    /// holds `offset`: its Monday in Week, or `offset` itself.
+    var first: Int?
+    /// Where the first day can go (what's loaded).
+    var firstRange: ClosedRange<Int>?
+    /// Moves the first day by that many days (the arrows, and scrolling sideways); without it the
+    /// arrows step `offset` a page and the days don't scroll.
+    var onScroll: ((Int) -> Void)?
     /// Changing blocks; without it the day is read-only.
     var actions: CalendarActions?
     /// The task panel beside the day.
@@ -45,11 +46,13 @@ struct DayView: View {
     var selectedId: Binding<String?> = .constant(nil)
     /// What the block panel can do; without it, clicking a block edits it in place.
     var panel: BlockPanelActions?
-    /// Showing the week rather than one day (the screen decides, since the week needs a wide window).
-    var isWeek = false
-    /// Day or week; without it there's no switch.
-    var onSetWeek: ((Bool) -> Void)?
-    /// The week's overview panel.
+    /// Day, Next N days or Week (the screen decides, since the multi-day views need a wide window).
+    var span = CalendarSpan.day
+    /// The count Next N days last showed, for the switch's button.
+    var dayCount = 3
+    /// Changes the view; without it there's no switch.
+    var onSetSpan: ((CalendarSpan) -> Void)?
+    /// The week's overview panel, beside any of the multi-day views.
     var showsOverview = false
     var onToggleOverview: (() -> Void)?
     /// Saves a goal's objective for a week; returns an error to show, or nil.
@@ -66,10 +69,10 @@ struct DayView: View {
     @State private var width: CGFloat = 0
 
     init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
-         onToday: @escaping () -> Void = {}, weekFirst: Int? = nil, weekRange: ClosedRange<Int>? = nil,
-         onStepWeek: ((Int) -> Void)? = nil, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
+         onToday: @escaping () -> Void = {}, first: Int? = nil, firstRange: ClosedRange<Int>? = nil,
+         onScroll: ((Int) -> Void)? = nil, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
          showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
-         panel: BlockPanelActions? = nil, isWeek: Bool = false, onSetWeek: ((Bool) -> Void)? = nil,
+         panel: BlockPanelActions? = nil, span: CalendarSpan = .day, dayCount: Int = 3, onSetSpan: ((CalendarSpan) -> Void)? = nil,
          showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
          setObjective: ((String, String, String) async -> String?)? = nil,
          dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil) {
@@ -79,16 +82,17 @@ struct DayView: View {
         self.error = error
         self.onStep = onStep
         self.onToday = onToday
-        self.weekFirst = weekFirst
-        self.weekRange = weekRange
-        self.onStepWeek = onStepWeek
+        self.first = first
+        self.firstRange = firstRange
+        self.onScroll = onScroll
         self.actions = actions
         self.showsTasks = showsTasks
         self.onToggleTasks = onToggleTasks
         self.selectedId = selectedId
         self.panel = panel
-        self.isWeek = isWeek
-        self.onSetWeek = onSetWeek
+        self.span = span
+        self.dayCount = dayCount
+        self.onSetSpan = onSetSpan
         self.showsOverview = showsOverview
         self.onToggleOverview = onToggleOverview
         self.setObjective = setObjective
@@ -97,25 +101,43 @@ struct DayView: View {
         _editing = State(initialValue: editing)
     }
 
-    /// The week's first day, in days from today: any day of the week, once it's been scrolled.
-    private var first: Int { weekFirst ?? CalendarDayMath.monday(of: offset, from: now) }
-    /// The Monday-to-Sunday week the overview and the "This week" label go by: the one holding most
-    /// of the days shown (the fourth day's), in days from today and as "YYYY-MM-DD".
-    private var monday: Int { CalendarDayMath.monday(of: first + 3, from: now) }
+    private var isMultiDay: Bool { span.isMultiDay }
+    /// The first of the days shown, in days from today: any day, once they've been scrolled.
+    private var shownFirst: Int { first ?? (span == .week ? CalendarDayMath.monday(of: offset, from: now) : offset) }
+    /// The Monday-to-Sunday week the overview and the "This week" label go by: the one holding the
+    /// middle day shown (most of them, in the week), in days from today and as "YYYY-MM-DD".
+    private var monday: Int { CalendarDayMath.monday(of: shownFirst + span.count / 2, from: now) }
     private var weekStart: String { CalendarDay.today(CalendarDayMath.midnight(monday, from: now)) }
-    /// Showing this Monday-to-Sunday week, as Today brings back.
-    private var thisWeek: Bool { first == CalendarDayMath.monday(of: 0, from: now) }
+    /// Starting where Today puts it: this Monday-to-Sunday week, or today first.
+    private var atHome: Bool { shownFirst == span.home(now: now) }
 
-    /// The arrows: a day, or a week from whichever day the week starts on.
+    /// The arrows: a day, or a page (N days, a week) from whichever day the view starts on.
     private func step(_ direction: Int) {
         editing = nil
         weekCreating = nil
-        if !isWeek {
+        if !isMultiDay {
             onStep(direction)
-        } else if let onStepWeek {
-            onStepWeek(direction * 7)
+        } else if let onScroll {
+            onScroll(direction * span.count)
         } else {
-            onStep(direction * 7)
+            onStep(direction * span.count)
+        }
+    }
+
+    private func setSpan(_ span: CalendarSpan) {
+        editing = nil
+        weekCreating = nil
+        onSetSpan?(span)
+    }
+
+    /// "This week", "Next week", "Last week" in Week; "From today", "From tomorrow" in Next N days.
+    private var multiDayRelative: String? {
+        guard span != .week else { return weekRelative }
+        switch shownFirst {
+        case 0: return "From today"
+        case 1: return "From tomorrow"
+        case -1: return "From yesterday"
+        default: return nil
         }
     }
 
@@ -142,26 +164,24 @@ struct DayView: View {
     var body: some View {
         VStack(spacing: 0) {
             CalendarTopBar(
-                isWeek: onSetWeek != nil && width >= 1024 ? isWeek : nil,
-                onSetWeek: { week in
-                    editing = nil
-                    weekCreating = nil
-                    onSetWeek?(week)
-                },
-                showsTasks: isWeek ? (onToggleOverview == nil ? nil : showsOverview) : (onToggleTasks == nil ? nil : showsTasks),
-                weekPanel: isWeek,
-                onToggleTasks: { if isWeek { onToggleOverview?() } else { onToggleTasks?() } },
-                title: isWeek
-                    ? CalendarDay.formatWeek(CalendarDay.today(CalendarDayMath.midnight(first, from: now)))
+                span: onSetSpan != nil && width >= 1024 ? span : nil,
+                dayCount: dayCount,
+                onSetSpan: setSpan,
+                showsTasks: isMultiDay ? (onToggleOverview == nil ? nil : showsOverview) : (onToggleTasks == nil ? nil : showsTasks),
+                weekPanel: isMultiDay,
+                onToggleTasks: { if isMultiDay { onToggleOverview?() } else { onToggleTasks?() } },
+                title: isMultiDay
+                    ? CalendarDay.formatRange(CalendarDay.today(CalendarDayMath.midnight(shownFirst, from: now)), days: span.count)
                     : shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
-                relative: isWeek ? weekRelative : Self.dayLabel(offset),
-                showsToday: isWeek ? !thisWeek : !isToday,
+                relative: isMultiDay ? multiDayRelative : Self.dayLabel(offset),
+                page: span,
+                showsToday: isMultiDay ? !atHome : !isToday,
                 onToday: onToday,
                 onPrevious: { step(-1) },
                 onNext: { step(1) }
             )
 
-            if isWeek { weekLayout } else { dayLayout }
+            if isMultiDay { weekLayout } else { dayLayout }
         }
         .coordinateSpace(.calendar)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -223,9 +243,10 @@ struct DayView: View {
                 }
                 WeekView(
                     data: data,
-                    first: first,
-                    firstRange: weekRange,
-                    onScroll: onStepWeek,
+                    first: shownFirst,
+                    count: span.count,
+                    firstRange: firstRange,
+                    onScroll: onScroll,
                     now: now,
                     clock: clock,
                     actions: actions,
@@ -235,7 +256,7 @@ struct DayView: View {
                     onOpenBlock: { id in if panel != nil { selectedId.wrappedValue = id } },
                     onOpenDay: { day in
                         weekCreating = nil
-                        onSetWeek?(false)
+                        onSetSpan?(.day)
                         onStep(day - offset)
                     }
                 )
@@ -310,7 +331,7 @@ struct DayView: View {
     private func edit(_ block: CalendarBlock) {
         guard let segment = DaySegment.of(block, today: now).first(where: { $0.day == offset }) ?? DaySegment.of(block, today: now).first else { return }
         // Editing happens on the day's timeline, so from the week it steps into that day.
-        if isWeek { weekCreating = nil; onSetWeek?(false) }
+        if isMultiDay { weekCreating = nil; onSetSpan?(.day) }
         if segment.day != offset { onStep(segment.day - offset) }
         editing = BlockEditing(
             mode: .edit(blockId: block.id, intention: block.isIntention),
@@ -334,9 +355,11 @@ struct DayView: View {
 
 /// `h-14 bg-background shadow-[inset_0_-1px_0_var(--card-border)]`: the date, then Today and the arrows.
 struct CalendarTopBar: View {
-    /// Day or week; nil hides the switch (the week needs a wide window).
-    var isWeek: Bool?
-    var onSetWeek: (Bool) -> Void = { _ in }
+    /// Day, Next N days or Week; nil hides the switch (the multi-day views need a wide window).
+    var span: CalendarSpan?
+    /// The count Next N days last showed, for its button while another view is on.
+    var dayCount = 3
+    var onSetSpan: (CalendarSpan) -> Void = { _ in }
     /// Whether the view's panel is open (tasks beside a day, the overview beside a week); nil hides its toggle.
     var showsTasks: Bool?
     /// The week's panel rather than the day's.
@@ -344,6 +367,8 @@ struct CalendarTopBar: View {
     var onToggleTasks: () -> Void = {}
     let title: String
     var relative: String?
+    /// What the arrows move by: a day, N days or a week.
+    var page = CalendarSpan.day
     var showsToday: Bool
     var onToday: () -> Void
     var onPrevious: () -> Void
@@ -351,8 +376,8 @@ struct CalendarTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let isWeek {
-                ViewSwitch(isWeek: isWeek, onSet: onSetWeek)
+            if let span {
+                ViewSwitch(span: span, dayCount: dayCount, onSet: onSetSpan)
             }
             if let showsTasks {
                 ToggleButton(icon: weekPanel ? .target : .checklist, isOn: showsTasks, action: onToggleTasks)
@@ -373,11 +398,11 @@ struct CalendarTopBar: View {
             }
             HStack(spacing: 4) {
                 BarButton(action: onPrevious) { Icon.arrowLeft.image(size: 16).frame(width: 32) }
-                    .help(weekPanel ? "Previous week" : "Previous day")
-                    .accessibilityLabel(weekPanel ? "Previous week" : "Previous day")
+                    .help("Previous \(pageName)")
+                    .accessibilityLabel("Previous \(pageName)")
                 BarButton(action: onNext) { Icon.arrowRight.image(size: 16).frame(width: 32) }
-                    .help(weekPanel ? "Next week" : "Next day")
-                    .accessibilityLabel(weekPanel ? "Next week" : "Next day")
+                    .help("Next \(pageName)")
+                    .accessibilityLabel("Next \(pageName)")
             }
         }
         .padding(.horizontal, 16)
@@ -386,15 +411,29 @@ struct CalendarTopBar: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
     }
 
-    /// Day or Week: `h-8 rounded-lg border bg-card p-0.5`, the chosen one washed.
+    /// "day", "3 days", "week".
+    private var pageName: String { page.label.lowercased() }
+
+    /// Day, N days or Week: `h-8 rounded-lg border bg-card p-0.5`, the chosen one washed. N days
+    /// opens on the count it last showed; its chevron picks another.
     private struct ViewSwitch: View {
-        let isWeek: Bool
-        let onSet: (Bool) -> Void
+        let span: CalendarSpan
+        let dayCount: Int
+        let onSet: (CalendarSpan) -> Void
+        @State private var daysFrame = CGRect.zero
+        @Environment(\.overlays) private var overlays
+
+        private var count: Int { span.dayCount ?? dayCount }
+        private var isMenuOpen: Bool { overlays?.presented?.owner == "calendar-days" }
 
         var body: some View {
             HStack(spacing: 0) {
-                SwitchOption(title: "Day", isOn: !isWeek) { onSet(false) }
-                SwitchOption(title: "Week", isOn: isWeek) { onSet(true) }
+                SwitchOption(title: "Day", isOn: span == .day) { onSet(.day) }
+                SwitchOption(title: "\(count) days", isOn: span.dayCount != nil, onMenu: openMenu, isMenuOpen: isMenuOpen) {
+                    onSet(.days(count))
+                }
+                .modifier(AnchorReader(frame: $daysFrame))
+                SwitchOption(title: "Week", isOn: span == .week) { onSet(.week) }
             }
             .padding(2)
             .frame(height: 32)
@@ -402,23 +441,57 @@ struct CalendarTopBar: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
         }
 
+        private func openMenu() {
+            guard let overlays else { return }
+            if isMenuOpen { return overlays.dismiss() }
+            overlays.showMenu(anchor: daysFrame, owner: "calendar-days", alignLeading: true) {
+                DaysMenu(selected: span.dayCount) { n in
+                    overlays.dismiss()
+                    onSet(.days(n))
+                }
+            }
+        }
+
         private struct SwitchOption: View {
             let title: String
             let isOn: Bool
+            /// Opens a menu from a chevron beside the title; without it there's none.
+            var onMenu: (() -> Void)?
+            var isMenuOpen = false
             let action: () -> Void
             @State private var isHovered = false
+            @State private var isChevronHovered = false
 
             var body: some View {
-                Button(action: action) {
-                    Text(title).appText(.sm, .medium)
-                        .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
-                        .padding(.horizontal, 10)
-                        .frame(maxHeight: .infinity)
-                        .background(isOn ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 6))
-                        .contentShape(.rect(cornerRadius: 6))
+                HStack(spacing: 0) {
+                    Button(action: action) {
+                        Text(title).appText(.sm, .medium).monospacedDigit()
+                            .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
+                            .padding(.leading, 10)
+                            .padding(.trailing, onMenu == nil ? 10 : 4)
+                            .frame(maxHeight: .infinity)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isHovered = $0 }
+                    if let onMenu {
+                        Button(action: onMenu) {
+                            Icon.chevronDown.image(size: 12)
+                                .foregroundStyle(isOn || isChevronHovered || isMenuOpen ? Theme.foreground : Theme.muted)
+                                .frame(width: 20)
+                                .frame(maxHeight: .infinity)
+                                .background(isChevronHovered || isMenuOpen ? Theme.foreground(0.06) : .clear, in: .rect(cornerRadius: 5))
+                                .padding(.trailing, 2)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { isChevronHovered = $0 }
+                        .help("Show 3, 5 or 7 days")
+                        .accessibilityLabel("How many days")
+                    }
                 }
-                .buttonStyle(.plain)
-                .onHover { isHovered = $0 }
+                .background(isOn ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 6))
+                .accessibilityElement(children: .contain)
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
@@ -469,6 +542,21 @@ struct CalendarTopBar: View {
             }
             .buttonStyle(.plain)
             .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// Next 3, 5 or 7 days, from the switch's chevron; the one showing is ticked.
+struct DaysMenu: View {
+    /// The count showing, if Next N days is on.
+    let selected: Int?
+    let onPick: (Int) -> Void
+
+    var body: some View {
+        MenuPanel(width: 200) {
+            ForEach(CalendarSpan.dayCounts, id: \.self) { n in
+                MenuItem(icon: .calendarSmall, title: CalendarSpan.days(n).title, isChecked: n == selected) { onPick(n) }
+            }
         }
     }
 }

@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The Settings page, matching the web app's src/app/(app)/settings: sleep schedule, clock, usage;
-/// plus session notices and what happens during sessions, which the Mac app added.
+/// plus what the Calendar opens on, session notices and what happens during sessions, which the
+/// Mac app added.
 struct SettingsPage: View {
     enum Section: Hashable { case sleep, clock }
 
@@ -9,6 +10,8 @@ struct SettingsPage: View {
     /// The status shown on the card that was changed last.
     var status: (section: Section, state: SaveStatusView.State)?
     var usage: UsageSummary?
+    /// What the Calendar opens on; kept on this Mac, so it saves itself rather than through `onChange`.
+    var calendar: CalendarViewCard?
     /// Notices before sessions; kept on this Mac, so it saves itself rather than through `onChange`.
     var notices: NoticesCard?
     /// What happens as sessions start and end; kept on this Mac too.
@@ -24,6 +27,7 @@ struct SettingsPage: View {
                 VStack(spacing: 12) {
                     sleepCard
                     clockCard
+                    if let calendar { calendar }
                     if let notices { notices }
                     if let routine { routine }
                 }
@@ -474,7 +478,8 @@ private struct ChartTooltip: View {
 #Preview("Settings") {
     @Previewable @State var settings = SleepSettings(sleepStart: 23 * 60 + 30, wakeTime: 8 * 60, clock: .twelveHour)
     ScrollView {
-        SettingsPage(settings: $settings, usage: UsageSummary(calls: Fixtures.usageCalls, today: Fixtures.referenceNow))
+        SettingsPage(settings: $settings, usage: UsageSummary(calls: Fixtures.usageCalls, today: Fixtures.referenceNow),
+                     calendar: CalendarViewCard(span: .days(3)))
     }
     .background(Theme.background)
     .frame(width: 900, height: 900)

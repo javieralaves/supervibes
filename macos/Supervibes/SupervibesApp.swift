@@ -33,6 +33,7 @@ struct SupervibesApp: App {
             CommandGroup(replacing: .appSettings) {
                 OpenSettingsButton(shell: shell, enabled: auth.isSignedIn)
             }
+            CalendarMenuCommands()
             CommandGroup(after: .appInfo) {
                 if auth.isSignedIn {
                     Button("Sign Out") {

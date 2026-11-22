@@ -366,8 +366,8 @@ private struct CalendarScreen: View {
     @State private var model: CalendarModel
     /// The task panel beside the day: closed unless opened, remembered.
     @AppStorage("sv-calendar-task-panel") private var showsTasks = false
-    /// Day or week, remembered; the week needs a wide window, and below that it's always the day.
-    @AppStorage("sv-calendar-view") private var view = "day"
+    /// The count Next N days last showed, for the switch's button.
+    @AppStorage(CalendarSpan.dayCountKey) private var dayCount = 3
     /// The week's overview: open unless closed, remembered.
     @AppStorage("sv-calendar-week-panel") private var weekPanel = "on"
     /// How tall an hour is in the day and in the week, as last pinched, remembered.
@@ -377,11 +377,28 @@ private struct CalendarScreen: View {
     @State private var width: CGFloat = 0
     let shell: ShellModel
 
-    private var isWeek: Bool { view == "week" && width >= 1024 }
+    /// The view showing: the one picked, though below the width the multi-day views need, the day.
+    private var span: CalendarSpan { width >= 1024 ? model.window.span : .day }
 
     init(auth: AuthModel, shell: ShellModel) {
         self.shell = shell
-        _model = State(initialValue: CalendarModel(auth: auth))
+        // Opens on the view picked in Settings; the switch changes it for this visit.
+        _model = State(initialValue: CalendarModel(auth: auth, span: .opening()))
+    }
+
+    private func setSpan(_ span: CalendarSpan) {
+        if let n = span.dayCount { dayCount = n }
+        model.setSpan(span)
+    }
+
+    /// ← → a page (a day, N days, a week); with ⌥, a day in the multi-day views too.
+    private func arrow(_ direction: Int, _ modifiers: EventModifiers) -> KeyPress.Result {
+        if !span.isMultiDay {
+            model.step(direction)
+        } else {
+            model.scroll(direction * (modifiers.contains(.option) ? 1 : span.count))
+        }
+        return .handled
     }
 
     var body: some View {
@@ -405,9 +422,9 @@ private struct CalendarScreen: View {
                     error: model.error,
                     onStep: model.step,
                     onToday: model.goToToday,
-                    weekFirst: model.weekFirst,
-                    weekRange: model.weekRange,
-                    onStepWeek: model.stepWeek,
+                    first: model.window.first,
+                    firstRange: model.window.firstRange,
+                    onScroll: model.scroll,
                     actions: CalendarActions(
                         create: model.create(day:start:end:goalId:title:),
                         saveDetails: model.saveDetails(_:goalId:title:),
@@ -436,8 +453,9 @@ private struct CalendarScreen: View {
                         toggleDone: model.toggleDone,
                         openGoal: { shell.openGoal($0) }
                     ),
-                    isWeek: isWeek,
-                    onSetWeek: { view = $0 ? "week" : "day" },
+                    span: span,
+                    dayCount: CalendarSpan.dayCounts.contains(dayCount) ? dayCount : 3,
+                    onSetSpan: setSpan,
                     showsOverview: weekPanel != "off",
                     onToggleOverview: { weekPanel = weekPanel == "off" ? "on" : "off" },
                     setObjective: model.setObjective(_:weekStart:_:),
@@ -452,8 +470,16 @@ private struct CalendarScreen: View {
                     selectedId = nil
                     return .handled
                 }
-                .onKeyPress(.leftArrow) { if isWeek { model.stepWeek(-7) } else { model.step(-1) }; return .handled }
-                .onKeyPress(.rightArrow) { if isWeek { model.stepWeek(7) } else { model.step(1) }; return .handled }
+                .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
+                    arrow(press.key == .leftArrow ? -1 : 1, press.modifiers)
+                }
+                .focusedSceneValue(\.calendarCommands, CalendarCommands(
+                    span: span,
+                    dayCount: CalendarSpan.dayCounts.contains(dayCount) ? dayCount : 3,
+                    canShowDays: width >= 1024,
+                    setSpan: setSpan,
+                    today: model.goToToday
+                ))
             }
         }
         .background(Theme.background)
@@ -464,7 +490,7 @@ private struct CalendarScreen: View {
         .onChange(of: PendingDay(load: model.load, day: shell.pendingDay), initial: true) { _, pending in
             guard pending.load == .loaded, let day = pending.day else { return }
             shell.pendingDay = nil
-            view = "day"
+            setSpan(.day)
             model.step(day - model.offset)
         }
         // A notice was clicked: show its block once it's loaded.
@@ -612,6 +638,8 @@ private struct ConnectionsScreen: View {
 /// The Settings page with its data, in the app's window.
 private struct SettingsScreen: View {
     @State private var model: SettingsModel
+    /// What the Calendar opens on, kept on this Mac.
+    @State private var calendarSpan = CalendarSpan.opening()
     let notifier: SessionNotifier
     let routineRunner: SessionRoutineRunner
 
@@ -639,6 +667,10 @@ private struct SettingsScreen: View {
                     settings: $model.settings,
                     status: model.status,
                     usage: model.usage,
+                    calendar: CalendarViewCard(span: calendarSpan) { span in
+                        calendarSpan = span
+                        CalendarSpan.setOpening(span)
+                    },
                     notices: NoticesCard(
                         settings: notifier.settings,
                         permission: notifier.permission,

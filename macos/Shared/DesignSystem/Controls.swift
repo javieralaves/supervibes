@@ -167,6 +167,8 @@ struct MenuItem: View {
     let title: String
     var isDestructive = false
     var isDisabled = false
+    /// The choice in force, of several: a tick on the right.
+    var isChecked = false
     let action: () -> Void
     @State private var isHovered = false
     @Environment(\.overlays) private var overlays
@@ -174,7 +176,7 @@ struct MenuItem: View {
 
     var body: some View {
         Button(action: action) {
-            MenuRowLabel(icon: icon, title: title, isDestructive: isDestructive, isHighlighted: isHovered && !isDisabled)
+            MenuRowLabel(icon: icon, title: title, isDestructive: isDestructive, isHighlighted: isHovered && !isDisabled, showsTick: isChecked)
                 .opacity(isDisabled ? 0.5 : 1)
         }
         .buttonStyle(.plain)
@@ -221,6 +223,7 @@ private struct MenuRowLabel: View {
     var isDestructive = false
     var isHighlighted = false
     var showsChevron = false
+    var showsTick = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -229,6 +232,9 @@ private struct MenuRowLabel: View {
             Spacer(minLength: 0)
             if showsChevron {
                 Icon.arrowRight.image(size: 14).foregroundStyle(Theme.muted)
+            }
+            if showsTick {
+                Icon.tick.image(size: 16).foregroundStyle(Theme.foreground)
             }
         }
         .padding(.horizontal, 10)

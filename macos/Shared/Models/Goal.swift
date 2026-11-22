@@ -232,8 +232,13 @@ extension CalendarDay {
 
     /// "Nov 16–22", or "Nov 30 – Dec 6" across months, for the week starting `weekStart`.
     static func formatWeek(_ weekStart: String) -> String {
-        guard let start = date(weekStart) else { return weekStart }
-        let end = start.addingTimeInterval(6 * 86_400)
+        formatRange(weekStart, days: 7)
+    }
+
+    /// "Nov 18–20", or "Nov 30 – Dec 2" across months, for `days` days from `first`.
+    static func formatRange(_ first: String, days: Int) -> String {
+        guard let start = date(first) else { return first }
+        let end = start.addingTimeInterval(Double(max(days, 1) - 1) * 86_400)
         let month = Date.FormatStyle(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!).month(.abbreviated)
         let day = { (d: Date) in Int(string(d).suffix(2)) ?? 0 }
         let (m1, m2) = (start.formatted(month), end.formatted(month))

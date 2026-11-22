@@ -53,10 +53,11 @@ final class SurfaceSnapshotTests: XCTestCase {
             SettingsPage(
                 settings: .constant(settings),
                 status: (.sleep, .saved),
-                usage: UsageSummary(calls: Fixtures.usageCalls, today: now)
+                usage: UsageSummary(calls: Fixtures.usageCalls, today: now),
+                calendar: CalendarViewCard(span: .days(3))
             )
             .background(Theme.background),
-            width: 900, height: 2600
+            width: 900, height: 2800
         )
     }
 
@@ -555,7 +556,7 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testWeekView() {
         assertAppearances(
-            DayView(data: Fixtures.calendar, offset: 0, now: now, isWeek: true, onSetWeek: { _ in },
+            DayView(data: Fixtures.calendar, offset: 0, now: now, span: .week, onSetSpan: { _ in },
                     showsOverview: true, onToggleOverview: {})
                 .background(Theme.background),
             width: 1400, height: 720
@@ -567,10 +568,82 @@ final class SurfaceSnapshotTests: XCTestCase {
         // keeps to the Monday-to-Sunday week holding most of those days.
         let thursday = CalendarDayMath.monday(of: 0, from: now) + 3
         assertAppearances(
-            DayView(data: Fixtures.calendar, offset: 0, now: now, weekFirst: thursday, onStepWeek: { _ in },
-                    isWeek: true, onSetWeek: { _ in }, showsOverview: true, onToggleOverview: {})
+            DayView(data: Fixtures.calendar, offset: 0, now: now, first: thursday, onScroll: { _ in },
+                    span: .week, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
                 .background(Theme.background),
             width: 1400, height: 720
+        )
+    }
+
+    func testThreeDaysFromToday() {
+        // Wednesday to Friday, today first: "Nov 18–20 · From today", and columns roomy enough for
+        // the day's block cards.
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
+                    span: .days(3), onSetSpan: { _ in }, showsOverview: false, onToggleOverview: {})
+                .background(Theme.background),
+            width: 1400, height: 720
+        )
+    }
+
+    func testFiveDaysFromToday() {
+        // Wednesday to Sunday, with the week's overview beside them.
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
+                    span: .days(5), dayCount: 5, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
+                .background(Theme.background),
+            width: 1400, height: 720
+        )
+    }
+
+    func testSevenDaysFromToday() {
+        // Wednesday to Tuesday, across the end of the week; the overview keeps to the Monday-to-Sunday
+        // week holding the middle day (Saturday's, Nov 16–22).
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
+                    span: .days(7), dayCount: 7, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
+                .background(Theme.background),
+            width: 1400, height: 720
+        )
+    }
+
+    func testThreeDaysScrolledOn() {
+        // Scrolled two days on: Friday to Sunday, no "From today", and Today shows.
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 2, now: now, first: 2, onScroll: { _ in },
+                    span: .days(3), onSetSpan: { _ in })
+                .background(Theme.background),
+            width: 1400, height: 120
+        )
+    }
+
+    func testThreeDaysPopover() {
+        // Time drawn on the last of three columns: no room to its right, so the popover opens left.
+        let top = WeekGrid.standard.y(9 * 60)
+        let editing = BlockEditing(mode: .create, day: 2, start: 10 * 60, end: 11 * 60, goalId: Fixtures.calendar.goals[0].id, title: nil)
+        assertAppearances(
+            WeekView(data: Fixtures.calendar, first: 0, count: 3, now: now, clock: .twelveHour, creating: .constant(editing), scrolls: false)
+                .frame(width: 1100, height: 260 + WeekGrid.standard.height)
+                .offset(y: -top)
+                .frame(width: 1100, height: WeekGrid.standard.y(14 * 60) - top, alignment: .topLeading)
+                .clipped()
+                .background(Theme.background),
+            width: 1100, height: WeekGrid.standard.y(14 * 60) - top
+        )
+    }
+
+    func testCalendarDaysMenu() {
+        // The switch's chevron: Next 3, 5 or 7 days, the one showing ticked.
+        assertAppearances(
+            DaysMenu(selected: 5) { _ in }.padding(16).background(Theme.background),
+            width: 232
+        )
+    }
+
+    func testCalendarViewCard() {
+        assertAppearances(
+            CalendarViewCard(span: .days(5)).padding(16).background(Theme.background),
+            width: 800
         )
     }
 

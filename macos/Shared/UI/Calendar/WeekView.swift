@@ -1,12 +1,12 @@
 import SwiftUI
 
 /*
- * The week at a glance, as week-view.tsx: seven days side by side with what's planned for each
- * without a time, then their blocks, filled in where time has passed. Drag on a day's empty time
+ * Several days at a glance, as week-view.tsx: the week's seven, or the next three, five or seven,
+ * side by side with what's planned for each without a time, then their blocks, filled in where time has passed. Drag on a day's empty time
  * (or click it) to protect time; drag a block to another time or day, or its top or bottom edge to
  * change its length; click a block to open it, or a day to step into it. Scroll sideways (two
  * fingers on a trackpad, or shift and the wheel) to move through the days; it settles on a whole
- * day, so the seven can start on any day of the week.
+ * day, so they can start on any day of the week.
  */
 
 /// The week's geometry: hours a little shorter than the day's, so blocks stay readable as the grid
@@ -23,12 +23,16 @@ enum WeekGrid {
     static let maxAnytime = 3
     /// How wide the popover is beside a day.
     static let popoverWidth: CGFloat = 300
+    /// Columns at least this wide show blocks as the day does, with room for the title and time.
+    static let roomyColumn: CGFloat = 240
 }
 
 struct WeekView: View {
     let data: CalendarData
-    /// The first of the seven days, in days from today: a Monday, or any day once scrolled.
+    /// The first of the days, in days from today: a Monday, today, or any day once scrolled.
     let first: Int
+    /// How many days side by side: 7 for the week, or 3, 5 or 7 from today.
+    var count = 7
     /// Where the first day can be scrolled to (what's loaded); past it the days give a little and
     /// spring back.
     var firstRange: ClosedRange<Int>?
@@ -71,16 +75,19 @@ struct WeekView: View {
     @State private var pinchY: CGFloat?
     @Environment(\.overlays) private var overlays
 
-    /// The first of the seven days as drawn.
+    /// The first of the days as drawn.
     private var shownFirst: Int { scrollingFirst ?? first }
-    /// The seven days, and one either side to scroll into view.
-    private var days: [Int] { Array((shownFirst - 1)...(shownFirst + 7)) }
+    private var columns: Int { max(count, 1) }
+    /// The last of the days as drawn.
+    private var shownLast: Int { shownFirst + columns - 1 }
+    /// The days, and one either side to scroll into view.
+    private var days: [Int] { Array((shownFirst - 1)...(shownLast + 1)) }
     /// The days at least partly in view.
     private var daysInView: [Int] {
-        days.filter { x(of: $0) + columnWidth > 0.5 && x(of: $0) < columnWidth * 7 - 0.5 }
+        days.filter { x(of: $0) + columnWidth > 0.5 && x(of: $0) < columnWidth * CGFloat(columns) - 0.5 }
     }
-    private var columnWidth: CGFloat { max((width - WeekGrid.gutter) / 7, 1) }
-    private var thisWeek: Bool { shownFirst <= 0 && shownFirst + 6 >= 0 }
+    private var columnWidth: CGFloat { max((width - WeekGrid.gutter) / CGFloat(columns), 1) }
+    private var showsToday: Bool { shownFirst <= 0 && shownLast >= 0 }
 
     private var range: ClosedRange<CGFloat> { HourGrid.range(viewport: viewport, pad: WeekGrid.pad, most: WeekGrid.maxHour) }
 
@@ -179,7 +186,7 @@ struct WeekView: View {
     private func scrollToFocus() {
         guard viewport > 0 else { return }
         focusedFirst = first
-        let focus = thisWeek ? CalendarDayMath.minutes(now) : data.wakeTime
+        let focus = showsToday ? CalendarDayMath.minutes(now) : data.wakeTime
         position.scrollTo(y: grid.scrollY(keeping: CGFloat(max(0, focus / 60 - 1) * 60), at: WeekGrid.pad, viewport: viewport))
     }
 
@@ -385,6 +392,8 @@ struct WeekView: View {
         }
         .frame(height: grid.height, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        // Roomy columns show blocks as the day does, which goes by the grid to fit their label.
+        .environment(\.dayGrid, grid)
     }
 
     /// Sleep, time that's gone and empty time to draw on; then the blocks, what's being drawn and the
@@ -424,7 +433,7 @@ struct WeekView: View {
             .zIndex(3)
         }
 
-        if let creating, creating.mode == .create, creating.day >= shownFirst, creating.day <= shownFirst + 6 {
+        if let creating, creating.mode == .create, creating.day >= shownFirst, creating.day <= shownLast {
             popover(creating).zIndex(4)
         }
     }
@@ -496,13 +505,13 @@ struct WeekView: View {
             }
     }
 
-    /// Beside its day: to the right, or to the left on the weekend so it stays in view. Its top
-    /// lines up with the drawn time's, or its bottom near the end of the day.
+    /// Beside its day: to the right where it fits, otherwise to the left, so it stays in view. Its
+    /// top lines up with the drawn time's, or its bottom near the end of the day.
     private func popover(_ editing: BlockEditing) -> some View {
-        let index = editing.day - shownFirst
-        let left = index < 5
-            ? x(of: editing.day) + columnWidth + 6
-            : x(of: editing.day) - WeekGrid.popoverWidth - 6
+        let right = x(of: editing.day) + columnWidth + 6
+        let leftSide = x(of: editing.day) - WeekGrid.popoverWidth - 6
+        let fitsRight = right + WeekGrid.popoverWidth <= columnWidth * CGFloat(columns)
+        let left = fitsRight || leftSide < 0 ? right : leftSide
         let top = grid.y(editing.start)
         let bottom = grid.y(editing.end)
         let above = top + BlockPopover.estimatedHeight > grid.height
@@ -555,6 +564,7 @@ struct WeekView: View {
             isInteractive: actions != nil && !block.isPending,
             isSelected: block.id == selectedId,
             isDragging: drag != nil,
+            compact: columnWidth < WeekGrid.roomyColumn,
             canMove: startsHere && endsHere,
             canResizeStart: startsHere,
             canResizeEnd: endsHere,
@@ -587,7 +597,7 @@ struct WeekView: View {
         current.delta = min(max(raw, bounds.0), bounds.1)
         if edge == .move {
             let days = Int((translation.width / columnWidth).rounded())
-            current.dayDelta = min(max(days, shownFirst - current.day), shownFirst + 6 - current.day)
+            current.dayDelta = min(max(days, shownFirst - current.day), shownLast - current.day)
         }
         dragging = current
     }
@@ -695,6 +705,8 @@ private struct WeekBlock: View {
     let isInteractive: Bool
     let isSelected: Bool
     let isDragging: Bool
+    /// The narrow card; a roomy column gets the day's.
+    let compact: Bool
     let canMove: Bool
     let canResizeStart: Bool
     let canResizeEnd: Bool
@@ -705,7 +717,7 @@ private struct WeekBlock: View {
     @State private var isHovered = false
 
     var body: some View {
-        BlockCardView(block: block, goal: goal, start: start, end: end, clock: clock, elapsed: elapsed, compact: true)
+        BlockCardView(block: block, goal: goal, start: start, end: end, clock: clock, elapsed: elapsed, compact: compact)
             .overlay {
                 if isInteractive {
                     VStack(spacing: 0) {
@@ -788,8 +800,24 @@ private struct DraftOutline: View {
 
 #Preview("Week") {
     @Previewable @State var showsOverview = true
-    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, isWeek: true, onSetWeek: { _ in },
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, span: .week, onSetSpan: { _ in },
             showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+        .background(Theme.background)
+        .frame(width: 1400, height: 760)
+}
+
+#Preview("Next 3 days") {
+    @Previewable @State var showsOverview = false
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: 0, span: .days(3), onSetSpan: { _ in },
+            showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+        .background(Theme.background)
+        .frame(width: 1400, height: 760)
+}
+
+#Preview("Next 5 days") {
+    @Previewable @State var showsOverview = false
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: 0, span: .days(5), dayCount: 5,
+            onSetSpan: { _ in }, showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
         .background(Theme.background)
         .frame(width: 1400, height: 760)
 }
