@@ -5,7 +5,8 @@ import Observation
 /*
  * Does what the person picked in Settings as sessions start and end (Shared/Models/
  * SessionRoutine.swift has the rules): turns Do Not Disturb on and off through the Shortcuts the
- * app ships, quits apps and reopens them, and runs the person's own Shortcuts. It looks on the
+ * app ships (and on again if the app launches or the Mac wakes mid-session), quits apps and
+ * reopens them, and runs the person's own Shortcuts. It looks on the
  * app's clock, so unlike notices it only works while the app runs, which a menu bar app does.
  */
 @MainActor
@@ -39,6 +40,10 @@ final class SessionRoutineRunner {
                 guard let self, self.shortcuts != nil else { return }
                 self.refreshOptions()
             }
+        }
+        // Wake is posted on the workspace's own notification center, not the default one.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recheckFocus = true }
         }
     }
 
@@ -124,10 +129,10 @@ final class SessionRoutineRunner {
 
     // MARK: - Sessions
 
-    /// Today's blocks, as the app last fetched them.
+    /// Today's blocks, as the app last fetched them. Every one counts, reserved time included:
+    /// protected time of any kind, or an intention, is time not to be interrupted.
     func blocksChanged(_ blocks: [Block]) {
-        // Reserved time isn't a session: lunch or family time shouldn't turn on Do Not Disturb or quit apps.
-        self.blocks = blocks.filter { !$0.isReserved }
+        self.blocks = blocks
         tick(now: Date())
     }
 
@@ -142,9 +147,22 @@ final class SessionRoutineRunner {
         switch action {
         case .start: begin()
         case .end: finish()
-        case nil: break
+        case nil:
+            // Launched or woken inside a session whose routine already started: Do Not Disturb
+            // should be on, but it may have been switched off meanwhile, and macOS doesn't let
+            // apps check. Turning it on again is harmless if it's already on. (Apps and the
+            // person's own Shortcut stay as they were: they're one-offs at the session's start.)
+            if recheckFocus, inSession, routine.doNotDisturb {
+                Log.routine.info("Still in a session: turning Do Not Disturb on again")
+                run(SessionRoutine.focusOn)
+            }
         }
+        recheckFocus = false
     }
+
+    /// Set at launch and on wake, so the first look with today's blocks turns Do Not Disturb on
+    /// again if a session is still on.
+    @ObservationIgnored private var recheckFocus = true
 
     private func begin() {
         Log.routine.info("Session started")

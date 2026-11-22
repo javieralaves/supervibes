@@ -9,8 +9,9 @@ import Foundation
  * two ready-made, signed ones (Supervibes/Shortcuts, made by scripts/focus-shortcuts.sh) that the
  * person adds with one click.
  *
- * Sessions close together count as one stretch, so back-to-back blocks don't run the routine
- * between them. When to start and end is worked out here, without doing anything, so it can be
+ * A session is any block on the calendar: an intention, or protected time of any kind, reserved
+ * time included. Sessions close together count as one stretch, so back-to-back blocks don't run
+ * the routine between them. When to start and end is worked out here, without doing anything, so it can be
  * tested; the app's SessionRoutineRunner does the work. Like notices, the choice belongs to this
  * Mac and lives in UserDefaults.
  */

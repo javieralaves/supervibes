@@ -47,8 +47,9 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(15))
             }
         }
-        // Coming back from sleep, today may have moved on.
-        NotificationCenter.default.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+        // Coming back from sleep, today may have moved on. (Wake is posted on the workspace's own
+        // notification center, not the default one.)
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshSoon() }
         }
         // A block, task or goal was saved somewhere in the app.
