@@ -12,6 +12,8 @@ final class GoalsModel {
 
     private(set) var load: Load = .idle
     private(set) var goals: [Goal] = []
+    /// Each goal's week, by goal id.
+    private(set) var weeks: [String: GoalWeek] = [:]
     private(set) var today = CalendarDay.today()
     private(set) var max = 12
     private(set) var error: String?
@@ -32,6 +34,7 @@ final class GoalsModel {
             case .ok(let ok):
                 let body = try ok.body.json
                 goals = body.goals.map(Goal.init(api:))
+                weeks = Dictionary(body.week.goals.map { ($0.goalId, GoalWeek(api: $0)) }, uniquingKeysWith: { first, _ in first })
                 today = body.today
                 max = body.max
                 load = .loaded
@@ -164,6 +167,17 @@ final class GoalsModel {
     private func fail(_ pendingID: String, _ message: String) {
         goals.removeAll { $0.id == pendingID }
         error = message
+    }
+}
+
+extension GoalWeek {
+    init(api week: Components.Schemas.GoalWeek) {
+        self.init(
+            objective: week.objective,
+            sessionMinutes: week.sessionMinutes,
+            reservedMinutes: week.reservedMinutes,
+            plannedMinutes: week.plannedMinutes
+        )
     }
 }
 

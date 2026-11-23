@@ -12,6 +12,7 @@ import { PROVIDER_KEYS, PROVIDERS } from "@/lib/providers";
 import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
 import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
+import { goalWeekLoads } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
@@ -23,9 +24,9 @@ import { CLOCKS, timeZoneSchema } from "@/lib/settings-schema";
 import { getGoal, listSources } from "@/lib/sources";
 import { buildTrajectory, CONFIDENCES, STATUS_BASES, STATUSES } from "@/lib/status-schema";
 import { addDays, todayIn, weekStartOf } from "@/lib/target-date";
-import { listTasks, listTaskSchedules } from "@/lib/tasks";
+import { listOpenTasks, listTasks, listTaskSchedules } from "@/lib/tasks";
 import { weekObjectiveSchema, weekStartSchema } from "@/lib/week-objective-schema";
-import { getWeekObjectives, setWeekObjective } from "@/lib/week-objectives";
+import { getWeekObjectives, listObjectivesBetween, setWeekObjective } from "@/lib/week-objectives";
 import { startOfDayIn } from "@/lib/zoned-day";
 
 const TrajectoryDaySchema = z
@@ -50,11 +51,30 @@ const GoalSchema = z
   })
   .openapi("Goal");
 
+const GoalWeekSchema = z
+  .object({
+    goalId: z.string(),
+    objective: z.string().nullable().openapi({ description: "What this week should move for the goal; null when not set." }),
+    sessionMinutes: z.int().openapi({ description: "Session time on the calendar this week, gone by or not: room for tasks." }),
+    reservedMinutes: z.int().openapi({ description: "Reserved time this week, kept for its own sake: no room for tasks." }),
+    plannedMinutes: z.int().openapi({
+      description:
+        "Open estimates meant for this week (its days, the week itself, or carried into it) plus the session time already gone by. Weighed against sessionMinutes, as the planning board's This week ring.",
+    }),
+  })
+  .openapi("GoalWeek");
+
 const GoalsSchema = z
   .object({
     today: z.iso.date().openapi({ description: "Today in `timeZone`; the trajectories end on it." }),
     max: z.int().openapi({ description: "How many goals someone can have." }),
     goals: z.array(GoalSchema),
+    week: z
+      .object({
+        start: z.iso.date().openapi({ description: "The Monday this week starts on." }),
+        goals: z.array(GoalWeekSchema).openapi({ description: "Each goal's week, in the goals' order." }),
+      })
+      .openapi({ description: "This week, goal by goal, for the cards on Goals home." }),
   })
   .openapi("Goals");
 
@@ -139,7 +159,7 @@ const GoalDetailSchema = z
       start: z.iso.date().openapi({ description: "The Monday this week starts on." }),
       objective: z.string().nullable(),
       lastWeek: z.string().nullable(),
-      protectedMinutes: z.int().openapi({ description: "Time on the calendar for this goal this week, in minutes." }),
+      protectedMinutes: z.int().openapi({ description: "Session time on the calendar for this goal this week, in minutes; reserved time isn't counted." }),
       protectedBlocks: z
         .array(z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock"))
         .openapi({
@@ -254,14 +274,33 @@ export const goals = new OpenAPIHono<ApiEnv>()
   .openapi(listRoute, async (c) => {
     const userId = c.var.user.id;
     const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
-    const list = await listGoals(userId);
-    const trajectories = await listTrajectories(userId, list.map((goal) => goal.id), timeZone);
     const today = todayIn(timeZone);
+    const weekStart = weekStartOf(today);
+    const zone = timeZone ?? "UTC";
+    const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
+    const list = await listGoals(userId);
+    const ids = list.map((goal) => goal.id);
+    const [trajectories, tasks, blocks, objectives] = await Promise.all([
+      listTrajectories(userId, ids, timeZone),
+      listOpenTasks(userId),
+      listBlocks(userId, weekBounds.start, weekBounds.end),
+      listObjectivesBetween(userId, weekStart, weekStart),
+    ]);
+    const loads = goalWeekLoads(ids, tasks, blocks, weekBounds, today, new Date());
+    const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
     return c.json(
       {
         today,
         max: MAX_GOALS,
         goals: list.map((goal) => asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today))),
+        week: {
+          start: weekStart,
+          goals: ids.map((goalId) => ({
+            goalId,
+            objective: objectiveOf.get(goalId) ?? null,
+            ...(loads.get(goalId) ?? { sessionMinutes: 0, reservedMinutes: 0, plannedMinutes: 0 }),
+          })),
+        },
       },
       200,
     );
@@ -314,8 +353,8 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const trajectory = trajectories.get(id);
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
     const goalBlocks = blocks.filter((b) => b.goalId === id);
-    const weekBlocks = goalBlocks.filter((b) => b.startsAt < weekBounds.end);
     // Reserved time is kept for its own sake, so it's no room for tasks.
+    const weekBlocks = goalBlocks.filter((b) => b.startsAt < weekBounds.end && !b.reserved);
     const protectedBlocks = goalBlocks.filter((b) => !b.reserved).map((b) => ({
       startsAt: new Date(Math.max(b.startsAt.getTime(), weekBounds.start.getTime())).toISOString(),
       endsAt: new Date(Math.min(b.endsAt.getTime(), twoWeeksEnd.getTime())).toISOString(),

@@ -215,7 +215,8 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testGoalsHome() {
         assertAppearances(
-            GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18")
+            GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                      actions: GoalCardActions(setObjective: { _ in }))
                 .background(Theme.background),
             width: 1180, height: 900
         )

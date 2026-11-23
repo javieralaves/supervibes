@@ -15,6 +15,8 @@ struct GoalPage<Sections: View>: View {
     var readError: String?
     var headerError: String?
     var weekState: WeekObjectiveState = .idle
+    /// Puts the cursor in this week's objective, as when "Set this week's objective" on a goal card opened the page.
+    var focusesObjective = false
     /// For "2 hr ago"; fixed in snapshots.
     var now = Date()
     var onBack: () -> Void = {}
@@ -40,7 +42,7 @@ struct GoalPage<Sections: View>: View {
                     onEdit: onEdit,
                     onDelete: onDelete
                 )
-                WeekObjective(week: detail.week, state: weekState, onSave: onSaveWeek)
+                WeekObjective(week: detail.week, state: weekState, focuses: focusesObjective, onSave: onSaveWeek)
                     .id(detail.week.start)
                     .padding(.top, 32)
                 ProgressCard(detail: detail, reading: reading, error: readError ?? detail.readError, now: now, onUpdate: onUpdateStatus)
@@ -183,15 +185,18 @@ private struct GoalHeader: View {
 private struct WeekObjective: View {
     let week: GoalDetail.Week
     let state: WeekObjectiveState
+    /// Put the cursor in the field once it's on screen.
+    var focuses = false
     let onSave: (String) -> Void
 
     @State private var draft: String
     @State private var isHovered = false
     @FocusState private var isFocused: Bool
 
-    init(week: GoalDetail.Week, state: WeekObjectiveState, onSave: @escaping (String) -> Void) {
+    init(week: GoalDetail.Week, state: WeekObjectiveState, focuses: Bool = false, onSave: @escaping (String) -> Void) {
         self.week = week
         self.state = state
+        self.focuses = focuses
         self.onSave = onSave
         _draft = State(initialValue: week.objective ?? "")
     }
@@ -223,6 +228,7 @@ private struct WeekObjective: View {
                 .onHover { isHovered = $0 }
                 .help("Progress reads judge the week against it, and agendas and recaps take it into account")
                 .onChange(of: isFocused) { _, focused in if !focused { save() } }
+                .onChange(of: focuses, initial: true) { _, focuses in if focuses { isFocused = true } }
                 .onKeyPress(.return, phases: .down) { press in
                     guard press.modifiers.contains(.command) else { return .ignored }
                     isFocused = false

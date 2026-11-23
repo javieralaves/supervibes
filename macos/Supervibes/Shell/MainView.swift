@@ -138,12 +138,14 @@ private struct GoalsScreen: View {
                     firstName: shell.account?.firstName ?? "there",
                     goals: model.goals,
                     today: model.today,
+                    weeks: model.weeks,
                     max: model.max,
                     error: model.error,
                     onOpen: { shell.openGoal($0.id) },
                     onNew: newGoal,
                     actions: GoalCardActions(
                         plan: { shell.openGoal($0.id, then: .plan) },
+                        setObjective: { shell.openGoal($0.id, then: .setObjective) },
                         updateStatus: { shell.openGoal($0.id, then: .updateStatus) },
                         edit: edit,
                         delete: confirmDelete
@@ -212,6 +214,8 @@ private struct GoalScreen: View {
     @State private var model: GoalPageModel
     /// Showing the planning board instead of the page; it works on the same data.
     @State private var isPlanning = false
+    /// Opened from "Set this week's objective" on a goal card: the cursor goes in the objective.
+    @State private var focusesObjective = false
     @Environment(\.overlays) private var overlays
 
     init(id: String, auth: AuthModel, shell: ShellModel) {
@@ -259,6 +263,7 @@ private struct GoalScreen: View {
                         readError: model.readError,
                         headerError: model.headerError,
                         weekState: model.weekState,
+                        focusesObjective: focusesObjective,
                         onBack: { shell.open(.goals) },
                         onUpdateStatus: model.updateStatus,
                         onEdit: { edit(detail.goal) },
@@ -306,6 +311,7 @@ private struct GoalScreen: View {
             switch intent {
             case .plan: isPlanning = true
             case .updateStatus: if model.detail?.canRead == true { model.updateStatus() }
+            case .setObjective: focusesObjective = true
             }
         }
         .onDisappear { model.stop() }

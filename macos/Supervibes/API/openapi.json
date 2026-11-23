@@ -766,12 +766,35 @@
             "items": {
               "$ref": "#/components/schemas/Goal"
             }
+          },
+          "week": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "The Monday this week starts on."
+              },
+              "goals": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GoalWeek"
+                },
+                "description": "Each goal's week, in the goals' order."
+              }
+            },
+            "required": [
+              "start",
+              "goals"
+            ],
+            "description": "This week, goal by goal, for the cards on Goals home."
           }
         },
         "required": [
           "today",
           "max",
-          "goals"
+          "goals",
+          "week"
         ]
       },
       "Goal": {
@@ -861,6 +884,38 @@
           "basis",
           "reason",
           "carried"
+        ]
+      },
+      "GoalWeek": {
+        "type": "object",
+        "properties": {
+          "goalId": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string",
+            "nullable": true,
+            "description": "What this week should move for the goal; null when not set."
+          },
+          "sessionMinutes": {
+            "type": "integer",
+            "description": "Session time on the calendar this week, gone by or not: room for tasks."
+          },
+          "reservedMinutes": {
+            "type": "integer",
+            "description": "Reserved time this week, kept for its own sake: no room for tasks."
+          },
+          "plannedMinutes": {
+            "type": "integer",
+            "description": "Open estimates meant for this week (its days, the week itself, or carried into it) plus the session time already gone by. Weighed against sessionMinutes, as the planning board's This week ring."
+          }
+        },
+        "required": [
+          "goalId",
+          "objective",
+          "sessionMinutes",
+          "reservedMinutes",
+          "plannedMinutes"
         ]
       },
       "GoalInput": {
@@ -1021,7 +1076,7 @@
               },
               "protectedMinutes": {
                 "type": "integer",
-                "description": "Time on the calendar for this goal this week, in minutes."
+                "description": "Session time on the calendar for this goal this week, in minutes; reserved time isn't counted."
               },
               "protectedBlocks": {
                 "type": "array",

@@ -20,6 +20,22 @@ struct Goal: Identifiable, Hashable, Sendable {
     var latest: TrajectoryDay? { trajectory.last }
 }
 
+/// A goal's week, as its card on Goals home shows it (GoalWeek in src/lib/api/routes/goals.ts):
+/// this week's objective, and what's planned against the goal's session time, with the same
+/// totals as the planning board's This week ring.
+struct GoalWeek: Hashable, Sendable {
+    var objective: String?
+    /// Session time this week, gone by or not: room for tasks.
+    var sessionMinutes: Int
+    /// Reserved time this week, kept for its own sake: no room for tasks.
+    var reservedMinutes: Int
+    /// Open estimates meant for this week, plus the session time already gone by.
+    var plannedMinutes: Int
+
+    /// What's left of the session time once what's planned is taken out; below zero when over.
+    var remaining: Int { sessionMinutes - plannedMinutes }
+}
+
 /// What a goal's status was on one day (src/lib/status-schema.ts).
 struct TrajectoryDay: Hashable, Sendable {
     /// "YYYY-MM-DD", in the person's own calendar.

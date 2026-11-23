@@ -123,6 +123,20 @@ enum Fixtures {
         ]
     }
 
+    /// The six goals' weeks: one with its objective and time to spare, one with time and no
+    /// objective or tasks yet, one over, one with only reserved time, one with time and no tasks,
+    /// and one well scoped.
+    static var goalWeeks: [String: GoalWeek] {
+        [
+            "1": GoalWeek(objective: "Inspire new ideas for the Superfocus sprint", sessionMinutes: 510, reservedMinutes: 0, plannedMinutes: 135),
+            "2": GoalWeek(objective: nil, sessionMinutes: 180, reservedMinutes: 0, plannedMinutes: 0),
+            "3": GoalWeek(objective: "Draft the utilities chapter", sessionMinutes: 300, reservedMinutes: 0, plannedMinutes: 330),
+            "4": GoalWeek(objective: nil, sessionMinutes: 0, reservedMinutes: 180, plannedMinutes: 0),
+            "5": GoalWeek(objective: "Three workouts", sessionMinutes: 270, reservedMinutes: 0, plannedMinutes: 0),
+            "6": GoalWeek(objective: "Ship the onboarding consolidation", sessionMinutes: 840, reservedMinutes: 0, plannedMinutes: 480),
+        ]
+    }
+
     /// The first goal's page, with a read, a status and this week's objective.
     static var goalDetail: GoalDetail {
         var goal = goals[0]

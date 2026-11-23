@@ -1,12 +1,15 @@
 import SwiftUI
 
 /// The home page, matching src/app/(app)/page.tsx and goals-board.tsx: a greeting, then the goals
-/// as cards, each with its status and the last weeks, and a button for a new goal.
+/// as cards, each with its week (this week's objective, and its tasks against its session time),
+/// its status and the last weeks, and a button for a new goal.
 struct GoalsHome: View {
     let firstName: String
     let goals: [Goal]
     /// Today, "YYYY-MM-DD"; the trails end on it.
     let today: String
+    /// Each goal's week, by goal id. A goal without one (or a page without any) shows no week.
+    var weeks: [String: GoalWeek] = [:]
     var max = 12
     var error: String?
     var onOpen: (Goal) -> Void = { _ in }
@@ -57,7 +60,7 @@ struct GoalsHome: View {
             Text("Goals").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
             Spacer()
             if !goals.isEmpty {
-                Text("\(goals.count) of \(max)").appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
+                Text(countLine).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
             }
         }
         .padding(.bottom, 16)
@@ -87,12 +90,23 @@ struct GoalsHome: View {
         }
     }
 
+    /// "5 h 15 min of 35 h planned this week · 7 of 12": the week across goals with session time,
+    /// beside the count; just the count when none has any.
+    private var countLine: String {
+        let count = "\(goals.count) of \(max)"
+        let withTime = goals.compactMap { weeks[$0.id] }.filter { $0.sessionMinutes > 0 }
+        guard !withTime.isEmpty else { return count }
+        let planned = withTime.reduce(0) { $0 + $1.plannedMinutes }
+        let sessions = withTime.reduce(0) { $0 + $1.sessionMinutes }
+        return "\(BoardDuration.text(planned)) of \(BoardDuration.text(sessions)) planned this week · \(count)"
+    }
+
     private enum Cell { case goal(Goal), new }
 
     @ViewBuilder private func cell(_ cell: Cell) -> some View {
         switch cell {
         case .goal(let goal):
-            GoalCard(goal: goal, today: today) { onOpen(goal) }
+            GoalCard(goal: goal, week: weeks[goal.id], today: today, onSetObjective: actions.setObjective) { onOpen(goal) }
                 .contextPanel(owner: GoalCard.menuOwner(goal), isEnabled: !goal.isPending) {
                     GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
                 }
@@ -108,6 +122,8 @@ struct GoalsHome: View {
 struct GoalCardActions {
     /// Opens its planning board.
     var plan: ((Goal) -> Void)?
+    /// Opens it with the cursor in this week's objective, from the card's "Set this week's objective".
+    var setObjective: ((Goal) -> Void)?
     /// Opens it and starts a new read.
     var updateStatus: ((Goal) -> Void)?
     var edit: ((Goal) -> Void)?
@@ -150,7 +166,10 @@ struct GoalCardMenu: View {
 
 private struct GoalCard: View {
     let goal: Goal
+    /// Its week; nil shows none.
+    var week: GoalWeek?
     let today: String
+    var onSetObjective: ((Goal) -> Void)?
     let action: () -> Void
     @State private var isHovered = false
     @Environment(\.overlays) private var overlays
@@ -165,14 +184,19 @@ private struct GoalCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 10) {
                     GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
-                    Text(goal.title)
-                        .font(.app(15.2, .semibold))
-                        .tracking(-0.01 * 15.2)
-                        .lineSpacing(15.2 * 0.375 - 15.2 * 0.2)
-                        .foregroundStyle(Theme.foreground)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(goal.title)
+                            .font(.app(15.2, .semibold))
+                            .tracking(-0.01 * 15.2)
+                            .lineSpacing(15.2 * 0.375 - 15.2 * 0.2)
+                            .foregroundStyle(Theme.foreground)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if let week {
+                            WeekObjectiveLine(week: week, onSet: onSetObjective.map { set in { set(goal) } })
+                        }
+                    }
+                    .padding(.top, 2)
                     Spacer(minLength: 20)
                 }
                 .overlay(alignment: .topTrailing) {
@@ -182,6 +206,10 @@ private struct GoalCard: View {
                 }
 
                 Spacer(minLength: 20)
+
+                if let week {
+                    WeekTimeLine(week: week, color: goal.color).padding(.bottom, 10)
+                }
 
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
@@ -211,6 +239,76 @@ private struct GoalCard: View {
         .opacity(goal.isPending ? 0.6 : 1)
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isEngaged)
+    }
+}
+
+/// Under a card's title: this week's objective with a flag, or, for a goal with session time this
+/// week and no objective yet, a dashed "Set this week's objective" that opens the goal to write one.
+private struct WeekObjectiveLine: View {
+    let week: GoalWeek
+    let onSet: (() -> Void)?
+    @State private var isHovered = false
+
+    var body: some View {
+        if let objective = week.objective, !objective.isEmpty {
+            HStack(spacing: 6) {
+                Icon.flag.image(size: 12)
+                Text(objective).font(.app(13)).lineLimit(1).truncationMode(.tail)
+            }
+            .foregroundStyle(Theme.muted)
+            .help(objective)
+        } else if week.sessionMinutes > 0, let onSet {
+            Button(action: onSet) {
+                HStack(spacing: 4) {
+                    Icon.add.image(size: 10)
+                    Text("Set this week’s objective").font(.app(11, .medium))
+                }
+                .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+                .padding(.horizontal, 8)
+                .frame(height: 20)
+                .background(isHovered ? Theme.wash : .clear, in: .capsule)
+                .overlay(Capsule().strokeBorder(Theme.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+            .padding(.top, 2)
+        }
+    }
+}
+
+/// Above a card's status: its week's time. A ring in the goal's colour and what's planned against
+/// the session time, with what's free or over; or the session time with nothing planned yet; or,
+/// with no session time, the reserved time, or that there's none.
+private struct WeekTimeLine: View {
+    let week: GoalWeek
+    let color: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            CapacityRing(planned: week.sessionMinutes > 0 ? week.plannedMinutes : 0, protected: week.sessionMinutes, color: color, size: 14)
+            if week.sessionMinutes > 0, week.plannedMinutes > 0 {
+                Text("\(Text(BoardDuration.text(week.plannedMinutes)).foregroundStyle(week.remaining < 0 ? Theme.amber : Theme.foreground)) / \(BoardDuration.text(week.sessionMinutes))")
+                    .foregroundStyle(Theme.muted)
+                Spacer(minLength: 8)
+                Text(week.remaining < 0 ? "\(BoardDuration.text(-week.remaining)) over"
+                     : week.remaining == 0 ? "Just fits" : "\(BoardDuration.text(week.remaining)) free")
+                    .foregroundStyle(week.remaining < 0 ? Theme.amber : Theme.muted)
+            } else {
+                Text(emptyLine).foregroundStyle(Theme.muted)
+                Spacer(minLength: 0)
+            }
+        }
+        .appText(.xs)
+        .monospacedDigit()
+        .lineLimit(1)
+    }
+
+    private var emptyLine: String {
+        if week.sessionMinutes > 0 { return "\(BoardDuration.text(week.sessionMinutes)) this week, nothing planned" }
+        if week.reservedMinutes > 0 { return "\(BoardDuration.text(week.reservedMinutes)) reserved this week" }
+        if week.plannedMinutes > 0 { return "\(BoardDuration.text(week.plannedMinutes)) planned, no time this week" }
+        return "No time this week"
     }
 }
 
@@ -293,7 +391,8 @@ private struct EmptyGoals: View {
 }
 
 #Preview("Goals") {
-    GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18")
+    GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+              actions: GoalCardActions(setObjective: { _ in }))
         .background(Theme.background)
         .frame(width: 1180, height: 900)
 }

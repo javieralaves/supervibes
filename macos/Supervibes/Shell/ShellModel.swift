@@ -44,7 +44,7 @@ final class ShellModel {
     }
 
     /// What to do once a goal's page opens, from a goal card's menu on the home page.
-    enum GoalIntent { case plan, updateStatus }
+    enum GoalIntent { case plan, updateStatus, setObjective }
     var goalIntent: GoalIntent?
 
     /// A goal's own page, and what to do there once it's loaded.
