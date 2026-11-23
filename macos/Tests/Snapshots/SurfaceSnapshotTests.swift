@@ -374,6 +374,14 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testPlanningBoardTimeLeft() {
+        // Friday has 1 h 30 min left: what would fit, the week's first, the pointer over one.
+        assertAppearances(
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initiallyHoveredFiller: "t5", onBack: {})),
+            width: 1500, height: 760
+        )
+    }
+
     func testPlanningBoardWeekCapacity() {
         assertAppearances(
             board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initialCapacity: .thisWeek, onBack: {})),

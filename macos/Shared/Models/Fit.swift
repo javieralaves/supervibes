@@ -12,6 +12,8 @@ import Foundation
  * waking hours, around every goal's blocks), the slot next to the goal's own session first; and
  * time from another goal's session that day that it has to spare (a goal with tasks that day and
  * room left), taken from its end.
+ *
+ * The other way round, a day with time left offers the tasks that would fit in it.
  */
 enum Fit {
     /// Where a moved task goes.
@@ -156,6 +158,23 @@ enum Fit {
             gives.append(Give(blockId: block.id, fromGoal: other.id, slot: Slot(start: block.end.addingTimeInterval(-Double(minutes) * 60), end: block.end)))
         }
         return gives.sorted { $0.slot.minutes > $1.slot.minutes }
+    }
+
+    // MARK: Filling time left
+
+    /// A day's time left, and the tasks that would fit in it: ones without a day, meant for that
+    /// day's week or not planned yet (the week's first, each in the goal's order), no longer than
+    /// the time left, at most three. Tasks with their own time on the calendar aren't offered.
+    static func fillers(_ goal: BoardGoal, day: String, today: String, now: Date, limit: Int = 3) -> (room: Int, tasks: [TaskItem]) {
+        guard day >= today else { return (0, []) }
+        let capacity = dayCapacity(goal, day, now: now)
+        let room = capacity.protected - capacity.planned
+        guard room >= 15 else { return (max(0, room), []) }
+        let week = CalendarDay.weekStart(day)
+        let loose = goal.tasks.filter { $0.scheduledAt == nil && $0.minutes <= room && !($0.plannedFor.map { $0 >= today } ?? false) }
+        let forWeek = loose.filter { BoardColumn.week(of: $0, today: today) == week }
+        let unplanned = loose.filter { BoardColumn.of($0, today: today) == .unplanned }
+        return (room, Array((forWeek + unplanned).prefix(limit)))
     }
 
     // MARK: Helpers

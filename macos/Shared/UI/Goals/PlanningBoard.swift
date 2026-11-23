@@ -102,6 +102,8 @@ struct PlanningBoard: View {
     var initialCapacity: BoardColumn?
     /// On All goals, the rows open at first, showing their cards.
     var initiallyExpanded: Set<String> = []
+    /// Opens with the pointer over this suggested task, for snapshot tests.
+    var initiallyHoveredFiller: String?
     /// Switches between All goals and a goal, from the title.
     var onScope: (BoardScope) -> Void = { _ in }
     /// "Back", when the board was opened from a goal's page.
@@ -117,7 +119,7 @@ struct PlanningBoard: View {
     init(
         data: BoardData, scope: BoardScope = .all, actions: @escaping (String) -> TaskActions = { _ in TaskActions() },
         fit: BoardFitActions = BoardFitActions(), now: Date = Date(), initiallyOpen: String? = nil, initiallyHovered: BoardColumn? = nil,
-        initialCapacity: BoardColumn? = nil, initiallyExpanded: Set<String> = [],
+        initialCapacity: BoardColumn? = nil, initiallyExpanded: Set<String> = [], initiallyHoveredFiller: String? = nil,
         onScope: @escaping (BoardScope) -> Void = { _ in }, onBack: (() -> Void)? = nil
     ) {
         self.data = data
@@ -129,6 +131,7 @@ struct PlanningBoard: View {
         self.initiallyHovered = initiallyHovered
         self.initialCapacity = initialCapacity
         self.initiallyExpanded = initiallyExpanded
+        self.initiallyHoveredFiller = initiallyHoveredFiller
         self.onScope = onScope
         self.onBack = onBack
         _expanded = State(initialValue: initiallyExpanded)
@@ -362,6 +365,11 @@ struct PlanningBoard: View {
             capacity: capacity(column, of: goal),
             capacityLabel: label,
             fitPanel: fitPanel(column, of: goal, label: label),
+            fill: fill(column, of: goal),
+            fillAction: "Plan for \(relativeName(column))",
+            hoveredFiller: initiallyHoveredFiller,
+            fillSource: { title(BoardColumn.of($0, today: today)) },
+            onFill: { task in actions.place(task, column.patch(today: today), nil) },
             clock: clock,
             emptyDetail: emptyDetail(column, of: goal),
             emptyTitle: "Nothing planned for \(relativeName(column))",
@@ -445,6 +453,14 @@ struct PlanningBoard: View {
         case .thisWeek: "Add to this week"
         case .nextWeek: "Add to next week"
         }
+    }
+
+    // MARK: Filling a day
+
+    /// A day's time left and the tasks that would fit it; nothing for weeks and Unplanned.
+    private func fill(_ column: BoardColumn, of goal: BoardGoal) -> (room: Int, tasks: [TaskItem]) {
+        guard case .day(let day) = column else { return (0, []) }
+        return Fit.fillers(goal, day: day, today: today, now: now)
     }
 
     // MARK: Making a day fit
@@ -819,6 +835,14 @@ private struct BoardColumnView<Card: View>: View {
     let capacityLabel: String
     /// Clicking the ring, for a day that's over: how to make it fit.
     var fitPanel: (() -> AnyView)?
+    /// A day with time left: how much, and the tasks that would fit in it.
+    var fill: (room: Int, tasks: [TaskItem]) = (0, [])
+    /// "Plan for Fri", and where each would come from ("Unplanned", "This week").
+    var fillAction = ""
+    var fillSource: (TaskItem) -> String = { _ in "" }
+    /// A suggested task under the pointer at first, for snapshot tests.
+    var hoveredFiller: String?
+    var onFill: (TaskItem) -> Void = { _ in }
     let clock: Clock
     let emptyDetail: String
     let emptyTitle: String
@@ -837,7 +861,10 @@ private struct BoardColumnView<Card: View>: View {
 
     init(
         title: String, subtitle: String?, showsTitle: Bool = true, open: [TaskItem], done: [TaskItem], color: String, capacity: Capacity?,
-        capacityLabel: String, fitPanel: (() -> AnyView)? = nil, clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
+        capacityLabel: String, fitPanel: (() -> AnyView)? = nil,
+        fill: (room: Int, tasks: [TaskItem]) = (0, []), fillAction: String = "", hoveredFiller: String? = nil,
+        fillSource: @escaping (TaskItem) -> String = { _ in "" }, onFill: @escaping (TaskItem) -> Void = { _ in },
+        clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
         initiallyHovered: Bool, showsCapacityInitially: Bool, onAdd: @escaping (String) -> Void,
         onDrop: @escaping (String, String?) -> Void, onToggleDone: @escaping (TaskItem) -> Void,
         @ViewBuilder card: @escaping (TaskItem) -> Card
@@ -851,6 +878,11 @@ private struct BoardColumnView<Card: View>: View {
         self.capacity = capacity
         self.capacityLabel = capacityLabel
         self.fitPanel = fitPanel
+        self.fill = fill
+        self.fillAction = fillAction
+        self.hoveredFiller = hoveredFiller
+        self.fillSource = fillSource
+        self.onFill = onFill
         self.clock = clock
         self.emptyDetail = emptyDetail
         self.emptyTitle = emptyTitle
@@ -888,6 +920,7 @@ private struct BoardColumnView<Card: View>: View {
                     } else if isHovered {
                         AddButton(help: addPlaceholder) { isAdding = true }
                     }
+                    if !fill.tasks.isEmpty { couldFit }
                     if !done.isEmpty { completed }
                 }
                 .padding(.horizontal, 8)
@@ -926,6 +959,29 @@ private struct BoardColumnView<Card: View>: View {
             }
         }
         .frame(minHeight: 22)
+    }
+
+    /// "1 h 30 min left · could fit", then each task that would, dashed and quieter.
+    private var couldFit: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                CapacityRing(planned: 0, protected: fill.room, color: color, size: 12)
+                Text("\(BoardDuration.text(fill.room)) left · could fit").appText(.xs, .medium).monospacedDigit()
+            }
+            .foregroundStyle(Theme.muted)
+            .padding(.horizontal, 6)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            ForEach(fill.tasks) { task in
+                FillerCard(task: task, source: fillSource(task), action: fillAction, initiallyHovered: hoveredFiller == task.id) { onFill(task) }
+                    .draggable(task.id) {
+                        Text(task.title).appText(.sm).foregroundStyle(Theme.foreground)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .frame(width: 220, alignment: .leading)
+                            .background(Theme.card, in: .rect(cornerRadius: 12))
+                    }
+            }
+        }
     }
 
     /// "✓ Completed · 3", then each finished task as one quiet line.
@@ -1000,6 +1056,65 @@ private struct DoneCard: View {
         .padding(.vertical, 10)
         .background(Theme.card.opacity(0.45), in: .rect(cornerRadius: 12))
         .opacity(task.isPending ? 0.6 : 1)
+    }
+}
+
+/// A task that would fit a day's time left: dashed and quieter than a card, with how long it takes
+/// and where it comes from. Hovered, it offers to plan it for the day; it can be dragged there too.
+private struct FillerCard: View {
+    let task: TaskItem
+    let source: String
+    /// "Plan for Fri".
+    let action: String
+    let onPlan: () -> Void
+    @State private var isHovered: Bool
+
+    init(task: TaskItem, source: String, action: String, initiallyHovered: Bool = false, onPlan: @escaping () -> Void) {
+        self.task = task
+        self.source = source
+        self.action = action
+        self.onPlan = onPlan
+        _isHovered = State(initialValue: initiallyHovered)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(task.title).font(.app(13)).foregroundStyle(Theme.foreground(0.8))
+                .lineLimit(2).truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Icon.clock.image(size: 12)
+                Text("\(BoardDuration.text(task.minutes)) · \(source)").lineLimit(1)
+                Spacer(minLength: 4)
+                if isHovered {
+                    Button(action: onPlan) {
+                        HStack(spacing: 4) {
+                            Icon.add.image(size: 11)
+                            Text(action).appText(.xs, .medium)
+                        }
+                        .foregroundStyle(Theme.background)
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(Theme.foreground, in: .rect(cornerRadius: 6))
+                        .contentShape(.rect(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .appText(.xs)
+            .foregroundStyle(Theme.muted)
+            .monospacedDigit()
+            .frame(minHeight: 22)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isHovered ? Theme.card.opacity(0.7) : .clear, in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+        .contentShape(.rect(cornerRadius: 12))
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: action, onPlan)
     }
 }
 

@@ -69,4 +69,28 @@ final class FitTests: XCTestCase {
         XCTAssertEqual(Fit.Destination.nextWeek.patch(today: "2026-11-18"), TaskPatch(plannedFor: "", plannedWeek: "2026-11-23"))
         XCTAssertEqual(Fit.Destination.thisWeek.patch(today: "2026-11-18"), TaskPatch(plannedFor: "", plannedWeek: "2026-11-16"))
     }
+
+    func testTimeLeftOffersWhatWouldFitThisWeekFirst() throws {
+        // Build on Friday: 2 h of sessions, the release notes' 30 min planned, so 1 h 30 min left.
+        // This week's tasks without a day come first (the week view, then the onboarding review
+        // carried over from last week), then Unplanned; the 2 h ones don't fit.
+        let fill = Fit.fillers(try goal("1"), day: "2026-11-20", today: "2026-11-18", now: now)
+        XCTAssertEqual(fill.room, 90)
+        XCTAssertEqual(fill.tasks.map(\.id), ["t5", "t3", "t4"])
+    }
+
+    func testNoTimeLeftOffersNothing() throws {
+        // Build today is over; tomorrow has no sessions; a day gone by offers nothing either.
+        XCTAssertTrue(Fit.fillers(try goal("1"), day: "2026-11-18", today: "2026-11-18", now: now).tasks.isEmpty)
+        XCTAssertTrue(Fit.fillers(try goal("1"), day: "2026-11-19", today: "2026-11-18", now: now).tasks.isEmpty)
+        XCTAssertTrue(Fit.fillers(try goal("1"), day: "2026-11-17", today: "2026-11-18", now: now).tasks.isEmpty)
+    }
+
+    func testTasksWithADayAlreadyStayWhereTheyAre() throws {
+        // Superfocus tomorrow: 2 h left. Lens (this week) and nothing from next week, which isn't
+        // tomorrow's week; the quick capture prototype is planned for today, so it isn't offered.
+        let fill = Fit.fillers(try goal("6"), day: "2026-11-19", today: "2026-11-18", now: now)
+        XCTAssertEqual(fill.room, 120)
+        XCTAssertEqual(fill.tasks.map(\.id), ["s2"])
+    }
 }
