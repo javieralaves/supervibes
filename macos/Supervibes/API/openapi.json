@@ -292,6 +292,19 @@
           },
           "endsAt": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session",
+              "reserved",
+              "task"
+            ],
+            "description": "Left out: a session. `reserved`: time kept for its own sake. `task`: time for the task `taskId` names (its goal and title win), or, without one, a new task in the goal titled with `title`."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "With `kind: task`, the open task to give this time."
           }
         },
         "required": [
@@ -1954,7 +1967,7 @@
     "/api/v1/blocks": {
       "post": {
         "operationId": "createBlock",
-        "summary": "Protect time for a goal, drawn on the calendar",
+        "summary": "Protect time for a goal, drawn on the calendar: a session, reserved time, or time for a task",
         "security": [
           {
             "bearerAuth": []

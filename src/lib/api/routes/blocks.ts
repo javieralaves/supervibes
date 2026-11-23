@@ -7,14 +7,14 @@ import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { AgendaError, prepareAgenda, suggestFocus } from "@/lib/agenda";
 import { asAgenda, asCalendarBlock, asRecap, BlockAgendaSchema, BlockRecapSchema, CalendarBlockSchema } from "@/lib/api/routes/calendar";
 import { requestRead } from "@/lib/background-read";
-import { blockDescriptionSchema, blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
+import { BLOCK_KINDS, blockDescriptionSchema, blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
 import { createBlock, deleteBlock, getBlock, updateBlock } from "@/lib/blocks";
 import { postBodySchema } from "@/lib/post-schema";
 import { createRecapPost } from "@/lib/posts";
 import { discardRecap, prepareRecap, RecapError } from "@/lib/recap";
 import { postRecapSchema } from "@/lib/recap-schema";
-import { taskDaySchema } from "@/lib/task-schema";
-import { getTask, markTaskDone, planTaskForBlock, updateTask } from "@/lib/tasks";
+import { taskDaySchema, taskMinutesSchema, taskTitleSchema } from "@/lib/task-schema";
+import { createTask, getTask, markTaskDone, planTaskForBlock, updateTask } from "@/lib/tasks";
 
 /*
  * Changing the calendar, as app/(app)/calendar/actions.ts does: protected time drawn on a day,
@@ -37,7 +37,17 @@ const TimesSchema = z.object({ startsAt: z.iso.datetime({ offset: true }), endsA
 const blockTitle = z.string().nullable().optional().openapi({ description: "Left out or null: no title." });
 const DetailsSchema = z.object({ goalId: z.string(), title: blockTitle }).openapi("BlockDetails");
 const NewBlockSchema = z
-  .object({ goalId: z.string(), title: blockTitle, startsAt: z.string(), endsAt: z.string() })
+  .object({
+    goalId: z.string(),
+    title: blockTitle,
+    startsAt: z.string(),
+    endsAt: z.string(),
+    kind: z.enum(BLOCK_KINDS).optional().openapi({
+      description:
+        "Left out: a session. `reserved`: time kept for its own sake. `task`: time for the task `taskId` names (its goal and title win), or, without one, a new task in the goal titled with `title`.",
+    }),
+    taskId: z.string().optional().openapi({ description: "With `kind: task`, the open task to give this time." }),
+  })
   .openapi("NewBlock");
 
 const firstIssue = (error: z.ZodError) => error.issues[0]?.message ?? "Check the details.";
@@ -46,7 +56,7 @@ const createRoute_ = createRoute({
   method: "post",
   path: "/blocks",
   operationId: "createBlock",
-  summary: "Protect time for a goal, drawn on the calendar",
+  summary: "Protect time for a goal, drawn on the calendar: a session, reserved time, or time for a task",
   security: [{ bearerAuth: [] }],
   request: { body: { required: true, content: { "application/json": { schema: NewBlockSchema } } } },
   responses: { 201: { ...blockResponse, description: "Created" }, ...errorResponses, 404: notFound },
@@ -281,9 +291,27 @@ export const blocks = new OpenAPIHono<ApiEnv>()
   .openapi(createRoute_, async (c) => {
     const parsed = newBlockSchema.safeParse(c.req.valid("json"));
     if (!parsed.success) return c.json(apiError("invalid_request", firstIssue(parsed.error)), 400);
-    const { startsAt, endsAt, ...details } = parsed.data;
-    const block = await createBlock(c.var.user.id, { ...details, startsAt: new Date(startsAt), endsAt: new Date(endsAt) });
+    const userId = c.var.user.id;
+    const { startsAt, endsAt, kind, taskId, ...details } = parsed.data;
+    const times = { startsAt: new Date(startsAt), endsAt: new Date(endsAt) };
+    if (kind !== "task") {
+      const block = await createBlock(userId, { ...details, ...times, reserved: kind === "reserved" });
+      if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+      return c.json(asCalendarBlock(block, new Set()), 201);
+    }
+    // Time for a task: the one named, or a new one in the goal, sized to the block when it can be.
+    let task = taskId ? await getTask(userId, taskId) : null;
+    if (taskId && (!task || task.doneAt)) return c.json(apiError("not_found", TASK_GONE), 404);
+    if (!task) {
+      const title = taskTitleSchema.safeParse(details.title ?? "");
+      if (!title.success) return c.json(apiError("invalid_request", firstIssue(title.error)), 400);
+      const minutes = taskMinutesSchema.safeParse(Math.round((times.endsAt.getTime() - times.startsAt.getTime()) / 60_000));
+      task = await createTask(userId, details.goalId, title.data, minutes.success ? { minutes: minutes.data } : {});
+      if (!task) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    }
+    const block = await createBlock(userId, { goalId: task.goalId, title: task.title, taskId: task.id, ...times });
     if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    await planTaskForBlock(userId, block);
     return c.json(asCalendarBlock(block, new Set()), 201);
   })
   .openapi(detailsRoute, async (c) => {

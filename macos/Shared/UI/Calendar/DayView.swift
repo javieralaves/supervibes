@@ -878,7 +878,7 @@ private struct TimelineScroll: View {
 
 /// What the calendar can change, handed down from its model.
 struct CalendarActions {
-    var create: (_ day: Int, _ start: Int, _ end: Int, _ goalId: String, _ title: String?) -> Void
+    var create: (_ day: Int, _ start: Int, _ end: Int, _ goalId: String, _ title: String?, _ kind: NewBlockKind) -> Void
     var saveDetails: (_ blockId: String, _ goalId: String, _ title: String?) -> Void
     /// Make protected time reserved (kept for its own sake) or a session again.
     var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
@@ -901,7 +901,7 @@ extension CalendarActions {
     /// Does nothing: for previews and snapshot tests.
     static var preview: CalendarActions {
         CalendarActions(
-            create: { _, _, _, _, _ in }, saveDetails: { _, _, _ in }, move: { _, _, _, _ in }, moveToTomorrow: { _ in },
+            create: { _, _, _, _, _, _ in }, saveDetails: { _, _, _ in }, move: { _, _, _, _ in }, moveToTomorrow: { _ in },
             toggleDone: { _ in }, remove: { _ in }, place: { _, _, _, _ in }, plan: { _, _ in }, defaultGoalId: { nil },
             openGoal: { _ in }
         )
@@ -1255,23 +1255,40 @@ struct DayTimeline: View {
         }
     }
 
-    /// Below the block, or above it near the end of the day.
+    /// Below the block, or above it near the end of the day. Time just drawn gets the new block
+    /// popover; a block already there, the one that renames it or changes its goal.
     @ViewBuilder private func popover(_ editing: BlockEditing) -> some View {
-        let intention = if case .edit(_, let intention) = editing.mode { intention } else { false }
-        let weekday = CalendarDayMath.midnight(editing.day, from: now)
-            .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
         let top = grid.y(editing.start)
         let bottom = grid.y(editing.end)
         let above = bottom + 8 + BlockPopover.estimatedHeight > grid.height
-        BlockPopover(
-            goals: data.goals,
-            goalId: editing.goalId,
-            title: editing.title ?? "",
-            intention: intention,
-            timeLabel: "\(weekday) · \(clock.formatRange(editing.start, editing.end))",
-            onSave: { goalId, title in save(editing, goalId: goalId, title: title) },
-            onCancel: { self.editing = nil }
-        )
+        Group {
+            switch editing.mode {
+            case .create:
+                NewBlockPopover(
+                    goals: data.goals,
+                    tasks: data.unscheduledTasks(now: now),
+                    goalId: editing.goalId,
+                    timeLabel: data.newBlockLabel(day: editing.day, start: editing.start, end: editing.end, now: now, clock: clock),
+                    onAdd: { goalId, title, kind in
+                        self.editing = nil
+                        actions?.create(editing.day, editing.start, editing.end, goalId, title, kind)
+                    },
+                    onCancel: { self.editing = nil }
+                )
+            case .edit(_, let intention):
+                let weekday = CalendarDayMath.midnight(editing.day, from: now)
+                    .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
+                BlockPopover(
+                    goals: data.goals,
+                    goalId: editing.goalId,
+                    title: editing.title ?? "",
+                    intention: intention,
+                    timeLabel: "\(weekday) · \(clock.formatRange(editing.start, editing.end))",
+                    onSave: { goalId, title in save(editing, goalId: goalId, title: title) },
+                    onCancel: { self.editing = nil }
+                )
+            }
+        }
         .id(editing.key)
         .frame(width: max(min(320, width - DayGrid.gutter - 24), 240))
         .alignmentGuide(.top) { d in above ? d.height - (top - 8) : -(bottom + 8) }
@@ -1282,7 +1299,7 @@ struct DayTimeline: View {
     private func save(_ value: BlockEditing, goalId: String, title: String?) {
         editing = nil
         switch value.mode {
-        case .create: actions?.create(value.day, value.start, value.end, goalId, title)
+        case .create: actions?.create(value.day, value.start, value.end, goalId, title, .session)
         case .edit(let id, _): actions?.saveDetails(id, goalId, title)
         }
     }

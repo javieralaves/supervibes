@@ -122,12 +122,20 @@ export async function createBlock(
     endsAt: Date;
     fromSuggestion?: string | null;
     taskId?: string | null;
+    reserved?: boolean;
   },
 ): Promise<BlockDTO | null> {
   if (!(await ownsGoal(userId, input.goalId))) return null;
   const [block] = await db
     .insert(calendarBlocks)
-    .values({ userId, ...input, fromSuggestion: input.fromSuggestion ?? null, taskId: input.taskId ?? null })
+    .values({
+      userId,
+      ...input,
+      fromSuggestion: input.fromSuggestion ?? null,
+      taskId: input.taskId ?? null,
+      // Only protected time can be reserved: an intention is time for its task.
+      reserved: Boolean(input.reserved) && !input.taskId,
+    })
     .returning(columns);
   return block;
 }

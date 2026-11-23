@@ -125,6 +125,9 @@ enum Fonts {
 /// The Hugeicons the app uses, generated into Icons.xcassets by scripts/mac-icons.mjs.
 enum Icon: String {
     case target = "Target02-1_8"
+    case targetThin = "Target02-1_5"
+    case lock = "SquareLock02-1_5"
+    case checkCircle = "CheckmarkCircle02-1_5"
     case calendar = "Calendar03-1_8"
     case plug = "Plug01-1_8"
     case plan = "TaskDaily01-1_8"

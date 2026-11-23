@@ -514,18 +514,15 @@ struct WeekView: View {
         let left = fitsRight || leftSide < 0 ? right : leftSide
         let top = grid.y(editing.start)
         let bottom = grid.y(editing.end)
-        let above = top + BlockPopover.estimatedHeight > grid.height
-        let weekday = CalendarDayMath.midnight(editing.day, from: now)
-            .formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US")))
-        return BlockPopover(
+        let above = top + NewBlockPopover.estimatedHeight > grid.height
+        return NewBlockPopover(
             goals: data.goals,
+            tasks: data.unscheduledTasks(now: now),
             goalId: editing.goalId,
-            title: "",
-            intention: false,
-            timeLabel: "\(weekday) · \(clock.formatRange(editing.start, editing.end))",
-            onSave: { goalId, title in
+            timeLabel: data.newBlockLabel(day: editing.day, start: editing.start, end: editing.end, now: now, clock: clock),
+            onAdd: { goalId, title, kind in
                 creating = nil
-                actions?.create(editing.day, editing.start, editing.end, goalId, title)
+                actions?.create(editing.day, editing.start, editing.end, goalId, title, kind)
             },
             onCancel: { creating = nil }
         )

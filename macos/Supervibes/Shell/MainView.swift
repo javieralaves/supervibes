@@ -426,7 +426,7 @@ private struct CalendarScreen: View {
                     firstRange: model.window.firstRange,
                     onScroll: model.scroll,
                     actions: CalendarActions(
-                        create: model.create(day:start:end:goalId:title:),
+                        create: model.create(day:start:end:goalId:title:kind:),
                         saveDetails: model.saveDetails(_:goalId:title:),
                         setReserved: model.setReserved,
                         move: model.move(_:edge:delta:days:),
@@ -556,7 +556,7 @@ private struct PlanScreen: View {
                         giveBlock: { model.giveBlock($0, to: $1) },
                         setReserved: model.setReserved,
                         calendar: CalendarActions(
-                            create: model.create(day:start:end:goalId:title:),
+                            create: model.create(day:start:end:goalId:title:kind:),
                             saveDetails: model.saveDetails(_:goalId:title:),
                             setReserved: model.setReserved,
                             move: model.move(_:edge:delta:days:),

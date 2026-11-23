@@ -129,24 +129,49 @@ final class CalendarModel {
     private static let lastGoalKey = "sv-calendar-last-goal"
 
     /// Protect time drawn on `day` (days from today), from `start` to `end` minutes after midnight.
-    func create(day: Int, start: Int, end: Int, goalId: String, title: String?) {
-        UserDefaults.standard.set(goalId, forKey: Self.lastGoalKey)
+    /// Draw a block: a session, reserved time, or time for a task (an open one, or a new one titled
+    /// with the block's title).
+    func create(day: Int, start: Int, end: Int, goalId: String, title: String?, kind: NewBlockKind = .session) {
         let midnight = CalendarDayMath.midnight(day, from: now)
-        let pending = CalendarBlock(
-            id: "pending-\(UUID().uuidString)",
-            goalId: goalId,
-            title: title,
-            startsAt: midnight.addingTimeInterval(Double(start) * 60),
-            endsAt: midnight.addingTimeInterval(Double(end) * 60),
-            isPending: true
-        )
+        let startsAt = midnight.addingTimeInterval(Double(start) * 60)
+        let endsAt = midnight.addingTimeInterval(Double(end) * 60)
+        var pending = CalendarBlock(id: "pending-\(UUID().uuidString)", goalId: goalId, title: title, startsAt: startsAt, endsAt: endsAt, isPending: true)
+        let apiKind: Components.Schemas.NewBlock.KindPayload
+        var taskId: String?
+        switch kind {
+        case .session:
+            apiKind = .session
+        case .reserved:
+            apiKind = .reserved
+            pending.reserved = true
+        case .task(let id):
+            apiKind = .task
+            taskId = id
+            // An open task brings its own goal and title.
+            if let id, let task = data.tasks.first(where: { $0.id == id }) {
+                pending.goalId = task.goalId
+                pending.title = task.title
+            } else if id != nil {
+                return
+            }
+            pending.taskId = id ?? "pending-task-\(UUID().uuidString)"
+        }
+        UserDefaults.standard.set(pending.goalId, forKey: Self.lastGoalKey)
         data.blocks.append(pending)
-        write(undo: { [weak self] in self?.data.blocks.removeAll { $0.id == pending.id } }) { client in
-            let body = Components.Schemas.NewBlock(goalId: goalId, title: title, startsAt: Self.iso(pending.startsAt), endsAt: Self.iso(pending.endsAt))
+        let pendingId = pending.id
+        let isNewTask = kind == .task(id: nil)
+        write(undo: { [weak self] in self?.data.blocks.removeAll { $0.id == pendingId } }) { client in
+            let body = Components.Schemas.NewBlock(
+                goalId: goalId, title: title, startsAt: Self.iso(startsAt), endsAt: Self.iso(endsAt), kind: apiKind, taskId: taskId
+            )
             switch try await client.createBlock(body: .json(body)) {
             case .created(let created):
                 let block = CalendarBlock(api: try created.body.json)
-                return .apply { $0.replace(pending.id, with: block) }
+                return .apply { model in
+                    model.replace(pendingId, with: block)
+                    // A new task joins the open tasks on the next load.
+                    if isNewTask { Task { await model.refresh() } }
+                }
             case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that block.")
             case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore.")
             case .unauthorized: return .signedOut

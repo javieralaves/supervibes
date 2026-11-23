@@ -11,7 +11,7 @@ import { DEFAULT_GOAL_ICON, GOAL_ICON_GROUPS } from "../src/lib/goal-icons.ts";
 
 // Icon name → stroke widths needed (the web passes strokeWidth per use; 1.5 is Hugeicons' default).
 const ICONS = {
-  Target02Icon: [1.8],
+  Target02Icon: [1.8, 1.5],
   Calendar03Icon: [1.8],
   Plug01Icon: [1.8],
   Settings02Icon: [1.5, 1.8],
@@ -43,6 +43,8 @@ const ICONS = {
   CircleIcon: [1.5],
   TaskDaily01Icon: [1.8],
   PreferenceHorizontalIcon: [1.5],
+  SquareLock02Icon: [1.5],
+  CheckmarkCircle02Icon: [1.5],
 };
 
 // Connected apps' marks (src/components/provider-mark.tsx): filled paths, drawn white on a tile.

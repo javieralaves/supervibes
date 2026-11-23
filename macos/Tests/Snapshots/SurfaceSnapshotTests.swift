@@ -461,6 +461,22 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// Time just drawn, as a task: typing suggests open tasks, those starting with it and in the
+    /// chosen goal first.
+    func testNewBlockTaskSuggestions() {
+        let data = Fixtures.calendar
+        assertAppearances(
+            NewBlockPopover(
+                goals: data.goals, tasks: data.tasks, goalId: data.goals[0].id, kind: .task, title: "re",
+                timeLabel: "Today · 12:00–1:00 PM · 1h", onAdd: { _, _, _ in }, onCancel: {}
+            )
+            .frame(width: 320)
+            .padding(24)
+            .background(Theme.background),
+            width: 368
+        )
+    }
+
     func testDayViewWithTasks() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, showsTasks: true, onToggleTasks: {}).background(Theme.background),

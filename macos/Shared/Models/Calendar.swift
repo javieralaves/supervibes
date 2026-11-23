@@ -53,6 +53,15 @@ enum BlockEdge: Sendable {
     case move, start, end
 }
 
+/// What drawing a block on the calendar makes: a session (time to work on the goal), reserved time
+/// (kept for its own sake), or time for a task, an open one or a new one titled with the block.
+enum NewBlockKind: Hashable, Sendable {
+    case session
+    case reserved
+    /// nil: a new task in the block's goal.
+    case task(id: String?)
+}
+
 /// A block's prepared plan: a paragraph, the tasks it draws on (a snapshot), and when it was made.
 /// An aim suggested for a session that doesn't say what it's for yet, and why it's the one.
 /// Only a suggestion: it becomes the session's aim if the person takes it.

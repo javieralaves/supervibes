@@ -37,7 +37,19 @@ export const blockDescriptionSchema = z
   .max(MAX_BLOCK_DESCRIPTION, `Keep it under ${MAX_BLOCK_DESCRIPTION} characters.`)
   .transform((d) => d || null);
 
-export const newBlockSchema = z.intersection(blockDetailsSchema, timesSchema);
+/**
+ * What drawing a block makes: a session (the default), reserved time, or a task's time. A task is
+ * the one `taskId` names, or, without one, a new task in the goal titled with the block's title.
+ */
+export const BLOCK_KINDS = ["session", "reserved", "task"] as const;
+export type BlockKind = (typeof BLOCK_KINDS)[number];
+
+const newBlockKindSchema = z.object({
+  kind: z.enum(BLOCK_KINDS).nullish().transform((k) => k ?? "session"),
+  taskId: z.uuid().nullish().transform((t) => t ?? null),
+});
+
+export const newBlockSchema = z.intersection(z.intersection(blockDetailsSchema, timesSchema), newBlockKindSchema);
 export const blockTimesSchema = timesSchema;
 
 export type BlockDetails = z.infer<typeof blockDetailsSchema>;
