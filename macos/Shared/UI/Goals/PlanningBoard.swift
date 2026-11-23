@@ -142,6 +142,8 @@ struct PlanningBoard: View {
                 .background(Color.clear.contentShape(.rect).onTapGesture(perform: closeTask))
             }
             .scrollContentBackground(.hidden)
+            // As on the goal page: soft, or macOS 26 draws a bar under the hidden title bar.
+            .scrollEdgeEffectStyle(.soft, for: .top)
         }
         .environment(\.shortHours, true)
         .onAppear {
