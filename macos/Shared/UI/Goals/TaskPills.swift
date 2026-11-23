@@ -49,17 +49,22 @@ enum TaskDayKind {
     case plan
     /// The day it has to be done by.
     case due
+    /// The day a block is on: it always has one, so it can't be cleared.
+    case blockDay
 
-    var icon: Icon { self == .plan ? .calendarSmall : .flag }
-    var empty: String { self == .plan ? "Plan" : "Due" }
-    var menuTitle: String { self == .plan ? "Plan for" : "Due on" }
-    var clearTitle: String { self == .plan ? "Clear plan" : "Clear due date" }
+    var icon: Icon { self == .due ? .flag : .calendarSmall }
+    var empty: String { switch self { case .plan: "Plan"; case .due: "Due"; case .blockDay: "Day" } }
+    var menuTitle: String { switch self { case .plan: "Plan for"; case .due: "Due on"; case .blockDay: "Move to" } }
+    var clearTitle: String { switch self { case .plan: "Clear plan"; case .due: "Clear due date"; case .blockDay: "" } }
+    var isClearable: Bool { self != .blockDay }
 
     /// What the pill says for `day`, and in what colour.
     func describe(_ day: String, today: String) -> (text: String, tone: Color) {
         let days = CalendarDay.daysUntil(day, today: today)
         let label = CalendarDay.relativeLabel(day, today: today)
         switch self {
+        case .blockDay:
+            return (label, Theme.foreground)
         case .plan:
             // A planned day that's gone by without the task getting done.
             return (label, days < 0 ? Theme.amber : Theme.muted)
@@ -198,7 +203,7 @@ struct DayMenu: View {
                     overlays?.replaceMenu { AnotherDayMenu(kind: kind, value: value, today: today, onChange: onChange) }
                 }
             }
-            if value != nil || weekLabel != nil {
+            if kind.isClearable, value != nil || weekLabel != nil {
                 DayRow(title: kind.clearTitle, isDestructive: true) {
                     overlays?.dismiss()
                     onChange(nil)

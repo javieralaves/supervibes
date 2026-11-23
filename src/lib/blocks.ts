@@ -148,7 +148,9 @@ export async function getBlock(userId: string, blockId: string): Promise<BlockDT
 export async function updateBlock(
   userId: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "goalId" | "title" | "description" | "startsAt" | "endsAt" | "reserved" | "agenda" | "recap">>,
+  patch: Partial<
+    Pick<BlockDTO, "goalId" | "title" | "description" | "startsAt" | "endsAt" | "reserved" | "agenda" | "recap" | "taskId" | "fromSuggestion">
+  >,
 ): Promise<BlockDTO | null> {
   if (patch.goalId && !(await ownsGoal(userId, patch.goalId))) return null;
   const [block] = await db.update(calendarBlocks).set(patch).where(mine(userId, blockId)).returning(columns);

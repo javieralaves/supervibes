@@ -309,35 +309,26 @@ struct DayView: View {
         let range = clock.formatRange(start, end)
         let relative = Self.dayLabel(day)
         let en = Locale(identifier: "en_US")
-        let label = "\(relative ?? block.startsAt.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(en))) · \(range)"
         let date = block.startsAt.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(en))
         let when = "\(date)\(relative.map { " (\($0.lowercased()))" } ?? ""), \(range)"
         return BlockPanel(
             block: block,
             goal: data.goal(block.goalId),
-            timeLabel: label,
+            goals: data.goals,
+            description: data.description(of: block),
+            day: day,
+            start: start,
+            end: end,
+            clock: clock,
             when: when,
             openTaskIds: Set(data.tasks.map(\.id)),
             ended: block.endsAt <= now,
             now: now,
             actions: panel,
-            onEdit: { edit(block) },
+            calendar: actions,
             onClose: { selectedId.wrappedValue = nil }
         )
         .id(block.id)
-    }
-
-    /// Edit a block in the popover on its day's timeline, stepping to that day first.
-    private func edit(_ block: CalendarBlock) {
-        guard let segment = DaySegment.of(block, today: now).first(where: { $0.day == offset }) ?? DaySegment.of(block, today: now).first else { return }
-        // Editing happens on the day's timeline, so from the week it steps into that day.
-        if isMultiDay { weekCreating = nil; onSetSpan?(.day) }
-        if segment.day != offset { onStep(segment.day - offset) }
-        editing = BlockEditing(
-            mode: .edit(blockId: block.id, intention: block.isIntention),
-            day: segment.day, start: segment.start, end: segment.end,
-            goalId: block.goalId, title: block.title
-        )
     }
 
     /// "Today", "Tomorrow" or "Yesterday"; nil further away.
@@ -882,6 +873,8 @@ struct CalendarActions {
     var saveDetails: (_ blockId: String, _ goalId: String, _ title: String?) -> Void
     /// Make protected time reserved (kept for its own sake) or a session again.
     var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
+    /// Make a block a session, reserved time or a task's time.
+    var setKind: (_ blockId: String, _ kind: BlockKind) -> Void = { _, _ in }
     /// By `delta` minutes and, moving it whole, `days` days.
     var move: (_ blockId: String, _ edge: BlockEdge, _ delta: Int, _ days: Int) -> Void
     var moveToTomorrow: (_ blockId: String) -> Void
@@ -1314,14 +1307,17 @@ struct BlockMenu: View {
     let day: Int
     let actions: CalendarActions
     var editTitle = "Edit"
-    let onEdit: () -> Void
+    /// Left out where the block is already open to edit (its panel).
+    var onEdit: (() -> Void)?
     var onGive: (() -> Void)?
 
     @Environment(\.overlays) private var overlays
 
     var body: some View {
         MenuPanel(width: 208) {
-            MenuItem(icon: .edit, title: editTitle) { run(onEdit) }
+            if let onEdit {
+                MenuItem(icon: .edit, title: editTitle) { run(onEdit) }
+            }
             if block.taskId != nil {
                 MenuItem(icon: block.taskDone ? .reopen : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
                     run { actions.toggleDone(block.id) }

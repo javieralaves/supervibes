@@ -9,25 +9,7 @@ import SwiftUI
  */
 
 struct NewBlockPopover: View {
-    enum Kind: CaseIterable, Hashable {
-        case session, reserved, task
-
-        var icon: Icon {
-            switch self {
-            case .session: .targetThin
-            case .reserved: .lock
-            case .task: .checkCircle
-            }
-        }
-
-        var label: String {
-            switch self {
-            case .session: "Session"
-            case .reserved: "Reserved time"
-            case .task: "Task"
-            }
-        }
-    }
+    typealias Kind = BlockKind
 
     let goals: [CalendarGoal]
     /// Open tasks that could take this time: those without a time already.
@@ -305,8 +287,8 @@ private struct KindSwitch: View {
             .buttonStyle(.plain)
             .focusEffectDisabled()
             .onHover { isHovered = $0 }
-            .help(kind.label)
-            .accessibilityLabel(kind.label)
+            .help(kind.longLabel)
+            .accessibilityLabel(kind.longLabel)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
     }
@@ -439,6 +421,19 @@ private struct GoalRow: View {
         .onHover { isHovered = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+}
+
+extension BlockKind {
+    var icon: Icon {
+        switch self {
+        case .session: .targetThin
+        case .reserved: .lock
+        case .task: .checkCircle
+        }
+    }
+
+    /// "Reserved time" rather than "Reserved", where it stands alone.
+    var longLabel: String { self == .reserved ? "Reserved time" : label }
 }
 
 extension CalendarData {

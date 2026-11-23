@@ -184,6 +184,10 @@ final class CalendarModel {
     func saveDetails(_ blockId: String, goalId: String, title: String?) {
         UserDefaults.standard.set(goalId, forKey: Self.lastGoalKey)
         guard let before = block(blockId) else { return }
+        // A task's time is named by the task: renaming one renames the other.
+        if let taskId = before.taskId, let title, title != before.title, data.task(taskId) != nil {
+            editTask(taskId, TaskPatch(title: title))
+        }
         update(blockId) { block in
             block.title = block.isIntention ? (title ?? block.title) : title
             if block.goalId != goalId {
@@ -223,6 +227,56 @@ final class CalendarModel {
             case .notFound: return .gone
             case .unauthorized: return .signedOut
             case .undocumented(let status, _): return .failed("Couldn’t save that block (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Make a block a session, reserved time or a task's time. Protected time becomes a task's time
+    /// by making a task from its title and description; a task's time lets go of its task, which
+    /// stays open.
+    func setKind(_ blockId: String, _ kind: BlockKind) {
+        guard let before = block(blockId), before.kind != kind else { return }
+        if kind == .task, (before.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            error = "Give this block a title first: it becomes the task."
+            return
+        }
+        update(blockId) { block in
+            switch kind {
+            case .task:
+                block.taskId = "pending-task-\(UUID().uuidString)"
+                block.reserved = false
+                block.description = nil
+            case .session, .reserved:
+                block.taskId = nil
+                block.fromSuggestion = nil
+                block.taskDone = false
+                block.reserved = kind == .reserved
+            }
+            if kind == .reserved {
+                block.hasAgenda = false
+                block.agenda = nil
+                block.hasRecapDraft = false
+                block.recap = nil
+            }
+        }
+        let apiKind: Components.Schemas.BlockKind.KindPayload = switch kind {
+        case .session: .session
+        case .reserved: .reserved
+        case .task: .task
+        }
+        write(undo: { [weak self] in self?.replace(blockId, with: before) }) { client in
+            switch try await client.setBlockKind(path: .init(blockId: blockId), body: .json(.init(kind: apiKind))) {
+            case .ok(let ok):
+                let block = CalendarBlock(api: try ok.body.json)
+                return .apply { model in
+                    model.replace(blockId, with: block)
+                    // A new task joins the open tasks on the next load.
+                    if kind == .task { Task { await model.refresh() } }
+                }
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t change that block.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t change that block (the server answered \(status)).")
             }
         }
     }
@@ -513,7 +567,24 @@ final class CalendarModel {
     /// Save what the person wants out of a session. Returns an error to show, or nil.
     func setDescription(_ blockId: String, _ text: String) async -> String? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let before = block(blockId), value != (before.description ?? "") else { return nil }
+        guard let before = block(blockId), value != (data.description(of: before) ?? "") else { return nil }
+        // A task's time is described by its task: the server saves it there.
+        if let taskId = before.taskId {
+            guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return "That task isn’t open anymore." }
+            let task = data.tasks[index]
+            data.tasks[index].description = value.isEmpty ? nil : value
+            let error = await call { client in
+                switch try await client.setBlockDescription(path: .init(blockId: blockId), body: .json(.init(description: value))) {
+                case .noContent: nil
+                case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t save that."
+                case .notFound(let gone): (try? gone.body.json.error.message) ?? "That task doesn’t exist anymore."
+                case .unauthorized: Self.signedOut
+                case .undocumented(let status, _): "Couldn’t save that (the server answered \(status))."
+                }
+            }
+            if error != nil { replaceTask(taskId, with: task) }
+            return error
+        }
         update(blockId) { $0.description = value.isEmpty ? nil : value }
         let error = await call { client in
             switch try await client.setBlockDescription(path: .init(blockId: blockId), body: .json(.init(description: value))) {
@@ -724,7 +795,7 @@ extension CalendarData {
             tasks: body.tasks.map {
                 CalendarTask(
                     id: $0.id, goalId: $0.goalId, title: $0.title, minutes: $0.minutes,
-                    plannedFor: $0.plannedFor, plannedWeek: $0.plannedWeek, dueOn: $0.dueOn
+                    plannedFor: $0.plannedFor, plannedWeek: $0.plannedWeek, dueOn: $0.dueOn, description: $0.description
                 )
             },
             sleepStart: body.settings.sleepStart,

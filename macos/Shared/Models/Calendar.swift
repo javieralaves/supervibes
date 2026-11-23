@@ -39,6 +39,9 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     /// Time to work in: an intention, or protected time that isn't reserved.
     var isSession: Bool { !reserved }
 
+    /// A session, reserved time, or a task's time.
+    var kind: BlockKind { isIntention ? .task : reserved ? .reserved : .session }
+
     /// How the block names its kind: "Intention" (or "Done"), "Session" or "Reserved".
     var kindLabel: String {
         isIntention ? (taskDone ? "Done" : "Intention") : reserved ? "Reserved" : "Session"
@@ -51,6 +54,20 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
 /// What a drag on a block changes: the whole block, or its top or bottom edge.
 enum BlockEdge: Sendable {
     case move, start, end
+}
+
+/// What a block is: a session (time to work on the goal), reserved time (kept for its own sake), or a
+/// task's time.
+enum BlockKind: CaseIterable, Hashable, Sendable {
+    case session, reserved, task
+
+    var label: String {
+        switch self {
+        case .session: "Session"
+        case .reserved: "Reserved"
+        case .task: "Task"
+        }
+    }
 }
 
 /// What drawing a block on the calendar makes: a session (time to work on the goal), reserved time
@@ -134,6 +151,8 @@ struct CalendarTask: Identifiable, Hashable, Sendable {
     /// The Monday of the week they mean to do it.
     var plannedWeek: String?
     var dueOn: String?
+    /// What the task is about, in the person's words. It describes the task's time on the calendar too.
+    var description: String? = nil
     var isPending = false
 }
 
@@ -153,6 +172,13 @@ struct CalendarData: Hashable, Sendable {
     }
 
     func goal(_ id: String) -> CalendarGoal? { goals.first { $0.id == id } }
+    func task(_ id: String) -> CalendarTask? { tasks.first { $0.id == id } }
+
+    /// What describes a block: its task's description for a task's time, else its own.
+    func description(of block: CalendarBlock) -> String? {
+        if let taskId = block.taskId { return task(taskId)?.description }
+        return block.description
+    }
 }
 
 // MARK: - A day

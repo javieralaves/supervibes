@@ -382,6 +382,22 @@
           "reserved"
         ]
       },
+      "BlockKind": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session",
+              "reserved",
+              "task"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
       "BlockDescription": {
         "type": "object",
         "properties": {
@@ -591,6 +607,10 @@
           "title": {
             "type": "string"
           },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
           "minutes": {
             "type": "integer"
           },
@@ -615,6 +635,7 @@
           "id",
           "goalId",
           "title",
+          "description",
           "minutes",
           "plannedFor",
           "plannedWeek",
@@ -2483,10 +2504,86 @@
         }
       }
     },
+    "/api/v1/blocks/{blockId}/kind": {
+      "put": {
+        "operationId": "setBlockKind",
+        "summary": "Make a block a session, reserved time or a task's time",
+        "description": "A session or reserved time becomes a task's time by making a new task in its goal from its title and description. A task's time becomes protected time by letting go of the task, which stays open; the block keeps its title. Reserving clears a session's agenda and draft recap.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockKind"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/blocks/{blockId}/description": {
       "put": {
         "operationId": "setBlockDescription",
-        "summary": "Say what you want out of a session of protected time; empty clears it",
+        "summary": "Describe a block; empty clears it",
+        "description": "A block that schedules a task is described by its task: this sets the task's description.",
         "security": [
           {
             "bearerAuth": []

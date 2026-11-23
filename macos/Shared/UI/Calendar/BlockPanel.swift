@@ -1,16 +1,16 @@
 import SwiftUI
 
 /*
- * The block you clicked, beside the calendar on the right, as block-panel.tsx and
- * recap-section.tsx. Protected time is a session (time to work on the goal) or reserved (kept for
- * its own sake: lunch, family, an event); a switch under its time changes which, and reserved time
- * shows none of what follows. A session can say what the person wants out of it and get an agenda
- * steered by that, with the tasks it draws on below. An intention's task is its aim, so it can be
- * planned too, and checked off. Aim and agenda are optional and offered quietly: a
- * block can just be time. With nothing saying what it's for, the offer is to suggest a focus,
- * which becomes the aim if taken; once a title or aim says what it's for, it's to plan the session. An intention shows the task it schedules.
- * Once a block has ended it can be recapped; then it reads as a record: the aim, the posted recap,
- * and the agenda folded away.
+ * The block you clicked, beside the calendar on the right: a session (time to work on the goal),
+ * reserved time (kept for its own sake: lunch, family, an event), or a task's time. Every kind reads
+ * the same way: its goal, its title, a description, and rows for its goal, day, time and type, each
+ * opening a menu to change it. A task's time is described by the task itself, and its time can be
+ * cleared, leaving the task planned for the day.
+ *
+ * The description offers help with Tab while it's empty: a session that doesn't say what it's for
+ * gets a suggested focus (Return takes it, Tab asks for another, Esc sets it aside); one that does
+ * gets an agenda, with the tasks it draws on. Once a block has ended it can be recapped; then it
+ * reads as a record: the description, the posted recap, and the agenda folded away.
  */
 
 /// What the panel can do, each returning an error to show, or nil.
@@ -30,8 +30,15 @@ struct BlockPanelActions {
 struct BlockPanel: View {
     let block: CalendarBlock
     let goal: CalendarGoal?
-    /// Under the title, e.g. "Today · 9:00–11:00 AM".
-    let timeLabel: String
+    /// Goals it can move to.
+    var goals: [CalendarGoal] = []
+    /// Its own description, or its task's for a task's time.
+    let description: String?
+    /// Its day, in days from today, and its time on that day in minutes from midnight.
+    let day: Int
+    let start: Int
+    let end: Int
+    var clock: Clock = .twelveHour
     /// How the block reads in this time zone, for the agenda.
     let when: String
     /// Open tasks across goals; a related task that isn't open anymore shows as done.
@@ -40,55 +47,121 @@ struct BlockPanel: View {
     let ended: Bool
     let now: Date
     let actions: BlockPanelActions?
-    var onEdit: () -> Void = {}
+    /// The calendar's own changes: rename, goal, day, time, type, and the ⋯ menu.
+    var calendar: CalendarActions?
     var onClose: () -> Void = {}
 
-    private var title: String { block.title ?? goal?.title ?? "Protected time" }
+    @State private var preparing = false
+    @State private var agendaError: String?
+    /// A focus suggested for a session that doesn't say what it's for, until it's taken or set aside.
+    @State private var suggestion: FocusSuggestion?
+    @State private var suggesting = false
+    /// Aims suggested here and passed over, so the next suggestion differs.
+    @State private var passed: [String] = []
+    @State private var moreAnchor = CGRect.zero
+    @Environment(\.overlays) private var overlays
+
+    init(block: CalendarBlock, goal: CalendarGoal?, goals: [CalendarGoal] = [], description: String?, day: Int, start: Int, end: Int,
+         clock: Clock = .twelveHour, when: String, openTaskIds: Set<String>, ended: Bool, now: Date,
+         actions: BlockPanelActions?, calendar: CalendarActions? = nil, suggestion: FocusSuggestion? = nil, onClose: @escaping () -> Void = {}) {
+        self.block = block
+        self.goal = goal
+        self.goals = goals
+        self.description = description
+        self.day = day
+        self.start = start
+        self.end = end
+        self.clock = clock
+        self.when = when
+        self.openTaskIds = openTaskIds
+        self.ended = ended
+        self.now = now
+        self.actions = actions
+        self.calendar = calendar
+        self.onClose = onClose
+        _suggestion = State(initialValue: suggestion)
+    }
+
     private var recapped: Bool { block.recapPost != nil }
-    private var kind: String { block.kindLabel + (recapped ? " · Recapped" : "") }
+    private var hasDescription: Bool { !(description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Nothing says yet what the session is for, so the useful help is picking a focus, not planning one.
+    private var needsFocus: Bool { !block.isIntention && block.title == nil && !hasDescription }
+    /// A task that's done (or gone) isn't open to describe here anymore.
+    private var describable: Bool { !recapped && (block.taskId.map(openTaskIds.contains) ?? true) }
+
+    /// What Tab does in an empty description: suggest a focus, plan the session, or nothing.
+    private var tab: DescriptionField.Tab {
+        guard actions != nil, !ended, block.isSession, !block.isPending, block.agenda == nil, !preparing else { return .none }
+        return needsFocus ? .suggest : .plan
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     if let goal {
-                        GoalBadge(icon: goal.icon, color: goal.color, size: .xs).help(goal.title)
+                        GoalBadge(icon: goal.icon, color: goal.color, size: .field).help(goal.title)
                     }
-                    Text(kind).font(.app(13, .medium)).foregroundStyle(Theme.muted).lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    PanelIconButton(icon: .edit, label: "Edit block", action: onEdit)
+                    Spacer(minLength: 0)
+                    if calendar != nil, !block.isPending {
+                        PanelIconButton(icon: .more, label: "More", action: showMore)
+                            .modifier(AnchorReader(frame: $moreAnchor))
+                    }
                     PanelIconButton(icon: .close, label: "Close", action: onClose)
                 }
 
-                Text(title).font(.app(17, .semibold)).tracking(-0.17).foregroundStyle(Theme.foreground)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 12)
-                Text(timeLabel).appText(.sm).monospacedDigit().foregroundStyle(Theme.muted).padding(.top, 4)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if block.taskId != nil {
+                        DoneCircle(done: block.taskDone, color: goal?.color ?? "slate") { actions?.toggleDone(block.id) }
+                            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+                    }
+                    TitleField(block: block, placeholder: goal?.title ?? "Add a title", isEditable: calendar != nil && !block.isPending) { title in
+                        calendar?.saveDetails(block.id, block.goalId, title)
+                    }
+                }
+                .padding(.top, 16)
 
-                if !block.isIntention {
-                    ProtectedKind(block: block, actions: actions).padding(.top, 16)
+                DescriptionField(
+                    blockId: block.id,
+                    text: description,
+                    isEditable: describable && actions != nil && !block.isPending,
+                    tab: tab,
+                    suggesting: suggesting,
+                    suggestion: suggestion,
+                    onSave: { text in await actions?.setDescription(block.id, text) },
+                    onTab: { tab == .suggest ? suggest() : prepare() },
+                    onTakeSuggestion: adopt,
+                    onDropSuggestion: dropSuggestion
+                )
+                .padding(.top, 4)
+
+                // Once it says what it's for, planning is a quiet link: Tab only offers it while empty.
+                if tab == .plan, hasDescription {
+                    QuietButton(icon: .checklist, title: "Plan session", action: prepare)
+                        .help("A short plan for getting what this session is for, from the goal’s tasks, notes and latest read")
+                        .padding(.top, 4)
                 }
 
-                if block.isSession, !block.isIntention, !recapped || block.description != nil {
-                    SessionAim(block: block, readOnly: recapped, actions: actions)
-                        .padding(.top, block.description == nil ? 16 : 24)
+                if let agendaError {
+                    Text(agendaError).appText(.sm).foregroundStyle(Theme.danger).padding(.top, 8)
                 }
+
+                PropertyRows(
+                    block: block, goal: goal, goals: goals, day: day, start: start, end: end, clock: clock, now: now,
+                    calendar: block.isPending ? nil : calendar
+                )
+                .padding(.top, 16)
 
                 // Reserved time has no recap to write; one posted while it was a session still shows.
                 if ended, block.isSession || recapped {
                     RecapSection(block: block, actions: actions).padding(.top, 24)
                 }
 
-                // An intention's task is its aim, so it can be planned like protected time with one.
                 if block.isSession {
-                    AgendaSection(block: block, color: goal?.color ?? "slate", when: when, ended: ended, now: now, openTaskIds: openTaskIds, actions: actions)
-                }
-
-                if block.isIntention, block.taskId != nil {
-                    OutlineButton(icon: block.taskDone ? .refresh : .tick, title: block.taskDone ? "Reopen task" : "Mark done") {
-                        actions?.toggleDone(block.id)
-                    }
-                    .padding(.top, 24)
+                    AgendaSection(
+                        block: block, color: goal?.color ?? "slate", ended: ended, now: now, openTaskIds: openTaskIds,
+                        preparing: preparing, actions: actions, onPrepare: prepare
+                    )
                 }
             }
             .padding(.horizontal, 16)
@@ -100,152 +173,577 @@ struct BlockPanel: View {
         .clipShape(.rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(kind): \(title)")
+        .accessibilityLabel("\(block.kindLabel): \(block.title ?? goal?.title ?? "Protected time")")
     }
-}
 
-// MARK: - Session or reserved
+    private func showMore() {
+        guard let calendar, let overlays else { return }
+        overlays.showMenu(anchor: moreAnchor, owner: block.id) {
+            BlockMenu(block: block, day: day, actions: calendar)
+        }
+    }
 
-/// Whether protected time is a session or reserved, as a switch, with a line on what that means.
-private struct ProtectedKind: View {
-    let block: CalendarBlock
-    let actions: BlockPanelActions?
+    private func prepare() {
+        guard let actions, !preparing else { return }
+        agendaError = nil
+        preparing = true
+        let blockId = block.id
+        Task {
+            agendaError = await actions.prepareAgenda(blockId, when)
+            preparing = false
+        }
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let actions {
-                ToggleGroup(
-                    selection: Binding(get: { block.reserved }, set: { actions.setReserved(block.id, $0) }),
-                    options: [.init(value: false, label: "Session"), .init(value: true, label: "Reserved")]
-                )
-                .accessibilityLabel("Kind of time")
+    private func suggest() {
+        guard let actions, !suggesting else { return }
+        agendaError = nil
+        if let suggestion { passed.append(suggestion.aim) }
+        suggesting = true
+        let blockId = block.id, instead = passed
+        Task {
+            switch await actions.suggestFocus(blockId, when, instead) {
+            case .suggested(let next): suggestion = next
+            case .failed(let message): agendaError = message
             }
-            Text(block.reserved
-                ? "Kept for itself. Nothing gets planned into it."
-                : "Time to work on this goal. Tasks you plan for the day go here.")
-                .appText(.sm).foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            suggesting = false
+        }
+    }
+
+    private func dropSuggestion() {
+        if let suggestion { passed.append(suggestion.aim) }
+        suggestion = nil
+    }
+
+    /// Takes the suggestion as the description; from there Tab, or the link, plans the session.
+    private func adopt() {
+        guard let actions, let taken = suggestion else { return }
+        suggestion = nil
+        let blockId = block.id
+        Task {
+            if let message = await actions.setDescription(blockId, taken.aim) {
+                agendaError = message
+                suggestion = taken
+            } else {
+                passed = []
+            }
         }
     }
 }
 
-// MARK: - Aim
+// MARK: - Title
 
-/// What the person wants out of a session, in their own words. Saved when the field loses focus;
-/// the agenda is steered by it and the recap judges the session against it. Optional, so until
-/// there is one it's a single quiet line, not a labelled field asking to be filled in.
-private struct SessionAim: View {
+/// The block's name, edited in place and saved when the field lets go. An untitled block shows its
+/// goal's title, faded; a task's time keeps its task's title when emptied.
+private struct TitleField: View {
     let block: CalendarBlock
-    /// Once the session is recapped, it's kept for reference.
-    let readOnly: Bool
-    let actions: BlockPanelActions?
+    let placeholder: String
+    let isEditable: Bool
+    let onSave: (String?) -> Void
+
+    @State private var draft: String
+    @FocusState private var isFocused: Bool
+    @State private var isHovered = false
+
+    /// MAX_BLOCK_TITLE
+    private static let maxTitle = 120
+
+    init(block: CalendarBlock, placeholder: String, isEditable: Bool, onSave: @escaping (String?) -> Void) {
+        self.block = block
+        self.placeholder = placeholder
+        self.isEditable = isEditable
+        self.onSave = onSave
+        _draft = State(initialValue: block.title ?? "")
+    }
+
+    var body: some View {
+        TextField("", text: $draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.app(17, .semibold))
+            .tracking(-0.17)
+            .foregroundStyle(Theme.foreground)
+            .focused($isFocused)
+            .disabled(!isEditable)
+            .placeholder(placeholder, when: draft.isEmpty, font: .app(17, .semibold))
+            .onKeyPress(.return, phases: .down) { _ in
+                isFocused = false
+                return .handled
+            }
+            .onExitCommand {
+                draft = block.title ?? ""
+                isFocused = false
+            }
+            .onChange(of: draft) { if draft.count > Self.maxTitle { draft = String(draft.prefix(Self.maxTitle)) } }
+            .onChange(of: isFocused) { if !isFocused { save() } }
+            .onChange(of: block.title) { if !isFocused { draft = block.title ?? "" } }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(isEditable && (isHovered || isFocused) ? Theme.wash.opacity(0.6) : .clear, in: .rect(cornerRadius: 8))
+            .onHover { isHovered = $0 }
+            .padding(.horizontal, -6)
+            .accessibilityLabel("Title")
+    }
+
+    private func save() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A task's time is named by its task: emptied, it keeps the name.
+        if trimmed.isEmpty, block.isIntention {
+            draft = block.title ?? ""
+            return
+        }
+        guard trimmed != (block.title ?? "") else { return }
+        onSave(trimmed.isEmpty ? nil : trimmed)
+    }
+}
+
+/// A task's circle before its title: tick it off, or reopen it.
+private struct DoneCircle: View {
+    let done: Bool
+    let color: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if done {
+                    Icon.tickHeavy.image(size: 11).foregroundStyle(Theme.background)
+                        .frame(width: 18, height: 18).background(Theme.foreground, in: .circle)
+                } else {
+                    Icon.circle.image(size: 18).foregroundStyle(GoalPalette.color(color)).frame(width: 18, height: 18)
+                }
+            }
+            .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .help(done ? "Reopen task" : "Mark done")
+        .accessibilityLabel(done ? "Reopen task" : "Mark done")
+    }
+}
+
+// MARK: - Description
+
+/// What the block is about, in the person's words. Saved when the field lets go. While it's empty,
+/// Tab suggests a focus or plans the session; a suggestion shows in the field until it's taken
+/// (Return), swapped for another (Tab) or set aside (Esc, or typing).
+private struct DescriptionField: View {
+    enum Tab { case none, suggest, plan }
+
+    let blockId: String
+    let text: String?
+    let isEditable: Bool
+    let tab: Tab
+    let suggesting: Bool
+    let suggestion: FocusSuggestion?
+    let onSave: (String) async -> String?
+    let onTab: () -> Void
+    let onTakeSuggestion: () -> Void
+    let onDropSuggestion: () -> Void
 
     @State private var draft: String
     @State private var error: String?
     @State private var isHovered = false
     @FocusState private var isFocused: Bool
 
-    init(block: CalendarBlock, readOnly: Bool, actions: BlockPanelActions?) {
-        self.block = block
-        self.readOnly = readOnly
-        self.actions = actions
-        _draft = State(initialValue: block.description ?? "")
+    /// MAX_BLOCK_DESCRIPTION, and a task's is longer, but a block's is what can be read here.
+    private static let maxLength = 1000
+
+    init(blockId: String, text: String?, isEditable: Bool, tab: Tab, suggesting: Bool, suggestion: FocusSuggestion?,
+         onSave: @escaping (String) async -> String?, onTab: @escaping () -> Void,
+         onTakeSuggestion: @escaping () -> Void, onDropSuggestion: @escaping () -> Void) {
+        self.blockId = blockId
+        self.text = text
+        self.isEditable = isEditable
+        self.tab = tab
+        self.suggesting = suggesting
+        self.suggestion = suggestion
+        self.onSave = onSave
+        self.onTab = onTab
+        self.onTakeSuggestion = onTakeSuggestion
+        self.onDropSuggestion = onDropSuggestion
+        _draft = State(initialValue: text ?? "")
     }
 
+    private var placeholder: String {
+        if suggesting { return "Suggesting a focus…" }
+        switch tab {
+        case .none: return "Add a description"
+        case .suggest: return "Add a description or Tab to suggest a focus…"
+        case .plan: return "Add a description or Tab to plan session…"
+        }
+    }
+
+    /// A suggestion stands in the empty field.
+    private var shown: FocusSuggestion? { draft.isEmpty ? suggestion : nil }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if readOnly || block.description != nil {
-                Text("Aim").font(.app(13, .semibold)).foregroundStyle(Theme.foreground)
-            }
-            if readOnly {
-                // The person's own words, set back a little so the recap below carries the weight.
-                Text(block.description ?? "").appText(.sm).lineSpacing(4).foregroundStyle(Theme.muted)
+        if !isEditable {
+            if let text, !text.isEmpty {
+                Text(text).appText(.sm).lineSpacing(4).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 12)
-                    .overlay(alignment: .leading) { Rectangle().fill(Theme.foreground(0.1)).frame(width: 2) }
-                    .padding(.top, 6)
-            } else {
-                TextField("", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.app(14))
-                    .lineSpacing(4)
-                    .foregroundStyle(Theme.foreground(0.9))
-                    .focused($isFocused)
-                    .placeholder("Add an aim", when: draft.isEmpty, font: .app(14))
+                    .padding(.top, 2)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    // A suggestion stands in the field at its full length, wrapping as the text would.
+                    if let shown {
+                        Text(shown.aim).font(.app(14)).lineSpacing(4).foregroundStyle(Theme.foreground(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .allowsHitTesting(false)
+                    }
+                    TextField("", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.app(14))
+                        .lineSpacing(4)
+                        .foregroundStyle(Theme.foreground(0.9))
+                        .focused($isFocused)
+                        .placeholder(placeholder, when: draft.isEmpty && shown == nil, font: .app(14))
+                }
+                    .onKeyPress(.tab, phases: .down) { _ in
+                        guard draft.isEmpty, tab == .suggest || (tab == .plan && suggestion == nil), !suggesting else { return .ignored }
+                        onTab()
+                        return .handled
+                    }
                     .onKeyPress(.return, phases: .down) { press in
+                        if shown != nil {
+                            onTakeSuggestion()
+                            return .handled
+                        }
                         guard press.modifiers.contains(.command) else { return .ignored }
                         isFocused = false
                         return .handled
                     }
                     .onExitCommand {
-                        draft = block.description ?? ""
+                        if shown != nil {
+                            onDropSuggestion()
+                            return
+                        }
+                        draft = text ?? ""
                         isFocused = false
                     }
-                    .onChange(of: draft) { if draft.count > 1000 { draft = String(draft.prefix(1000)) } }
+                    .onChange(of: draft) {
+                        if draft.count > Self.maxLength { draft = String(draft.prefix(Self.maxLength)) }
+                        // Writing your own sets the suggestion aside.
+                        if !draft.isEmpty, suggestion != nil { onDropSuggestion() }
+                    }
                     .onChange(of: isFocused) { if !isFocused { save() } }
                     // Set from outside the field too, like taking a suggested focus.
-                    .onChange(of: block.description) { if !isFocused { draft = block.description ?? "" } }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .onChange(of: text) { if !isFocused || shown == nil { draft = text ?? "" } }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
                     .background(isHovered || isFocused ? Theme.wash.opacity(0.6) : .clear, in: .rect(cornerRadius: 8))
                     .onHover { isHovered = $0 }
-                    .padding(.horizontal, -8)
-                    .padding(.top, block.description == nil ? 0 : 4)
-                    .help("What you want out of this session. Steers its plan, and the recap checks the session against it")
-                    .accessibilityLabel("What you want out of this session")
-            }
-            if let error {
-                Text(error).appText(.sm).foregroundStyle(Theme.danger).padding(.top, 4)
+                    .padding(.horizontal, -6)
+                    .accessibilityLabel("Description")
+
+                if let shown {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !shown.why.isEmpty {
+                            Text(shown.why).appText(.xs).lineSpacing(3).foregroundStyle(Theme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text("Return to use it · Tab for another · Esc to set it aside")
+                            .appText(.xs, .medium).foregroundStyle(Theme.muted)
+                    }
+                    .padding(.top, 4)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Suggested focus: \(shown.aim). \(shown.why)")
+                }
+
+                if let error {
+                    Text(error).appText(.sm).foregroundStyle(Theme.danger).padding(.top, 4)
+                }
             }
         }
     }
 
     private func save() {
-        guard let actions else { return }
         error = nil
-        let blockId = block.id
-        let text = draft
-        Task { error = await actions.setDescription(blockId, text) }
+        let value = draft
+        Task { error = await onSave(value) }
+    }
+}
+
+// MARK: - Rows
+
+/// The block's goal, day, time and type, one row each, each opening a menu to change it.
+private struct PropertyRows: View {
+    let block: CalendarBlock
+    let goal: CalendarGoal?
+    let goals: [CalendarGoal]
+    let day: Int
+    let start: Int
+    let end: Int
+    let clock: Clock
+    let now: Date
+    let calendar: CalendarActions?
+
+    @Environment(\.overlays) private var overlays
+
+    private var today: String { CalendarDay.today(now) }
+    private var dayISO: String { CalendarDay.addDays(today, day) }
+    private var untitled: Bool { (block.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PropertyRow(title: goal?.title ?? "No goal", accessibility: "Goal", isEnabled: calendar != nil && goals.count > 1) {
+                if let goal { GoalIconImage(name: goal.icon, size: 16) } else { Icon.target.image(size: 16) }
+            } menu: {
+                GoalMenu(goals: goals, selected: block.goalId) { calendar?.saveDetails(block.id, $0, block.title) }
+            }
+
+            PropertyRow(title: dayLabel, accessibility: "Day", isEnabled: calendar != nil) {
+                Icon.calendarSmall.image(size: 16)
+            } menu: {
+                DayMenu(kind: .blockDay, value: dayISO, today: today) { picked in
+                    guard let picked else { return }
+                    let days = CalendarDay.daysUntil(picked, today: dayISO)
+                    if days != 0 { calendar?.move(block.id, .move, 0, days) }
+                }
+            }
+
+            PropertyRow(title: clock.formatRange(start, end), detail: durationLabel(Double(end - start)), accessibility: "Time", isEnabled: calendar != nil) {
+                Icon.clock.image(size: 16)
+            } menu: {
+                TimeMenu(
+                    start: start, end: end, clock: clock,
+                    // Only a task's time that hasn't started can go back to being planned for the day.
+                    canClear: block.taskId != nil && block.startsAt > now,
+                    onStart: { calendar?.move(block.id, .move, $0 - start, 0) },
+                    onEnd: { calendar?.move(block.id, .end, $0 - end, 0) },
+                    onClear: { if let taskId = block.taskId { calendar?.plan(taskId, day) } }
+                )
+            }
+
+            PropertyRow(title: block.kind.longLabel + (block.taskDone ? " · Done" : ""), accessibility: "Type", isEnabled: calendar != nil) {
+                block.kind.icon.image(size: 16)
+            } menu: {
+                MenuPanel(width: 208) {
+                    MenuLabel("Type")
+                    ForEach(BlockKind.allCases, id: \.self) { kind in
+                        MenuItem(
+                            icon: kind.icon, title: kind.longLabel,
+                            // A task is made from the block's title.
+                            isDisabled: kind == .task && block.kind != .task && untitled,
+                            isChecked: kind == block.kind
+                        ) {
+                            overlays?.dismiss()
+                            calendar?.setKind(block.id, kind)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, -8)
+    }
+
+    /// "Today", "Tomorrow", or "Wednesday, Nov 18".
+    private var dayLabel: String {
+        switch day {
+        case 0: "Today"
+        case 1: "Tomorrow"
+        case -1: "Yesterday"
+        default:
+            CalendarDayMath.midnight(day, from: now)
+                .formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(Locale(identifier: "en_US")))
+        }
+    }
+}
+
+/// `h-9 rounded-lg px-2`: an icon, a value, an optional detail on the right, and a chevron, opening
+/// `menu` below it.
+private struct PropertyRow<Leading: View, Menu: View>: View {
+    let title: String
+    var detail: String?
+    let accessibility: String
+    let isEnabled: Bool
+    @ViewBuilder let icon: () -> Leading
+    @ViewBuilder let menu: () -> Menu
+
+    @Environment(\.overlays) private var overlays
+    @State private var anchor = CGRect.zero
+    @State private var isHovered = false
+
+    init(title: String, detail: String? = nil, accessibility: String, isEnabled: Bool,
+         @ViewBuilder icon: @escaping () -> Leading, @ViewBuilder menu: @escaping () -> Menu) {
+        self.title = title
+        self.detail = detail
+        self.accessibility = accessibility
+        self.isEnabled = isEnabled
+        self.icon = icon
+        self.menu = menu
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                icon().foregroundStyle(Theme.muted).frame(width: 18, height: 18)
+                Text(title).appText(.sm).foregroundStyle(Theme.foreground).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let detail {
+                    Text(detail).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
+                }
+                if isEnabled {
+                    Icon.chevronDown.image(size: 14).foregroundStyle(Theme.muted)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 36)
+            .background(isEnabled && isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .inactive(!isEnabled)
+        .modifier(AnchorReader(frame: $anchor))
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("\(accessibility): \(title)")
+    }
+
+    private func open() {
+        guard isEnabled, let overlays else { return }
+        overlays.showMenu(anchor: anchor, alignLeading: true) { menu() }
+    }
+}
+
+/// The goals a block can be moved to.
+private struct GoalMenu: View {
+    let goals: [CalendarGoal]
+    let selected: String
+    let onPick: (String) -> Void
+
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        MenuPanel(width: 264) {
+            MenuLabel("Goal")
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(goals) { goal in
+                        GoalMenuRow(goal: goal, isSelected: goal.id == selected) {
+                            overlays?.dismiss()
+                            if goal.id != selected { onPick(goal.id) }
+                        }
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 288)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct GoalMenuRow: View {
+    let goal: CalendarGoal
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
+                Text(goal.title).appText(.sm, .medium).foregroundStyle(Theme.foreground).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if isSelected {
+                    Icon.tick.image(size: 16).foregroundStyle(Theme.foreground)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// A block's start and end, in quarter hours side by side, and, for a task's time, Clear time.
+/// A new start keeps the block's length; a new end changes it.
+private struct TimeMenu: View {
+    let start: Int
+    let end: Int
+    let clock: Clock
+    let canClear: Bool
+    let onStart: (Int) -> Void
+    let onEnd: (Int) -> Void
+    let onClear: () -> Void
+
+    @Environment(\.overlays) private var overlays
+
+    private static let step = CalendarDayMath.step
+
+    var body: some View {
+        let length = end - start
+        MenuPanel(width: 264) {
+            HStack(alignment: .top, spacing: 4) {
+                column("Start", Array(stride(from: 0, through: CalendarDayMath.dayMinutes - length, by: Self.step)), selected: start, onPick: onStart)
+                column("End", Array(stride(from: start + Self.step, through: CalendarDayMath.dayMinutes, by: Self.step)), selected: end, onPick: onEnd)
+            }
+            if canClear {
+                MenuSeparator()
+                DayRow(title: "Clear time", isDestructive: true) {
+                    overlays?.dismiss()
+                    onClear()
+                }
+                .help("Keep the task planned for the day, without a time")
+            }
+        }
+    }
+
+    private func column(_ title: String, _ options: [Int], selected: Int, onPick: @escaping (Int) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MenuLabel(title)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(options, id: \.self) { minutes in
+                            DayRow(title: clock.format(minutes: minutes), isSelected: minutes == selected) {
+                                overlays?.dismiss()
+                                if minutes != selected { onPick(minutes) }
+                            }
+                            .id(minutes)
+                        }
+                    }
+                }
+                .frame(height: 216)
+                .onAppear { proxy.scrollTo(selected, anchor: .center) }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
 // MARK: - Agenda
 
+/// A session's plan, once there is one (or while it's being made), with the tasks it draws on.
 private struct AgendaSection: View {
     let block: CalendarBlock
     /// The goal's colour, for the related tasks' circles.
     let color: String
-    let when: String
     /// Once the session is over, an agenda is only kept for reference.
     let ended: Bool
     let now: Date
     let openTaskIds: Set<String>
+    let preparing: Bool
     let actions: BlockPanelActions?
+    let onPrepare: () -> Void
 
-    @State private var preparing = false
     @State private var error: String?
     /// Tasks checked off or reopened here, until the calendar catches up.
     @State private var toggled: [String: Bool] = [:]
     /// Once the session is over, the agenda is history: folded away until asked for.
     @State private var expanded = false
-    /// A focus suggested for a session that doesn't say what it's for, until it's taken or set aside.
-    @State private var suggestion: FocusSuggestion?
-    @State private var suggesting = false
-    @State private var adopting = false
-    /// Aims suggested here and passed over, so the next suggestion differs.
-    @State private var passed: [String] = []
-
-    /// Nothing says yet what the session is for, so the useful help is picking a focus, not planning one.
-    private var needsFocus: Bool {
-        !block.isIntention && block.title == nil && (block.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
 
     var body: some View {
         let agenda = block.agenda
         let showsBody = !ended || expanded
         let stale = agenda.map { !ended && !preparing && $0.isStale(title: block.title, description: block.description) } ?? false
 
-        if !(ended && agenda == nil) {
+        if agenda != nil || (preparing && !ended) {
             VStack(alignment: .leading, spacing: 0) {
                 if let agenda {
                     if ended {
@@ -267,10 +765,12 @@ private struct AgendaSection: View {
                             }
                         }
                     }
+                } else {
+                    Text("Agenda").font(.app(13, .semibold)).foregroundStyle(Theme.foreground)
                 }
 
                 if preparing, agenda == nil {
-                    Skeleton(widths: [1, 0.92, 1, 0.6])
+                    Skeleton(widths: [1, 0.92, 1, 0.6]).padding(.top, 8)
                 } else if let agenda, showsBody {
                     Text(agenda.text).appText(.sm).lineSpacing(4).foregroundStyle(Theme.foreground(0.9))
                         .fixedSize(horizontal: false, vertical: true)
@@ -289,33 +789,13 @@ private struct AgendaSection: View {
                         .padding(.top, 8)
                 }
 
-                if !ended {
-                    if agenda != nil {
-                        QuietButton(title: preparing ? "Preparing…" : stale ? "Update agenda" : "Plan again", spinning: preparing, action: prepare)
-                            .inactive(preparing)
-                            .padding(.top, 12)
-                    } else if needsFocus {
-                        if let suggestion {
-                            FocusSuggestionCard(
-                                suggestion: suggestion, busy: suggesting || adopting, spinning: suggesting,
-                                onUse: adopt, onAnother: another, onDismiss: dismiss
-                            )
-                        } else if suggesting {
-                            Skeleton(widths: [1, 0.7])
-                        } else {
-                            QuietButton(icon: .target, title: "Suggest a focus", action: suggest)
-                                .help("Suggests an aim for this session, from the goal’s week, tasks, notes and latest read")
-                        }
-                    } else {
-                        QuietButton(icon: .checklist, title: preparing ? "Planning…" : "Plan this session", spinning: preparing, action: prepare)
-                            .inactive(preparing)
-                            .padding(.top, preparing ? 12 : 0)
-                            .help("A short plan for getting what this session is for, from the goal’s tasks, notes and latest read")
-                    }
+                if !ended, agenda != nil {
+                    QuietButton(title: preparing ? "Preparing…" : stale ? "Update agenda" : "Plan again", spinning: preparing, action: onPrepare)
+                        .inactive(preparing)
+                        .padding(.top, 12)
                 }
             }
-            // With nothing prepared yet the action sits close under the aim (or a task's time), as one quiet line.
-            .padding(.top, agenda == nil && !preparing ? (block.isIntention ? 16 : 12) : 24)
+            .padding(.top, 24)
 
             if let agenda, showsBody, !agenda.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -338,58 +818,6 @@ private struct AgendaSection: View {
         }
     }
 
-    private func prepare() {
-        guard let actions, !preparing else { return }
-        error = nil
-        preparing = true
-        let blockId = block.id
-        Task {
-            error = await actions.prepareAgenda(blockId, when)
-            preparing = false
-        }
-    }
-
-    private func suggest() {
-        guard let actions, !suggesting else { return }
-        error = nil
-        suggesting = true
-        let blockId = block.id, instead = passed
-        Task {
-            switch await actions.suggestFocus(blockId, when, instead) {
-            case .suggested(let next): suggestion = next
-            case .failed(let message): error = message
-            }
-            suggesting = false
-        }
-    }
-
-    private func another() {
-        if let suggestion { passed.append(suggestion.aim) }
-        suggest()
-    }
-
-    private func dismiss() {
-        if let suggestion { passed.append(suggestion.aim) }
-        suggestion = nil
-    }
-
-    /// Takes the suggestion as the session's aim; from there the panel offers to plan it.
-    private func adopt() {
-        guard let actions, let suggestion, !adopting else { return }
-        error = nil
-        adopting = true
-        let blockId = block.id
-        Task {
-            if let message = await actions.setDescription(blockId, suggestion.aim) {
-                error = message
-            } else {
-                self.suggestion = nil
-                passed = []
-            }
-            adopting = false
-        }
-    }
-
     private func toggle(_ taskId: String, _ done: Bool) {
         guard let actions else { return }
         toggled[taskId] = done
@@ -408,53 +836,6 @@ private struct AgendaSection: View {
         if minutes < 60 { return "Prepared \(minutes) min ago" }
         if minutes < 24 * 60 { return "Prepared \(Int((Double(minutes) / 60).rounded())) hr ago" }
         return "Prepared \(date.webMonthDay)"
-    }
-}
-
-/// A focus suggested for a session that doesn't say what it's for yet: take it as the aim (it can be
-/// edited from there), ask for another, or set it aside.
-struct FocusSuggestionCard: View {
-    let suggestion: FocusSuggestion
-    var busy = false
-    /// Another one is on its way.
-    var spinning = false
-    let onUse: () -> Void
-    let onAnother: () -> Void
-    let onDismiss: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Suggested focus").appText(.xs, .medium).foregroundStyle(Theme.muted)
-                Spacer()
-                PanelIconButton(icon: .close, label: "Set this suggestion aside", action: onDismiss)
-                    .padding(.trailing, -6)
-            }
-            Group {
-                Text(suggestion.aim).appText(.sm, .medium).lineSpacing(3).foregroundStyle(Theme.foreground)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !suggestion.why.isEmpty {
-                    Text(suggestion.why).appText(.xs).lineSpacing(3).foregroundStyle(Theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                }
-            }
-            .opacity(spinning ? 0.5 : 1)
-            HStack(spacing: 12) {
-                SmallPrimaryButton(title: "Use as aim", action: onUse)
-                QuietButton(title: spinning ? "Suggesting…" : "Another", spinning: spinning, action: onAnother)
-                    .padding(.leading, 8)
-            }
-            .inactive(busy)
-            .padding(.top, 12)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
-        .background(Theme.background.opacity(0.6), in: .rect(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Suggested focus: \(suggestion.aim)")
     }
 }
 
@@ -801,34 +1182,6 @@ private struct FullPrimaryButton: View {
     }
 }
 
-/// `h-9 w-full rounded-lg border bg-card shadow`, an icon and a label.
-private struct OutlineButton: View {
-    let icon: Icon
-    let title: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                icon.image(size: 15)
-                Text(title).appText(.sm, .medium)
-            }
-            .foregroundStyle(Theme.foreground)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
-            .background {
-                RoundedRectangle(cornerRadius: 8).fill(Theme.card)
-                    .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.05)), radius: 1, y: 1)
-            }
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
-            .contentShape(.rect(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-}
-
 /// `h-7 rounded-lg px-2 text-xs font-medium text-muted hover:bg-wash`, with an icon (refresh by default).
 private struct QuietButton: View {
     var icon: Icon = .refresh
@@ -861,9 +1214,9 @@ private struct QuietButton: View {
     HStack(alignment: .top, spacing: 16) {
         ForEach(Fixtures.panelBlocks) { block in
             BlockPanel(
-                block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
-                when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: ["t5"],
-                ended: block.endsAt <= now, now: now, actions: nil
+                block: block, goal: data.goal(block.goalId), goals: data.goals, description: data.description(of: block),
+                day: 0, start: 15 * 60, end: 16 * 60 + 30, when: "Wednesday, November 18 (today), 3:00–4:30 PM",
+                openTaskIds: ["t5"], ended: block.endsAt <= now, now: now, actions: nil
             )
             .frame(width: 320, height: 640)
         }
@@ -878,20 +1231,13 @@ private struct QuietButton: View {
     HStack(alignment: .top, spacing: 16) {
         ForEach(Fixtures.freshPanelBlocks) { block in
             BlockPanel(
-                block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
-                when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: [],
-                ended: block.endsAt <= now, now: now, actions: nil
+                block: block, goal: data.goal(block.goalId), goals: data.goals, description: data.description(of: block),
+                day: 0, start: 15 * 60, end: 16 * 60 + 30, when: "Wednesday, November 18 (today), 3:00–4:30 PM",
+                openTaskIds: [], ended: block.endsAt <= now, now: now, actions: nil
             )
-            .frame(width: 320, height: 260)
+            .frame(width: 320, height: 360)
         }
     }
     .padding(16)
     .background(Theme.background)
-}
-
-#Preview("Suggested focus") {
-    FocusSuggestionCard(suggestion: Fixtures.focusSuggestion, onUse: {}, onAnother: {}, onDismiss: {})
-        .frame(width: 288)
-        .padding(16)
-        .background(Theme.card)
 }

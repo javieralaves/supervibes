@@ -491,9 +491,9 @@ final class SurfaceSnapshotTests: XCTestCase {
             HStack(alignment: .top, spacing: 16) {
                 ForEach(Fixtures.panelBlocks) { block in
                     BlockPanel(
-                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
-                        when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: ["t5"],
-                        ended: block.endsAt <= now, now: now, actions: nil
+                        block: block, goal: data.goal(block.goalId), goals: data.goals, description: data.description(of: block),
+                        day: 0, start: 15 * 60, end: 16 * 60 + 30, when: "Wednesday, November 18 (today), 3:00–4:30 PM",
+                        openTaskIds: ["t5"], ended: block.endsAt <= now, now: now, actions: nil
                     )
                     .frame(width: 320, height: 640)
                 }
@@ -511,21 +511,21 @@ final class SurfaceSnapshotTests: XCTestCase {
             HStack(alignment: .top, spacing: 16) {
                 ForEach(Fixtures.freshPanelBlocks) { block in
                     BlockPanel(
-                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 3:00–4:30 PM",
-                        when: "Wednesday, November 18 (today), 3:00–4:30 PM", openTaskIds: [],
-                        ended: block.endsAt <= now, now: now, actions: nil
+                        block: block, goal: data.goal(block.goalId), goals: data.goals, description: data.description(of: block),
+                        day: 0, start: 15 * 60, end: 16 * 60 + 30, when: "Wednesday, November 18 (today), 3:00–4:30 PM",
+                        openTaskIds: [], ended: block.endsAt <= now, now: now, actions: nil
                     )
-                    .frame(width: 320, height: 260)
+                    .frame(width: 320, height: 360)
                 }
             }
             .padding(16)
             .background(Theme.background),
-            width: 1024, height: 292
+            width: 1024, height: 392
         )
     }
 
     func testSessionAndReservedPanels() {
-        // With actions, so the switch between a session and reserved time shows.
+        // With actions, so the rows can be changed and the description offers Tab.
         let data = Fixtures.calendar
         let now = now
         let actions = BlockPanelActions(
@@ -538,16 +538,16 @@ final class SurfaceSnapshotTests: XCTestCase {
             HStack(alignment: .top, spacing: 16) {
                 ForEach(Fixtures.kindPanelBlocks) { block in
                     BlockPanel(
-                        block: block, goal: data.goal(block.goalId), timeLabel: "Today · 1:00–2:30 PM",
-                        when: "Wednesday, November 18 (today), 1:00–2:30 PM", openTaskIds: [],
-                        ended: false, now: now, actions: actions
+                        block: block, goal: data.goal(block.goalId), goals: data.goals, description: data.description(of: block),
+                        day: 0, start: 13 * 60, end: 14 * 60 + 30, when: "Wednesday, November 18 (today), 1:00–2:30 PM",
+                        openTaskIds: [], ended: false, now: now, actions: actions, calendar: .preview
                     )
-                    .frame(width: 320, height: 300)
+                    .frame(width: 320, height: 360)
                 }
             }
             .padding(16)
             .background(Theme.background),
-            width: 688, height: 332
+            width: 688, height: 392
         )
     }
 
@@ -561,12 +561,26 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// A suggested focus, standing in the empty description until it's taken or set aside.
     func testFocusSuggestion() {
+        let data = Fixtures.calendar
+        let block = Fixtures.freshPanelBlocks.first { $0.title == nil && $0.description == nil && !$0.isIntention && !$0.reserved }!
+        let actions = BlockPanelActions(
+            setDescription: { _, _ in nil }, prepareAgenda: { _, _ in nil },
+            suggestFocus: { _, _, _ in .failed("") }, prepareRecap: { _ in nil },
+            postRecap: { _, _, _, _ in nil }, discardRecap: { _ in nil }, setTaskDone: { _, _ in nil },
+            toggleDone: { _ in }, openGoal: { _ in }
+        )
         assertAppearances(
-            FocusSuggestionCard(suggestion: Fixtures.focusSuggestion, onUse: {}, onAnother: {}, onDismiss: {})
-                .padding(16)
-                .background(Theme.card),
-            width: 320, height: 180
+            BlockPanel(
+                block: block, goal: data.goal(block.goalId), goals: data.goals, description: nil,
+                day: 0, start: 15 * 60, end: 16 * 60 + 30, when: "Wednesday, November 18 (today), 3:00–4:30 PM",
+                openTaskIds: [], ended: false, now: now, actions: actions, calendar: .preview, suggestion: Fixtures.focusSuggestion
+            )
+            .frame(width: 320, height: 400)
+            .padding(16)
+            .background(Theme.background),
+            width: 352, height: 432
         )
     }
 
