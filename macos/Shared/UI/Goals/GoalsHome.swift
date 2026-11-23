@@ -45,6 +45,9 @@ struct GoalsHome: View {
             .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
+        // The page runs up under the hidden title bar, where macOS 26 otherwise draws its hard scroll edge:
+        // a frosted strip with a line under it, across the top of the app's window. Soft just fades.
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 

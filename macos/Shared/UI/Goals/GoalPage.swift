@@ -55,6 +55,9 @@ struct GoalPage<Sections: View>: View {
             .background(Color.clear.contentShape(.rect).onTapGesture(perform: onBackgroundTap))
         }
         .scrollContentBackground(.hidden)
+        // The page runs up under the hidden title bar, where macOS 26 otherwise draws its hard scroll edge:
+        // a frosted strip with a line under it, across the top of the app's window. Soft just fades.
+        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 }
 
