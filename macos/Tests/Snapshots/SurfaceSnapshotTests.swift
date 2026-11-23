@@ -132,7 +132,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    /// Right-click menus: a task's, a block's (on the Plan page, with Give time) and a goal card's.
+    /// Right-click menus: a task's, a block's (with Give time) and a goal card's.
     func testRightClickMenus() {
         let task = Fixtures.tasks[0]
         let blocks = Fixtures.panelBlocks
@@ -272,21 +272,21 @@ final class SurfaceSnapshotTests: XCTestCase {
     func testPlanningBoard() {
         // The pointer over Unplanned, showing its add button.
         assertAppearances(
-            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyHovered: .unplanned)),
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initiallyHovered: .unplanned, onBack: {})),
             width: 1500, height: 760
         )
     }
 
     func testPlanningBoardWithOpenCard() {
         assertAppearances(
-            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initiallyOpen: "t5")),
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initiallyOpen: "t5", onBack: {})),
             width: 1500, height: 760
         )
     }
 
     func testPlanningBoardShowingCompleted() {
         assertAppearances(
-            board(PlanningBoard(detail: Fixtures.planningDetail, now: now), showsCompleted: true),
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, onBack: {}), showsCompleted: true),
             width: 1500, height: 760
         )
     }
@@ -294,60 +294,51 @@ final class SurfaceSnapshotTests: XCTestCase {
     func testPlanningBoardDayCapacity() {
         // Today: over capacity, one block gone by and one ahead.
         assertAppearances(
-            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initialCapacity: .day("2026-11-18"))),
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initialCapacity: .day("2026-11-18"), onBack: {})),
             width: 1500, height: 760
         )
     }
 
-    private func plan(_ page: PlanPage) -> some View {
-        let defaults = UserDefaults(suiteName: "SurfaceSnapshotTests.plan")!
-        defaults.removeObject(forKey: PlanGoalsMenu.hiddenKey)
-        defaults.set(true, forKey: PlanGoalsMenu.onlyActiveKey)
-        return page.background(Theme.background).overlayHost(OverlayCenter()).defaultAppStorage(defaults)
-    }
-
-    func testPlanTomorrow() {
-        // Build Supervibes over its session, with three tasks under the cut line.
-        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 1, now: now, scrollsTimeline: false)), width: 1540, height: 1000)
-    }
-
-    func testPlanToday() {
-        // Today, with the now line at 10:18 across Build Supervibes' session under way.
-        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 0, now: now, scrollsTimeline: false)), width: 1540, height: 1000)
-    }
-
-    func testPlanGivingTime() {
-        // Superfocus's session open, previewing its 30 min to spare going to Build Supervibes.
+    func testPlanningBoardAllGoals() {
+        // Every goal a row, Build Supervibes open to its cards; the rest folded to their rings.
         assertAppearances(
-            plan(PlanPage(
-                data: Fixtures.plan, offset: 1, now: now,
-                initialGive: GiveTime(blockId: "p4", goalId: "pg1", minutes: 30), initiallySelected: "p4", scrollsTimeline: false
-            )),
-            width: 1540, height: 1000
+            board(PlanningBoard(data: Fixtures.board, now: now, initiallyExpanded: ["1"])),
+            width: 1500, height: 1000
         )
     }
 
-    func testPlanMovingOverflow() {
-        assertAppearances(plan(PlanPage(data: Fixtures.plan, offset: 1, now: now, initiallyMoving: "pg1", scrollsTimeline: false)), width: 1540, height: 1000)
+    func testPlanningBoardAllGoalsFolded() {
+        // Every row folded: the week across goals at a glance, with each column's total.
+        assertAppearances(board(PlanningBoard(data: Fixtures.board, now: now)), width: 1500, height: 760)
+    }
+
+    func testPlanningBoardAllGoalsDayCapacity() {
+        // The housing playbook open, its tomorrow over: 3 h planned in a 1 h 30 min session.
+        assertAppearances(
+            board(PlanningBoard(data: Fixtures.board, now: now, initialCapacity: .day("2026-11-19"), initiallyExpanded: ["3"])),
+            width: 1500, height: 1000
+        )
     }
 
     func testPlanWindow() {
-        // The whole window, with Plan on the rail.
-        assertAppearances(
+        // The whole window, with Plan on the rail: the board on All goals.
+        let defaults = UserDefaults(suiteName: "SurfaceSnapshotTests.board")!
+        defaults.set(false, forKey: "planningBoard.showsCompleted")
+        return assertAppearances(
             HStack(spacing: 0) {
                 Rail(active: .plan, account: nil, topInset: 28)
-                AppWindowFrame { PlanPage(data: Fixtures.plan, offset: 1, now: now, scrollsTimeline: false) }
+                AppWindowFrame { PlanningBoard(data: Fixtures.board, now: now) }
             }
             .background(Theme.shell)
             .overlayHost(OverlayCenter())
-            .defaultAppStorage(UserDefaults(suiteName: "SurfaceSnapshotTests.plan")!),
+            .defaultAppStorage(defaults),
             width: 1620, height: 1016
         )
     }
 
     func testPlanningBoardWeekCapacity() {
         assertAppearances(
-            board(PlanningBoard(detail: Fixtures.planningDetail, now: now, initialCapacity: .thisWeek)),
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initialCapacity: .thisWeek, onBack: {})),
             width: 1500, height: 760
         )
     }

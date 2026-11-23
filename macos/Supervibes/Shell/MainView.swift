@@ -144,7 +144,7 @@ private struct GoalsScreen: View {
                     onOpen: { shell.openGoal($0.id) },
                     onNew: newGoal,
                     actions: GoalCardActions(
-                        plan: { shell.openGoal($0.id, then: .plan) },
+                        plan: { shell.openPlan(.goal($0.id)) },
                         setObjective: { shell.openGoal($0.id, then: .setObjective) },
                         updateStatus: { shell.openGoal($0.id, then: .updateStatus) },
                         edit: edit,
@@ -212,8 +212,6 @@ private struct GoalsScreen: View {
 private struct GoalScreen: View {
     let shell: ShellModel
     @State private var model: GoalPageModel
-    /// Showing the planning board instead of the page; it works on the same data.
-    @State private var isPlanning = false
     /// Opened from "Set this week's objective" on a goal card: the cursor goes in the objective.
     @State private var focusesObjective = false
     @Environment(\.overlays) private var overlays
@@ -245,18 +243,7 @@ private struct GoalScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                if let detail = model.detail, isPlanning {
-                    PlanningBoard(detail: detail, actions: model.taskActions, onBack: { isPlanning = false })
-                        .overlay(alignment: .bottom) {
-                            if let error = model.taskError {
-                                Text(error).appText(.sm).foregroundStyle(Theme.danger)
-                                    .padding(.horizontal, 12).padding(.vertical, 8)
-                                    .background(Theme.card, in: .rect(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cardBorder))
-                                    .padding(.bottom, 24)
-                            }
-                        }
-                } else if let detail = model.detail {
+                if let detail = model.detail {
                     GoalPage(
                         detail: detail,
                         requestingRead: model.requestingRead,
@@ -309,7 +296,6 @@ private struct GoalScreen: View {
             guard let intent = shell.goalIntent else { return }
             shell.goalIntent = nil
             switch intent {
-            case .plan: isPlanning = true
             case .updateStatus: if model.detail?.canRead == true { model.updateStatus() }
             case .setObjective: focusesObjective = true
             }
@@ -317,10 +303,11 @@ private struct GoalScreen: View {
         .onDisappear { model.stop() }
     }
 
-    /// The page's task actions, with "Plan tasks" opening the board.
+    /// The page's task actions, with "Plan tasks" opening the board on this goal.
     private var pageTaskActions: TaskActions {
         var actions = model.taskActions
-        actions.plan = { isPlanning = true }
+        let id = model.id
+        actions.plan = { [shell] in shell.openPlan(.goal(id), from: id) }
         return actions
     }
 
@@ -493,13 +480,6 @@ private struct CalendarScreen: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task { await model.start() }
         .onDisappear { model.stop() }
-        // Opened from the Plan page: show its day once it's loaded.
-        .onChange(of: PendingDay(load: model.load, day: shell.pendingDay), initial: true) { _, pending in
-            guard pending.load == .loaded, let day = pending.day else { return }
-            shell.pendingDay = nil
-            setSpan(.day)
-            model.step(day - model.offset)
-        }
         // A notice was clicked: show its block once it's loaded.
         .onChange(of: PendingSelection(load: model.load, blockId: shell.pendingBlockId), initial: true) { _, pending in
             guard pending.load == .loaded, let id = pending.blockId else { return }
@@ -517,25 +497,15 @@ private struct CalendarScreen: View {
     }
 }
 
-/// What the calendar waits on to show a day from the Plan page.
-private struct PendingDay: Equatable {
-    let load: CalendarModel.Load
-    let day: Int?
-}
-
-/// The Plan page with the calendar's data, in the app's window: it opens on tomorrow.
+/// Plan on the rail: the planning board, on every goal, or on one when opened from its page or its
+/// card's menu.
 private struct PlanScreen: View {
-    @State private var model: CalendarModel
-    @State private var offset = 1
-    /// How tall an hour is on the timeline, as last pinched; 0 fits the waking day.
-    @AppStorage("sv-plan-hour") private var hour = 0.0
-    /// Taken on arrival, so ← and → step through days straight away.
-    @FocusState private var isFocused: Bool
+    @State private var model: PlanBoardModel
     let shell: ShellModel
 
     init(auth: AuthModel, shell: ShellModel) {
         self.shell = shell
-        _model = State(initialValue: CalendarModel(auth: auth))
+        _model = State(initialValue: PlanBoardModel(auth: auth))
     }
 
     var body: some View {
@@ -552,53 +522,34 @@ private struct PlanScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                PlanPage(
-                    data: model.data,
-                    offset: offset,
-                    now: model.now,
-                    error: model.error,
-                    actions: PlanActions(
-                        tasks: model.taskActions,
-                        giveTime: { model.giveTime($0, minutes: $1, to: $2) },
-                        giveBlock: { model.giveBlock($0, to: $1) },
-                        setReserved: model.setReserved,
-                        calendar: CalendarActions(
-                            create: model.create(day:start:end:goalId:title:kind:),
-                            saveDetails: model.saveDetails(_:goalId:title:),
-                            setReserved: model.setReserved,
-                            setKind: model.setKind,
-                            move: model.move(_:edge:delta:days:),
-                            moveToTomorrow: model.moveToTomorrow,
-                            toggleDone: model.toggleDone,
-                            remove: model.remove,
-                            place: model.place(_:day:start:minutes:),
-                            plan: model.plan(_:day:),
-                            defaultGoalId: { model.defaultGoalId },
-                            openGoal: { shell.openGoal($0) }
-                        ),
-                        openGoal: { shell.openGoal($0) },
-                        openCalendar: { shell.openCalendar(day: offset) }
-                    ),
-                    onStep: { step($0) },
-                    onToday: { offset = 0 },
-                    hour: Binding(get: { hour > 0 ? CGFloat(hour) : nil }, set: { hour = $0.map(Double.init) ?? 0 })
-                )
-                .focusable()
-                .focusEffectDisabled()
-                .focused($isFocused)
-                .onAppear { isFocused = true }
-                .onKeyPress(.leftArrow) { step(-1); return .handled }
-                .onKeyPress(.rightArrow) { step(1); return .handled }
+                if let data = model.data {
+                    PlanningBoard(
+                        data: data,
+                        scope: scope(in: data),
+                        actions: model.actions(for:),
+                        onScope: { shell.planScope = $0 },
+                        onBack: shell.planOrigin.map { id in { shell.openGoal(id) } }
+                    )
+                    .overlay(alignment: .bottom) {
+                        if let error = model.taskError {
+                            Text(error).appText(.sm).foregroundStyle(Theme.danger)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(Theme.card, in: .rect(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cardBorder))
+                                .padding(.bottom, 24)
+                        }
+                    }
+                }
             }
         }
-        .background(Theme.background)
-        .task { await model.start() }
-        .onDisappear { model.stop() }
+        .background { ZStack { Theme.background; Backdrop() } }
+        .task { await model.refresh() }
     }
 
-    /// A day back or forward, within the calendar's loaded days.
-    private func step(_ by: Int) {
-        offset = min(max(offset + by, model.range.lowerBound), model.range.upperBound)
+    /// The goal asked for, or All goals when it's gone.
+    private func scope(in data: BoardData) -> BoardScope {
+        if case .goal(let id) = shell.planScope, data.goal(id) == nil { return .all }
+        return shell.planScope
     }
 }
 

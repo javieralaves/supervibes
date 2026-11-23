@@ -938,7 +938,7 @@ struct DayTimeline: View {
     var selectedId: String?
     /// Clicking a block opens its panel; without it, the click edits it in place.
     var onSelect: ((String) -> Void)?
-    /// A block's menu offers to give its time to another goal (the Plan page).
+    /// A block's menu offers to give its time to another goal, where that's wired (nothing does yet).
     var onGive: ((String) -> Void)?
     var proxy: ScrollViewProxy?
 
@@ -1299,7 +1299,7 @@ struct DayTimeline: View {
 }
 
 /// What a block's ⋯ menu and a right-click on it offer: edit or open it, tick off its task, switch
-/// a session and reserved time, give its time away (on the Plan page), move it a day on, open its
+/// a session and reserved time, give its time away (where that's wired), move it a day on, open its
 /// goal, and remove it.
 struct BlockMenu: View {
     let block: CalendarBlock
@@ -1479,7 +1479,7 @@ struct Hatch: View {
 }
 
 /// The current time: a red line across the day, a dot at its start, and the time in the gutter.
-/// The Plan page's timeline draws it too, with its narrower gutter.
+/// Drawn with a narrower gutter where the timeline is narrower.
 struct NowLine: View {
     let label: String
     var gutter: CGFloat = DayGrid.gutter

@@ -74,3 +74,16 @@ export function goalWeekLoads(
 
   return loads;
 }
+
+/**
+ * A goal's sessions (not reserved time) overlapping `from`–`to`, clipped to it, earliest first: the
+ * room for tasks the planning board weighs its rings against.
+ */
+export function sessionBlocks(blocks: readonly Block[], goalId: string, from: Date, to: Date) {
+  return blocks
+    .filter((b) => b.goalId === goalId && !b.reserved && b.endsAt > from && b.startsAt < to)
+    .map((b) => ({
+      startsAt: new Date(Math.max(b.startsAt.getTime(), from.getTime())).toISOString(),
+      endsAt: new Date(Math.min(b.endsAt.getTime(), to.getTime())).toISOString(),
+    }));
+}

@@ -35,6 +35,10 @@ final class ShellModel {
     func open(_ item: RailItem) {
         isAccountMenuOpen = false
         overlays.dismiss()
+        if item == .plan {
+            planScope = .all
+            planOrigin = nil
+        }
         route = switch item {
         case .plan: .plan
         case .calendar: .calendar
@@ -44,7 +48,7 @@ final class ShellModel {
     }
 
     /// What to do once a goal's page opens, from a goal card's menu on the home page.
-    enum GoalIntent { case plan, updateStatus, setObjective }
+    enum GoalIntent { case updateStatus, setObjective }
     var goalIntent: GoalIntent?
 
     /// A goal's own page, and what to do there once it's loaded.
@@ -54,14 +58,18 @@ final class ShellModel {
         route = .goal(id)
     }
 
-    /// A day (in days from today) for the calendar to show once it has loaded, from the Plan page.
-    var pendingDay: Int?
+    /// What the planning board shows: every goal, or one.
+    var planScope: BoardScope = .all
+    /// The goal whose page opened the board, for its Back; nil opened from elsewhere.
+    var planOrigin: String?
 
-    /// The calendar, on a day.
-    func openCalendar(day: Int) {
+    /// The planning board, on every goal or one, and the goal page it was opened from, if any.
+    func openPlan(_ scope: BoardScope = .all, from goal: String? = nil) {
+        isAccountMenuOpen = false
         overlays.dismiss()
-        pendingDay = day
-        route = .calendar
+        planScope = scope
+        planOrigin = goal
+        route = .plan
     }
 
     /// A block to select once the calendar has loaded, from clicking its notice.

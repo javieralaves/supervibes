@@ -85,8 +85,11 @@ enum BoardColumn: Hashable, Sendable {
 }
 
 struct PlanningBoard: View {
-    let detail: GoalDetail
-    var actions = TaskActions()
+    let data: BoardData
+    /// Every goal, a row each, or one goal's lanes.
+    var scope: BoardScope = .all
+    /// What a goal's cards and lanes can do.
+    var actions: (String) -> TaskActions = { _ in TaskActions() }
     /// For "Today 2:00 PM" and the protected time gone by; fixed in snapshots.
     var now = Date()
     /// Opens with this task open, for snapshot tests.
@@ -95,15 +98,48 @@ struct PlanningBoard: View {
     var initiallyHovered: BoardColumn?
     /// Opens with this column's capacity showing, for previews and snapshot tests.
     var initialCapacity: BoardColumn?
-    var onBack: () -> Void = {}
+    /// On All goals, the rows open at first, showing their cards.
+    var initiallyExpanded: Set<String> = []
+    /// Switches between All goals and a goal, from the title.
+    var onScope: (BoardScope) -> Void = { _ in }
+    /// "Back", when the board was opened from a goal's page.
+    var onBack: (() -> Void)?
 
     @State private var draft: TaskDraft?
+    @State private var expanded: Set<String>
     @State private var headerHeight: CGFloat = 0
+    @State private var titleAnchor = CGRect.zero
     @AppStorage("planningBoard.showsCompleted") private var showsCompleted = false
+    @Environment(\.overlays) private var overlays
 
-    private var today: String { detail.today }
+    init(
+        data: BoardData, scope: BoardScope = .all, actions: @escaping (String) -> TaskActions = { _ in TaskActions() },
+        now: Date = Date(), initiallyOpen: String? = nil, initiallyHovered: BoardColumn? = nil,
+        initialCapacity: BoardColumn? = nil, initiallyExpanded: Set<String> = [],
+        onScope: @escaping (BoardScope) -> Void = { _ in }, onBack: (() -> Void)? = nil
+    ) {
+        self.data = data
+        self.scope = scope
+        self.actions = actions
+        self.now = now
+        self.initiallyOpen = initiallyOpen
+        self.initiallyHovered = initiallyHovered
+        self.initialCapacity = initialCapacity
+        self.initiallyExpanded = initiallyExpanded
+        self.onScope = onScope
+        self.onBack = onBack
+        _expanded = State(initialValue: initiallyExpanded)
+    }
+
+    private var today: String { data.today }
     private var thisWeek: String { CalendarDay.weekStart(today) }
     private var nextWeek: String { CalendarDay.addDays(thisWeek, 7) }
+    private var clock: Clock { data.clock ?? .device }
+    /// The goal shown on its own, if one is.
+    private var single: BoardGoal? {
+        if case .goal(let id) = scope { return data.goal(id) }
+        return nil
+    }
 
     private static let columnWidth: CGFloat = 320
     private static let gap: CGFloat = 10
@@ -111,32 +147,31 @@ struct PlanningBoard: View {
     private static let top: CGFloat = 40
     private static let headerGap: CGFloat = 28
     private static let bottom: CGFloat = 8
+    /// All goals: the goals' column, and the narrowest a column gets before the row scrolls.
+    private static let labelWidth: CGFloat = 232
+    private static let rowGap: CGFloat = 8
+    private static let minCellWidth: CGFloat = 188
+    private static let openRowHeight: CGFloat = 360
 
     var body: some View {
-        let open = Dictionary(grouping: detail.tasks) { BoardColumn.of($0, today: today) }
-        let done = Dictionary(grouping: detail.week.done) { BoardColumn.ofDone($0, today: today) }
         let columns = BoardColumn.all(today: today)
         GeometryReader { geo in
-            // The lanes run to the bottom of the window, whatever they hold.
-            let laneHeight = max(240, geo.size.height - Self.top - headerHeight - Self.headerGap - Self.bottom)
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: Self.headerGap) {
                     header
                         .padding(.horizontal, Self.margin)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
-                    ScrollView(.horizontal) {
-                        HStack(alignment: .top, spacing: Self.gap) {
-                            ForEach(columns, id: \.self) { column in
-                                self.column(column, open: open[column] ?? [], done: showsCompleted ? done[column] ?? [] : [])
-                                    .frame(width: Self.columnWidth, height: laneHeight)
-                            }
-                        }
-                        .padding(.horizontal, Self.margin)
+                    if let goal = single {
+                        // The lanes run to the bottom of the window, whatever they hold.
+                        let laneHeight = max(240, geo.size.height - Self.top - headerHeight - Self.headerGap - Self.bottom)
+                        lanes(goal, columns: columns, height: laneHeight)
+                    } else {
+                        let cell = max(Self.minCellWidth, (geo.size.width - 2 * Self.margin - Self.labelWidth - CGFloat(columns.count) * Self.rowGap) / CGFloat(columns.count))
+                        allGoals(columns: columns, cellWidth: cell)
                     }
-                    .scrollIndicators(.hidden)
                 }
                 .padding(.top, Self.top)
-                .padding(.bottom, Self.bottom)
+                .padding(.bottom, single == nil ? 40 : Self.bottom)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // A click outside the cards closes an open one.
                 .background(Color.clear.contentShape(.rect).onTapGesture(perform: closeTask))
@@ -147,7 +182,7 @@ struct PlanningBoard: View {
         }
         .environment(\.shortHours, true)
         .onAppear {
-            if let id = initiallyOpen, let task = detail.tasks.first(where: { $0.id == id }) { draft = TaskDraft(task) }
+            if let id = initiallyOpen, let task = data.goals.lazy.flatMap(\.tasks).first(where: { $0.id == id }) { draft = TaskDraft(task) }
         }
     }
 
@@ -155,16 +190,19 @@ struct PlanningBoard: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
-            BoardBackLink(action: onBack).padding(.bottom, 20)
+            if let onBack { BoardBackLink(action: onBack).padding(.bottom, 20) }
             HStack(alignment: .center, spacing: 16) {
-                GoalBadge(icon: detail.goal.icon, color: detail.goal.color, size: .sm)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(detail.goal.title)
-                        .font(.app(20, .semibold)).tracking(-0.4)
+                if let goal = single {
+                    GoalBadge(icon: goal.icon, color: goal.color, size: .sm)
+                } else {
+                    Icon.target.image(size: 20)
                         .foregroundStyle(Theme.foreground)
-                        .lineLimit(1).truncationMode(.tail)
-                        .frame(minHeight: 24)
-                    Text(detail.week.objective.map { "This week: \($0)" } ?? "No objective for this week yet.")
+                        .frame(width: 40, height: 40)
+                        .background(Theme.foreground(0.08), in: .rect(cornerRadius: 12))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    ScopeTitle(title: single?.title ?? "All goals", anchor: $titleAnchor, action: showScopeMenu)
+                    Text(subtitle)
                         .font(.app(14))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1).truncationMode(.tail)
@@ -176,32 +214,164 @@ struct PlanningBoard: View {
         }
     }
 
-    // MARK: Columns
-
-    private func column(_ column: BoardColumn, open: [TaskItem], done: [TaskItem]) -> some View {
-        BoardColumnView(
-            title: title(column),
-            subtitle: subtitle(column),
-            open: open,
-            done: done,
-            color: detail.goal.color,
-            capacity: capacity(column),
-            capacityLabel: capacityLabel(column),
-            clock: detail.clock ?? .device,
-            emptyDetail: emptyDetail(column),
-            emptyTitle: "Nothing planned for \(relativeName(column))",
-            addPlaceholder: addPlaceholder(column),
-            initiallyHovered: initiallyHovered == column,
-            showsCapacityInitially: initialCapacity == column,
-            onAdd: { actions.add($0, column.patch(today: today)) },
-            onDrop: { id, before in drop(id, on: column, before: before) },
-            onToggleDone: actions.toggle
-        ) { task in
-            card(task, in: column)
+    private var subtitle: String {
+        if let goal = single { return goal.objective.map { "This week: \($0)" } ?? "No objective for this week yet." }
+        let withTime = data.goals.filter { goal in goal.protectedBlocks.contains { CalendarDay.weekStart(CalendarDay.string($0.start)) == thisWeek } }.count
+        switch withTime {
+        case 0: return "No goal has session time this week yet."
+        case 1: return "1 goal with session time this week."
+        default: return "\(withTime) goals with session time this week."
         }
     }
 
-    @ViewBuilder private func card(_ task: TaskItem, in column: BoardColumn) -> some View {
+    /// The title is the switch: All goals, or any one goal, each with its week's ring.
+    private func showScopeMenu() {
+        guard let overlays else { return }
+        overlays.showMenu(anchor: titleAnchor, owner: "board-scope", alignLeading: true) {
+            MenuPanel(width: 300) {
+                ScopeMenuRow(isChecked: scope == .all, action: { pick(.all) }) {
+                    Icon.target.image(size: 14)
+                        .foregroundStyle(Theme.foreground)
+                        .frame(width: 24, height: 24)
+                        .background(Theme.foreground(0.08), in: .rect(cornerRadius: 6))
+                    Text("All goals").appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                }
+                MenuSeparator()
+                ForEach(data.goals) { goal in
+                    ScopeMenuRow(isChecked: scope == .goal(goal.id), action: { pick(.goal(goal.id)) }) {
+                        GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
+                        Text(goal.title).appText(.sm).foregroundStyle(Theme.foreground).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 8)
+                        let week = capacity(.thisWeek, of: goal)
+                        if let week, week.protected > 0 {
+                            CapacityRing(planned: week.planned, protected: week.protected, color: goal.color, size: 14)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func pick(_ next: BoardScope) {
+        overlays?.dismiss()
+        closeTask()
+        onScope(next)
+    }
+
+    // MARK: One goal
+
+    private func lanes(_ goal: BoardGoal, columns: [BoardColumn], height: CGFloat) -> some View {
+        let open = Dictionary(grouping: goal.tasks) { BoardColumn.of($0, today: today) }
+        let done = Dictionary(grouping: goal.done) { BoardColumn.ofDone($0, today: today) }
+        return ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: Self.gap) {
+                ForEach(columns, id: \.self) { column in
+                    self.column(column, of: goal, open: open[column] ?? [], done: showsCompleted ? done[column] ?? [] : [], compact: false)
+                        .frame(width: Self.columnWidth, height: height)
+                }
+            }
+            .padding(.horizontal, Self.margin)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    // MARK: All goals
+
+    /// The columns' headings, each weighing every goal together, then a row per goal: collapsed to
+    /// its rings, or open to its cards.
+    private func allGoals(columns: [BoardColumn], cellWidth: CGFloat) -> some View {
+        ScrollView(.horizontal) {
+            VStack(alignment: .leading, spacing: Self.rowGap) {
+                HStack(alignment: .bottom, spacing: Self.rowGap) {
+                    Text("Goal").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                        .padding(.horizontal, 10)
+                        .frame(width: Self.labelWidth, alignment: .leading)
+                    ForEach(columns, id: \.self) { column in
+                        ColumnHead(title: title(column), subtitle: subtitle(column), total: total(column), unplanned: column == .unplanned ? unplannedTotal : nil)
+                            .frame(width: cellWidth, alignment: .leading)
+                    }
+                }
+                ForEach(data.goals) { goal in
+                    row(goal, columns: columns, cellWidth: cellWidth)
+                }
+            }
+            .padding(.horizontal, Self.margin)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func row(_ goal: BoardGoal, columns: [BoardColumn], cellWidth: CGFloat) -> some View {
+        let isOpen = expanded.contains(goal.id)
+        let open = Dictionary(grouping: goal.tasks) { BoardColumn.of($0, today: today) }
+        let done = Dictionary(grouping: goal.done) { BoardColumn.ofDone($0, today: today) }
+        return HStack(alignment: .top, spacing: Self.rowGap) {
+            GoalRowLabel(goal: goal, isOpen: isOpen) { toggleRow(goal.id) }
+                .frame(width: Self.labelWidth, alignment: .leading)
+            ForEach(columns, id: \.self) { column in
+                if isOpen {
+                    self.column(column, of: goal, open: open[column] ?? [], done: showsCompleted ? done[column] ?? [] : [], compact: true)
+                        .frame(width: cellWidth, height: Self.openRowHeight)
+                } else {
+                    CellSummary(open: meant(for: column, of: goal, open: open), capacity: capacity(column, of: goal), color: goal.color) { toggleRow(goal.id) }
+                        .frame(width: cellWidth)
+                }
+            }
+        }
+    }
+
+    /// What a folded cell counts, as its ring does: a week's every task meant for it (its days on
+    /// the board too), otherwise the column's own.
+    private func meant(for column: BoardColumn, of goal: BoardGoal, open: [BoardColumn: [TaskItem]]) -> [TaskItem] {
+        switch column {
+        case .thisWeek: goal.tasks.filter { BoardColumn.week(of: $0, today: today) == thisWeek }
+        case .nextWeek: goal.tasks.filter { BoardColumn.week(of: $0, today: today) == nextWeek }
+        default: open[column] ?? []
+        }
+    }
+
+    private func toggleRow(_ id: String) {
+        if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+    }
+
+    /// A column's ring across every goal.
+    private func total(_ column: BoardColumn) -> Capacity? {
+        let each = data.goals.compactMap { capacity(column, of: $0) }
+        guard !each.isEmpty else { return nil }
+        return Capacity(planned: each.reduce(0) { $0 + $1.planned }, protected: each.reduce(0) { $0 + $1.protected })
+    }
+
+    private var unplannedTotal: Int {
+        data.goals.reduce(0) { sum, goal in sum + goal.tasks.filter { BoardColumn.of($0, today: today) == .unplanned }.reduce(0) { $0 + $1.minutes } }
+    }
+
+    // MARK: Columns
+
+    private func column(_ column: BoardColumn, of goal: BoardGoal, open: [TaskItem], done: [TaskItem], compact: Bool) -> some View {
+        let actions = actions(goal.id)
+        return BoardColumnView(
+            title: title(column),
+            subtitle: subtitle(column),
+            showsTitle: !compact,
+            open: open,
+            done: done,
+            color: goal.color,
+            capacity: capacity(column, of: goal),
+            capacityLabel: compact ? "\(capacityLabel(column)) · \(goal.title)" : capacityLabel(column),
+            clock: clock,
+            emptyDetail: emptyDetail(column, of: goal),
+            emptyTitle: "Nothing planned for \(relativeName(column))",
+            addPlaceholder: addPlaceholder(column),
+            initiallyHovered: initiallyHovered == column && !compact,
+            showsCapacityInitially: initialCapacity == column && (!compact || initiallyExpanded.first == goal.id),
+            onAdd: { actions.add($0, column.patch(today: today)) },
+            onDrop: { id, before in drop(id, on: column, of: goal, before: before) },
+            onToggleDone: actions.toggle
+        ) { task in
+            card(task, in: column, actions: actions)
+        }
+    }
+
+    @ViewBuilder private func card(_ task: TaskItem, in column: BoardColumn, actions: TaskActions) -> some View {
         if let draft, draft.id == task.id {
             OpenTaskRow(
                 task: task,
@@ -215,7 +385,7 @@ struct PlanningBoard: View {
             GoalTaskRow(
                 task: task,
                 horizon: task.horizon(today: today),
-                clock: detail.clock ?? .device,
+                clock: clock,
                 today: today,
                 thisWeek: thisWeek,
                 nextWeek: nextWeek,
@@ -274,19 +444,19 @@ struct PlanningBoard: View {
 
     // MARK: Capacity
 
-    /// Time planned against time protected: a day counts its own day, a week the whole week (its
-    /// days on the board included).
-    private func capacity(_ column: BoardColumn) -> Capacity? {
-        let blocks = detail.week.protectedBlocks
+    /// A goal's time planned against its time protected: a day counts its own day, a week the
+    /// whole week (its days on the board included).
+    private func capacity(_ column: BoardColumn, of goal: BoardGoal) -> Capacity? {
+        let blocks = goal.protectedBlocks
         switch column {
         case .unplanned:
             return nil
         case .day(let day):
-            let open = detail.tasks.filter { $0.plannedFor == day }.reduce(0) { $0 + $1.minutes }
+            let open = goal.tasks.filter { $0.plannedFor == day }.reduce(0) { $0 + $1.minutes }
             return .day(day, open: open, blocks: blocks, now: now)
         case .thisWeek, .nextWeek:
             let week = column == .thisWeek ? thisWeek : nextWeek
-            let open = detail.tasks.filter { BoardColumn.week(of: $0, today: today) == week }.reduce(0) { $0 + $1.minutes }
+            let open = goal.tasks.filter { BoardColumn.week(of: $0, today: today) == week }.reduce(0) { $0 + $1.minutes }
             return .week(week, open: open, blocks: blocks, now: now)
         }
     }
@@ -310,10 +480,9 @@ struct PlanningBoard: View {
 
     /// What an empty lane says under "Nothing planned for …": the protected time still ahead on a
     /// day, or how to plan into a week.
-    private func emptyDetail(_ column: BoardColumn) -> String {
-        guard case .day = column, let capacity = capacity(column) else { return "Drag a task here to plan it" }
+    private func emptyDetail(_ column: BoardColumn, of goal: BoardGoal) -> String {
+        guard case .day = column, let capacity = capacity(column, of: goal) else { return "Drag a task here to plan it" }
         let ahead = capacity.ahead
-        let clock = detail.clock ?? .device
         if ahead.count == 1, let block = ahead.first {
             return "\(BoardDuration.text(block.minutes)) protected, \(clock.range(block.start, block.end))"
         }
@@ -322,6 +491,14 @@ struct PlanningBoard: View {
     }
 
     // MARK: Editing
+
+    /// The open task and the goal it belongs to.
+    private func located(_ id: String) -> (task: TaskItem, goal: BoardGoal)? {
+        for goal in data.goals {
+            if let task = goal.tasks.first(where: { $0.id == id }) { return (task, goal) }
+        }
+        return nil
+    }
 
     private func open(_ task: TaskItem) {
         guard !task.isPending else { return }
@@ -336,18 +513,19 @@ struct PlanningBoard: View {
     }
 
     private func commit(_ draft: TaskDraft) {
-        guard let task = detail.tasks.first(where: { $0.id == draft.id }), let patch = draft.patch(for: task) else { return }
-        actions.edit(task, patch)
+        guard let (task, goal) = located(draft.id), let patch = draft.patch(for: task) else { return }
+        actions(goal.id).edit(task, patch)
     }
 
     // MARK: Moving
 
-    /// A drop on a column (before nil) or on one of its cards. Within its own column a task only
-    /// changes place, so a day it has stays.
-    private func drop(_ id: String, on column: BoardColumn, before: String?) {
-        guard let task = detail.tasks.first(where: { $0.id == id }), before != id else { return }
+    /// A drop on a column (before nil) or on one of its cards, within a goal: a card dragged from
+    /// another goal's row stays where it was. Within its own column a task only changes place, so a
+    /// day it has stays.
+    private func drop(_ id: String, on column: BoardColumn, of goal: BoardGoal, before: String?) {
+        guard let task = goal.tasks.first(where: { $0.id == id }), before != id else { return }
         let patch = BoardColumn.of(task, today: today) == column ? TaskPatch() : column.patch(today: today)
-        actions.place(task, patch, before)
+        actions(goal.id).place(task, patch, before)
     }
 }
 
@@ -356,7 +534,7 @@ private extension String {
     var lowercasedIfRelative: String { self == "Today" || self == "Tomorrow" ? lowercased() : self }
 }
 
-/// A card on the board (and the Plan page's lanes): white, on top of its lane.
+/// A card on the board: white, on top of its lane.
 struct CardStyle: ViewModifier {
     let isOpen: Bool
 
@@ -367,6 +545,183 @@ struct CardStyle: ViewModifier {
                 RoundedRectangle(cornerRadius: 12).fill(Theme.card).shadow(color: .black.opacity(0.04), radius: 2, y: 1)
             }
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isOpen ? Theme.lineStrong : Theme.cardBorder))
+    }
+}
+
+/// The board's title, which is its switch: the goal's title (or All goals) and a chevron, opening
+/// the menu of goals.
+private struct ScopeTitle: View {
+    let title: String
+    @Binding var anchor: CGRect
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.app(20, .semibold)).tracking(-0.4)
+                    .foregroundStyle(Theme.foreground)
+                    .lineLimit(1).truncationMode(.tail)
+                Icon.chevronDown.image(size: 16).foregroundStyle(Theme.muted)
+            }
+            .frame(minHeight: 24)
+            .padding(.horizontal, 6)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .padding(.horizontal, -6)
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .modifier(AnchorReader(frame: $anchor))
+        .help("Show another goal, or all of them")
+    }
+}
+
+/// A row of the title's menu: a goal (or All goals), ticked when it's the one shown.
+private struct ScopeMenuRow<Label: View>: View {
+    let isChecked: Bool
+    let action: () -> Void
+    @ViewBuilder let label: Label
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                label
+                Spacer(minLength: 0)
+                if isChecked { Icon.tick.image(size: 16).foregroundStyle(Theme.foreground) }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 36)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// A column's head on All goals: its title, and its ring across every goal (Unplanned, its total).
+private struct ColumnHead: View {
+    let title: String
+    let subtitle: String?
+    let total: Capacity?
+    let unplanned: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                if let subtitle { Text(subtitle).appText(.xs).foregroundStyle(Theme.muted).lineLimit(1) }
+            }
+            HStack(spacing: 6) {
+                if let total {
+                    CapacityRing(planned: total.planned, protected: total.protected, color: "slate", size: 12)
+                    LoadText(planned: total.planned, protected: total.protected)
+                } else if let unplanned {
+                    Text("\(BoardDuration.text(unplanned)) across goals").foregroundStyle(Theme.muted)
+                }
+            }
+            .appText(.xs)
+            .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 2)
+    }
+}
+
+/// "2 h 15 min / 8 h 30 min", the planned figure amber when over; "4 h free" with nothing planned.
+private struct LoadText: View {
+    let planned: Int
+    let protected: Int
+
+    var body: some View {
+        if protected == 0 {
+            Text(planned > 0 ? "\(BoardDuration.text(planned)), no time" : "No time").foregroundStyle(Theme.muted)
+        } else if planned == 0 {
+            Text("\(BoardDuration.text(protected)) free").foregroundStyle(Theme.muted)
+        } else {
+            Text("\(Text(BoardDuration.text(planned)).foregroundStyle(planned > protected ? Theme.amber : Theme.foreground)) / \(BoardDuration.text(protected))")
+                .foregroundStyle(Theme.muted)
+        }
+    }
+}
+
+/// A goal's row label on All goals: a chevron to open or fold it, its badge, title and objective.
+private struct GoalRowLabel: View {
+    let goal: BoardGoal
+    let isOpen: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: isOpen ? .top : .center, spacing: 10) {
+                (isOpen ? Icon.chevronDown : Icon.arrowRight).image(size: 12)
+                    .foregroundStyle(Theme.muted)
+                    .padding(.top, isOpen ? 12 : 0)
+                GoalBadge(icon: goal.icon, color: goal.color, size: .field)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(goal.title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                        .lineLimit(isOpen ? 2 : 1).truncationMode(.tail)
+                    Text(goal.objective ?? "No objective this week").appText(.xs).foregroundStyle(Theme.muted)
+                        .lineLimit(isOpen ? 3 : 1).truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(minHeight: 60)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 12))
+            .contentShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(isOpen ? "Fold" : "Show its tasks")
+    }
+}
+
+/// A folded row's cell: its ring and load, and how many tasks; clicking opens the row.
+private struct CellSummary: View {
+    let open: [TaskItem]
+    /// Nil for Unplanned, which shows its count and total.
+    let capacity: Capacity?
+    let color: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                content
+            }
+            .appText(.xs)
+            .monospacedDigit()
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .background(isHovered ? Theme.foreground(0.07) : laneFill, in: .rect(cornerRadius: 12))
+            .contentShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    private var count: String { open.count == 1 ? "1 task" : "\(open.count) tasks" }
+
+    @ViewBuilder private var content: some View {
+        if let capacity, capacity.protected > 0 || !open.isEmpty {
+            HStack(spacing: 6) {
+                CapacityRing(planned: capacity.planned, protected: capacity.protected, color: color, size: 14)
+                LoadText(planned: capacity.planned, protected: capacity.protected)
+            }
+            Text(open.isEmpty ? "Nothing planned" : count).foregroundStyle(Theme.muted)
+        } else if capacity == nil, !open.isEmpty {
+            Text("\(count) · \(BoardDuration.text(open.reduce(0) { $0 + $1.minutes }))").foregroundStyle(Theme.muted)
+        } else {
+            Text("—").foregroundStyle(Theme.muted.opacity(0.6))
+        }
     }
 }
 
@@ -422,6 +777,8 @@ private struct ShowCompletedButton: View {
 private struct BoardColumnView<Card: View>: View {
     let title: String
     let subtitle: String?
+    /// False on an open row of All goals, where the columns' heads already say it: just the ring.
+    var showsTitle = true
     let open: [TaskItem]
     /// Finished tasks to list, when Show completed is on.
     let done: [TaskItem]
@@ -447,7 +804,7 @@ private struct BoardColumnView<Card: View>: View {
     @State private var isAdding = false
 
     init(
-        title: String, subtitle: String?, open: [TaskItem], done: [TaskItem], color: String, capacity: Capacity?,
+        title: String, subtitle: String?, showsTitle: Bool = true, open: [TaskItem], done: [TaskItem], color: String, capacity: Capacity?,
         capacityLabel: String, clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
         initiallyHovered: Bool, showsCapacityInitially: Bool, onAdd: @escaping (String) -> Void,
         onDrop: @escaping (String, String?) -> Void, onToggleDone: @escaping (TaskItem) -> Void,
@@ -455,6 +812,7 @@ private struct BoardColumnView<Card: View>: View {
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.showsTitle = showsTitle
         self.open = open
         self.done = done
         self.color = color
@@ -521,11 +879,13 @@ private struct BoardColumnView<Card: View>: View {
 
     private var heading: some View {
         HStack(spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
-                if let subtitle { Text(subtitle).appText(.xs).foregroundStyle(Theme.muted).lineLimit(1) }
+            if showsTitle {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                    if let subtitle { Text(subtitle).appText(.xs).foregroundStyle(Theme.muted).lineLimit(1) }
+                }
+                Spacer(minLength: 4)
             }
-            Spacer(minLength: 4)
             if let capacity {
                 CapacityChip(capacity: capacity, color: color, label: capacityLabel, clock: clock, showsInitially: showsCapacityInitially)
             } else if !open.isEmpty {
@@ -824,8 +1184,16 @@ private func previewDefaults(showsCompleted: Bool) -> UserDefaults {
     return defaults
 }
 
+#Preview("All goals") {
+    PlanningBoard(data: Fixtures.board, now: Fixtures.referenceNow, initiallyExpanded: ["1"])
+        .frame(width: 1500, height: 1000)
+        .background(Theme.background)
+        .overlayHost(OverlayCenter())
+        .defaultAppStorage(previewDefaults(showsCompleted: false))
+}
+
 #Preview("Planning board") {
-    PlanningBoard(detail: Fixtures.planningDetail, now: Fixtures.referenceNow, initiallyHovered: .unplanned)
+    PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: Fixtures.referenceNow, initiallyHovered: .unplanned)
         .frame(width: 1500, height: 900)
         .background(Theme.background)
         .overlayHost(OverlayCenter())
@@ -833,7 +1201,7 @@ private func previewDefaults(showsCompleted: Bool) -> UserDefaults {
 }
 
 #Preview("Show completed on") {
-    PlanningBoard(detail: Fixtures.planningDetail, now: Fixtures.referenceNow)
+    PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: Fixtures.referenceNow)
         .frame(width: 1500, height: 900)
         .background(Theme.background)
         .overlayHost(OverlayCenter())
@@ -841,7 +1209,7 @@ private func previewDefaults(showsCompleted: Bool) -> UserDefaults {
 }
 
 #Preview("Today's capacity") {
-    PlanningBoard(detail: Fixtures.planningDetail, now: Fixtures.referenceNow, initialCapacity: .day("2026-11-18"))
+    PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: Fixtures.referenceNow, initialCapacity: .day("2026-11-18"))
         .frame(width: 1500, height: 900)
         .background(Theme.background)
         .overlayHost(OverlayCenter())
@@ -849,7 +1217,7 @@ private func previewDefaults(showsCompleted: Bool) -> UserDefaults {
 }
 
 #Preview("This week's capacity") {
-    PlanningBoard(detail: Fixtures.planningDetail, now: Fixtures.referenceNow, initialCapacity: .thisWeek)
+    PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: Fixtures.referenceNow, initialCapacity: .thisWeek)
         .frame(width: 1500, height: 900)
         .background(Theme.background)
         .overlayHost(OverlayCenter())

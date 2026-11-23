@@ -141,7 +141,7 @@ struct CalendarGoal: Identifiable, Hashable, Sendable {
     let color: String
 }
 
-/// An open task, for the day strip, the task panel and the Plan page.
+/// An open task, for the day strip and the task panel.
 struct CalendarTask: Identifiable, Hashable, Sendable {
     let id: String
     let goalId: String
@@ -377,5 +377,12 @@ extension Clock {
         let h = ((hour % 24) + 24) % 24
         if self == .twentyFourHour { return String(format: "%02d:00", h) }
         return "\(h % 12 == 0 ? 12 : h % 12) \(h < 12 ? "AM" : "PM")"
+    }
+}
+
+extension CalendarTask {
+    /// As the goal page has it, for the planning rules they share.
+    var item: TaskItem {
+        TaskItem(id: id, title: title, minutes: minutes, plannedFor: plannedFor, plannedWeek: plannedWeek, dueOn: dueOn, isPending: isPending)
     }
 }

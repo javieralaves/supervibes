@@ -436,17 +436,7 @@ final class CalendarModel {
         }
     }
 
-    // MARK: - The Plan page
-
-    /// What the Plan page's cards can do, wired to this model: the board's rows, on any goal's tasks.
-    var taskActions: TaskActions {
-        TaskActions(
-            toggle: { [weak self] in self?.complete($0.id) },
-            edit: { [weak self] in self?.editTask($0.id, $1) },
-            delete: { [weak self] in self?.deleteTask($0.id) },
-            place: { [weak self] in self?.placeTask($0.id, $1, before: $2) }
-        )
-    }
+    // MARK: - Giving time
 
     /// Give part of a session to another goal: the session ends `minutes` earlier, and that time is
     /// protected for the other goal instead.
@@ -464,21 +454,6 @@ final class CalendarModel {
     func giveBlock(_ blockId: String, to goalId: String) {
         guard let block = block(blockId), block.goalId != goalId else { return }
         saveDetails(blockId, goalId: goalId, title: block.title)
-    }
-
-    /// Check a task off: it leaves the plan.
-    private func complete(_ taskId: String) {
-        guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
-        let before = data.tasks.remove(at: index)
-        write(undo: { [weak self] in self?.restore(before, at: index) }) { client in
-            switch try await client.setTaskDone(path: .init(taskId: taskId), body: .json(.init(done: true))) {
-            case .ok: return .done
-            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t check that off.")
-            case .notFound: return .failed("That task doesn’t exist anymore.")
-            case .unauthorized: return .signedOut
-            case .undocumented(let status, _): return .failed("Couldn’t check that off (the server answered \(status)).")
-            }
-        }
     }
 
     private func editTask(_ taskId: String, _ patch: TaskPatch) {
@@ -505,44 +480,6 @@ final class CalendarModel {
         }
     }
 
-    private func deleteTask(_ taskId: String) {
-        guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
-        let before = data.tasks.remove(at: index)
-        write(undo: { [weak self] in self?.restore(before, at: index) }) { client in
-            switch try await client.deleteTask(path: .init(taskId: taskId)) {
-            case .noContent, .notFound: return .done
-            case .unauthorized: return .signedOut
-            case .undocumented(let status, _): return .failed("Couldn’t delete that task (the server answered \(status)).")
-            }
-        }
-    }
-
-    /// Move a task to a day, a week or Unplanned (the patch's planned day and week), just before the
-    /// task `before` on its goal, or after them all.
-    private func placeTask(_ taskId: String, _ patch: TaskPatch, before: String?) {
-        guard before != taskId, let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
-        let tasks = data.tasks
-        let after = placed(tasks[index], patch)
-        var next = tasks
-        next.remove(at: index)
-        // Before another task, or after the last of its goal's.
-        let target = before.flatMap { id in next.firstIndex { $0.id == id } }
-            ?? next.lastIndex { $0.goalId == after.goalId }.map { $0 + 1 }
-            ?? next.endIndex
-        next.insert(after, at: target)
-        data.tasks = next
-        write(undo: { [weak self] in self?.data.tasks = tasks }) { client in
-            let body = Components.Schemas.TaskPlacement(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, before: before)
-            switch try await client.placeTask(path: .init(taskId: taskId), body: .json(body)) {
-            case .ok: return .done
-            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t move that task.")
-            case .notFound: return .failed("That task doesn’t exist anymore.")
-            case .unauthorized: return .signedOut
-            case .undocumented(let status, _): return .failed("Couldn’t move that task (the server answered \(status)).")
-            }
-        }
-    }
-
     /// A task with its planned day and week changed as the server will (TaskItem.placed).
     private func placed(_ task: CalendarTask, _ patch: TaskPatch) -> CalendarTask {
         let item = task.item.placed(plannedFor: patch.plannedFor, plannedWeek: patch.plannedWeek, today: CalendarDay.today(now))
@@ -550,11 +487,6 @@ final class CalendarModel {
         after.plannedFor = item.plannedFor
         after.plannedWeek = item.plannedWeek
         return after
-    }
-
-    private func restore(_ task: CalendarTask, at index: Int) {
-        guard !data.tasks.contains(where: { $0.id == task.id }) else { return }
-        data.tasks.insert(task, at: min(index, data.tasks.count))
     }
 
     private func replaceTask(_ id: String, with task: CalendarTask) {

@@ -12,7 +12,7 @@ import { PROVIDER_KEYS, PROVIDERS } from "@/lib/providers";
 import { asTask, SuggestionSchema, TaskSchema } from "@/lib/api/routes/tasks";
 import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
-import { goalWeekLoads } from "@/lib/goal-week";
+import { goalWeekLoads, sessionBlocks } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
@@ -38,6 +38,9 @@ const TrajectoryDaySchema = z
     carried: z.boolean().openapi({ description: "No read that day: the status is the one before it." }),
   })
   .openapi("TrajectoryDay");
+
+/** A goal's session time on the calendar, clipped to the weeks it's sent for. */
+export const ProtectedBlockSchema = z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock");
 
 const GoalSchema = z
   .object({
@@ -161,7 +164,7 @@ const GoalDetailSchema = z
       lastWeek: z.string().nullable(),
       protectedMinutes: z.int().openapi({ description: "Session time on the calendar for this goal this week, in minutes; reserved time isn't counted." }),
       protectedBlocks: z
-        .array(z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock"))
+        .array(ProtectedBlockSchema)
         .openapi({
           description:
             "The goal's time on the calendar this week and next that tasks can go in (not reserved time), clipped to those two weeks, earliest first. For weighing what's planned against it.",
@@ -355,10 +358,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const goalBlocks = blocks.filter((b) => b.goalId === id);
     // Reserved time is kept for its own sake, so it's no room for tasks.
     const weekBlocks = goalBlocks.filter((b) => b.startsAt < weekBounds.end && !b.reserved);
-    const protectedBlocks = goalBlocks.filter((b) => !b.reserved).map((b) => ({
-      startsAt: new Date(Math.max(b.startsAt.getTime(), weekBounds.start.getTime())).toISOString(),
-      endsAt: new Date(Math.min(b.endsAt.getTime(), twoWeeksEnd.getTime())).toISOString(),
-    }));
+    const protectedBlocks = sessionBlocks(goalBlocks, id, weekBounds.start, twoWeeksEnd);
     const protectedMinutes = Math.round(
       weekBlocks.reduce(
         (sum, b) => sum + Math.max(0, Math.min(b.endsAt.getTime(), weekBounds.end.getTime()) - Math.max(b.startsAt.getTime(), weekBounds.start.getTime())),

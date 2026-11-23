@@ -49,9 +49,9 @@ struct GoalTaskRow: View {
     var showsNotes = true
     /// The plan pill. The planning board leaves it out where the column already says as much.
     var showsPlan = true
-    /// Opens it in place; nil where it can't be (the Plan page's lanes).
+    /// Opens it in place; nil where it can't be.
     let onOpen: (() -> Void)?
-    /// Its menu offers its goal's page, away from the goal (the Plan page).
+    /// Its menu offers its goal's page, where it's shown away from the goal.
     var onOpenGoal: (() -> Void)?
 
     @State private var isHovered = false

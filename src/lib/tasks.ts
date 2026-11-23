@@ -86,6 +86,15 @@ export async function getTask(userId: string, taskId: string): Promise<TaskDTO |
 }
 
 /** Every open task across the user's goals, in each goal's order. */
+/** Tasks checked off since `since`, across goals, most recently first. */
+export async function listTasksDoneSince(userId: string, since: Date): Promise<TaskDTO[]> {
+  return db
+    .select(columns)
+    .from(goalTasks)
+    .where(and(eq(goalTasks.userId, userId), gte(goalTasks.doneAt, since)))
+    .orderBy(desc(goalTasks.doneAt));
+}
+
 export async function listOpenTasks(userId: string): Promise<TaskDTO[]> {
   return db
     .select(columns)
@@ -94,15 +103,15 @@ export async function listOpenTasks(userId: string): Promise<TaskDTO[]> {
     .orderBy(asc(goalTasks.position), asc(goalTasks.createdAt));
 }
 
-/** When each of a goal's tasks is next on the calendar, for tasks that are. */
-export async function listTaskSchedules(userId: string, goalId: string): Promise<Map<string, Date>> {
+/** When each of a goal's tasks (or, without a goal, every task) is next on the calendar, for tasks that are. */
+export async function listTaskSchedules(userId: string, goalId?: string): Promise<Map<string, Date>> {
   const rows = await db
     .select({ taskId: calendarBlocks.taskId, next: min(calendarBlocks.startsAt) })
     .from(calendarBlocks)
     .where(
       and(
         eq(calendarBlocks.userId, userId),
-        eq(calendarBlocks.goalId, goalId),
+        goalId ? eq(calendarBlocks.goalId, goalId) : undefined,
         isNotNull(calendarBlocks.taskId),
         gt(calendarBlocks.endsAt, new Date()),
       ),

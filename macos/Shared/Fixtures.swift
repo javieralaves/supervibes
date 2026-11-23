@@ -172,6 +172,49 @@ enum Fixtures {
         return detail
     }
 
+    /// The planning board across the six goals on Wednesday Nov 18: Build Supervibes as on its own
+    /// board, then Jacob's app with time to spare, the housing playbook over tomorrow and with no
+    /// objective, a goal with nothing at all, Movement with time and no tasks, and Superfocus.
+    static var board: BoardData {
+        func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+            var components = DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute)
+            components.calendar = Calendar(identifier: .gregorian)
+            components.timeZone = TimeZone(identifier: "Europe/Madrid")
+            return components.date!
+        }
+        func blocks(_ spans: [(Int, Int, Int, Int, Int)]) -> [ProtectedBlock] {
+            spans.map { ProtectedBlock(start: at($0.0, $0.1, $0.2), end: at($0.0, $0.3, $0.4)) }
+        }
+        let detail = planningDetail
+        let goals = Self.goals
+        func goal(_ index: Int, objective: String?, tasks: [TaskItem], done: [TaskItem] = [], blocks: [ProtectedBlock]) -> BoardGoal {
+            BoardGoal(id: goals[index].id, title: goals[index].title, icon: goals[index].icon, color: goals[index].color,
+                      objective: objective, tasks: tasks, done: done, protectedBlocks: blocks)
+        }
+        return BoardData(today: "2026-11-18", clock: nil, goals: [
+            goal(0, objective: detail.week.objective, tasks: detail.tasks, done: detail.week.done, blocks: detail.week.protectedBlocks),
+            goal(1, objective: "Get the agent answering with real listings", tasks: [
+                TaskItem(id: "j1", title: "Follow up with Idealista re: API access", minutes: 15, plannedFor: "2026-11-18", plannedWeek: "2026-11-16"),
+                TaskItem(id: "j2", title: "Log failed Idealista MCP queries and rewrite them", minutes: 60, plannedFor: "2026-11-19", plannedWeek: "2026-11-16"),
+                TaskItem(id: "j3", title: "Compare Fotocasa’s API with Idealista’s", minutes: 30),
+            ], blocks: blocks([(18, 11, 0, 12, 0), (19, 9, 0, 10, 0), (20, 9, 0, 10, 0)])),
+            goal(2, objective: nil, tasks: [
+                TaskItem(id: "p1", title: "Interview two expats about renting", minutes: 120, plannedFor: "2026-11-19", plannedWeek: "2026-11-16"),
+                TaskItem(id: "p2", title: "Map neighbourhoods by commute", minutes: 60, plannedFor: "2026-11-19", plannedWeek: "2026-11-16"),
+                TaskItem(id: "p3", title: "Draft the utilities chapter", minutes: 120, plannedWeek: "2026-11-16"),
+            ], blocks: blocks([(19, 10, 0, 11, 30), (20, 10, 0, 12, 0)])),
+            goal(3, objective: nil, tasks: [], blocks: []),
+            goal(4, objective: "Three workouts", tasks: [], blocks: blocks([(18, 18, 0, 19, 0), (20, 18, 0, 19, 0), (21, 10, 0, 11, 30)])),
+            goal(5, objective: "Ship the onboarding consolidation", tasks: [
+                TaskItem(id: "s1", title: "Prototype a single quick capture experience", minutes: 120, plannedFor: "2026-11-18", plannedWeek: "2026-11-16"),
+                TaskItem(id: "s2", title: "Clean up Lens product experience & data", minutes: 60, plannedWeek: "2026-11-16"),
+                TaskItem(id: "s3", title: "Review what the sprint shipped", minutes: 30, plannedWeek: "2026-11-23"),
+            ], done: [
+                TaskItem(id: "s0", title: "Follow up with the community", minutes: 30, done: true, plannedFor: "2026-11-17", plannedWeek: "2026-11-16"),
+            ], blocks: blocks([(18, 13, 0, 16, 0), (19, 13, 0, 15, 0), (23, 13, 0, 16, 0)])),
+        ])
+    }
+
     /// The goal's protected time around `referenceNow` (Wednesday 10:18): Monday's and Tuesday's
     /// gone by; today one block over and one ahead, with more planned than both (over capacity);
     /// none tomorrow; Friday with time to spare; Saturday's long block making the week fit, 1 h to
@@ -352,67 +395,4 @@ enum Fixtures {
                             ])
     }
 
-    /// Planning tomorrow (Thursday Nov 19) across goals, as the Plan page's design has it: Build
-    /// Supervibes 2 h over its 2 h session, Superfocus with 30 min to spare, the essay with a task on the
-    /// calendar at 6 PM and 30 min to spare, and
-    /// reserved time for the gym and lunch.
-    static var plan: CalendarData {
-        let today = Calendar.current.startOfDay(for: referenceNow)
-        func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-            CalendarDayMath.midnight(day, from: today).addingTimeInterval(Double(hour * 3600 + minute * 60))
-        }
-        let goals = [
-            CalendarGoal(id: "pg1", title: "Build Supervibes as a fresh take on productivity", icon: "Rocket01Icon", color: "sky"),
-            CalendarGoal(id: "pg2", title: "Lead design for Superfocus's next sprint", icon: "Briefcase01Icon", color: "indigo"),
-            CalendarGoal(id: "pg3", title: "Publish an essay every week", icon: "Edit02Icon", color: "violet"),
-            CalendarGoal(id: "pg4", title: "Feel strong and rested", icon: "Dumbbell01Icon", color: "green"),
-            CalendarGoal(id: "pg5", title: "Hold a conversation in Italian", icon: "LanguageSkillIcon", color: "amber"),
-        ]
-        let blocks = [
-            // Tomorrow.
-            CalendarBlock(id: "p1", goalId: "pg4", title: "Gym", startsAt: at(1, 7, 30), endsAt: at(1, 8, 30), reserved: true),
-            CalendarBlock(id: "p2", goalId: "pg1", title: nil, startsAt: at(1, 9), endsAt: at(1, 11)),
-            CalendarBlock(id: "p3", goalId: "pg4", title: "Lunch", startsAt: at(1, 13), endsAt: at(1, 14), reserved: true),
-            CalendarBlock(id: "p4", goalId: "pg2", title: nil, startsAt: at(1, 14), endsAt: at(1, 16)),
-            CalendarBlock(id: "p5", goalId: "pg3", title: nil, startsAt: at(1, 16, 30), endsAt: at(1, 17, 30)),
-            // A task given a time: it has its own, and that time isn't room for the essay's others.
-            CalendarBlock(id: "p18", goalId: "pg3", title: "Edit last week's draft before it goes out",
-                          startsAt: at(1, 18), endsAt: at(1, 18, 15), taskId: "pt14"),
-            // The rest of this week, and next.
-            CalendarBlock(id: "p6", goalId: "pg1", title: nil, startsAt: at(-2, 9), endsAt: at(-2, 12)),
-            CalendarBlock(id: "p7", goalId: "pg1", title: nil, startsAt: at(-1, 9), endsAt: at(-1, 12)),
-            CalendarBlock(id: "p8", goalId: "pg1", title: nil, startsAt: at(0, 9), endsAt: at(0, 11)),
-            CalendarBlock(id: "p9", goalId: "pg1", title: nil, startsAt: at(2, 9), endsAt: at(2, 12)),
-            CalendarBlock(id: "p10", goalId: "pg2", title: nil, startsAt: at(0, 14), endsAt: at(0, 17)),
-            CalendarBlock(id: "p11", goalId: "pg2", title: nil, startsAt: at(2, 14), endsAt: at(2, 17)),
-            CalendarBlock(id: "p12", goalId: "pg3", title: nil, startsAt: at(-1, 16), endsAt: at(-1, 17)),
-            CalendarBlock(id: "p13", goalId: "pg1", title: nil, startsAt: at(5, 9), endsAt: at(5, 12)),
-            CalendarBlock(id: "p14", goalId: "pg1", title: nil, startsAt: at(6, 9), endsAt: at(6, 12)),
-            CalendarBlock(id: "p15", goalId: "pg1", title: nil, startsAt: at(7, 9), endsAt: at(7, 12)),
-            CalendarBlock(id: "p16", goalId: "pg2", title: nil, startsAt: at(6, 14), endsAt: at(6, 17)),
-            CalendarBlock(id: "p17", goalId: "pg2", title: nil, startsAt: at(8, 14), endsAt: at(8, 17)),
-        ]
-        let tomorrow = "2026-11-19"
-        let tasks = [
-            CalendarTask(id: "pt1", goalId: "pg1", title: "Reason through Supervibes in the context of Pablo's latest sprint memo", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt2", goalId: "pg1", title: "Think about goal page information architecture", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt3", goalId: "pg1", title: "Add line breaks in posts hitting enter", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt4", goalId: "pg1", title: "Introduce keyboard shortcuts for common actions", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt5", goalId: "pg1", title: "Adjust feed as it gets larger over time", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt6", goalId: "pg1", title: "Introduce native right click dropdown menus", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt7", goalId: "pg1", title: "Identify opportunities to improve performance and speed", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt8", goalId: "pg1", title: "Bringing in events from external calendars", minutes: 120, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt9", goalId: "pg1", title: "Add Slack as a connection option", minutes: 60, plannedWeek: "2026-11-23"),
-            CalendarTask(id: "pt10", goalId: "pg2", title: "Walk Denis through the focus mode flows", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt11", goalId: "pg2", title: "Sketch onboarding for focus mode", minutes: 60, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt13", goalId: "pg3", title: "Outline the essay", minutes: 30, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-            CalendarTask(id: "pt14", goalId: "pg3", title: "Edit last week's draft before it goes out", minutes: 15, plannedFor: tomorrow, plannedWeek: "2026-11-16"),
-        ]
-        return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60, wakeTime: 7 * 60,
-                            clock: .twelveHour, objectives: [
-                                .init(goalId: "pg1", weekStart: "2026-11-16", objective: "Inspire new ideas for the Superfocus sprint"),
-                                .init(goalId: "pg2", weekStart: "2026-11-16", objective: "Hand off the focus mode designs"),
-                                .init(goalId: "pg3", weekStart: "2026-11-16", objective: "Draft “Why plans break at 4 PM”"),
-                            ])
-    }
 }
