@@ -291,6 +291,25 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testPlanningBoardDropBetweenCards() {
+        // Explore a lock screen widget dragged from Unplanned into today, between its two cards:
+        // faded where it was, a line where it'd go.
+        assertAppearances(
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now,
+                                initialDrop: BoardDrop(task: "t9", column: .day("2026-11-18"), before: "t2"), onBack: {})),
+            width: 1500, height: 760
+        )
+    }
+
+    func testPlanningBoardDropAtEnd() {
+        // Today's first card dragged to the end of This week: the line under its last card.
+        assertAppearances(
+            board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now,
+                                initialDrop: BoardDrop(task: "t1", column: .thisWeek, before: nil), onBack: {})),
+            width: 1500, height: 760
+        )
+    }
+
     func testPlanningBoardDayCapacity() {
         // Today: over capacity, one block gone by and one ahead.
         assertAppearances(

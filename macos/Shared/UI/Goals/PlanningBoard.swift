@@ -2,9 +2,9 @@ import SwiftUI
 
 /*
  * Planning a goal's tasks on a board, in one row of lanes that scrolls sideways: Unplanned, today,
- * tomorrow and the day after, then this week and next week. Drag a card onto a lane to plan it
- * there, or onto another card to put it just before that one; its right-click menu does the same
- * without dragging. Click a card to edit it in place, as on the goal page: the cards are the same
+ * tomorrow and the day after, then this week and next week. Drag a card into a lane to plan it
+ * there: a line between the cards shows where it'll land, and the card fades where it was. Its
+ * right-click menu plans it without dragging. Click a card to edit it in place, as on the goal page: the cards are the same
  * rows. Each lane but Unplanned weighs its time planned against the time protected for the goal,
  * as a ring; hovering it shows the detail. Show completed lists what's been finished this week.
  * Layers: the page, then the lanes a step darker, then the cards, white.
@@ -104,6 +104,8 @@ struct PlanningBoard: View {
     var initiallyExpanded: Set<String> = []
     /// Opens with the pointer over this suggested task, for snapshot tests.
     var initiallyHoveredFiller: String?
+    /// Opens with a card being dragged over a lane, for previews and snapshot tests.
+    var initialDrop: BoardDrop?
     /// Switches between All goals and a goal, from the title.
     var onScope: (BoardScope) -> Void = { _ in }
     /// "Back", when the board was opened from a goal's page.
@@ -113,6 +115,8 @@ struct PlanningBoard: View {
     @State private var expanded: Set<String>
     @State private var headerHeight: CGFloat = 0
     @State private var titleAnchor = CGRect.zero
+    /// The card being dragged, from its drag's start to its end.
+    @State private var dragging: String?
     @AppStorage("planningBoard.showsCompleted") private var showsCompleted = false
     @Environment(\.overlays) private var overlays
 
@@ -120,7 +124,7 @@ struct PlanningBoard: View {
         data: BoardData, scope: BoardScope = .all, actions: @escaping (String) -> TaskActions = { _ in TaskActions() },
         fit: BoardFitActions = BoardFitActions(), now: Date = Date(), initiallyOpen: String? = nil, initiallyHovered: BoardColumn? = nil,
         initialCapacity: BoardColumn? = nil, initiallyExpanded: Set<String> = [], initiallyHoveredFiller: String? = nil,
-        onScope: @escaping (BoardScope) -> Void = { _ in }, onBack: (() -> Void)? = nil
+        initialDrop: BoardDrop? = nil, onScope: @escaping (BoardScope) -> Void = { _ in }, onBack: (() -> Void)? = nil
     ) {
         self.data = data
         self.scope = scope
@@ -132,9 +136,11 @@ struct PlanningBoard: View {
         self.initialCapacity = initialCapacity
         self.initiallyExpanded = initiallyExpanded
         self.initiallyHoveredFiller = initiallyHoveredFiller
+        self.initialDrop = initialDrop
         self.onScope = onScope
         self.onBack = onBack
         _expanded = State(initialValue: initiallyExpanded)
+        _dragging = State(initialValue: initialDrop?.task)
     }
 
     private var today: String { data.today }
@@ -378,7 +384,13 @@ struct PlanningBoard: View {
             showsCapacityInitially: initialCapacity == column && (!compact || initiallyExpanded.first == goal.id),
             onAdd: { actions.add($0, column.patch(today: today)) },
             onDrop: { id, before in drop(id, on: column, of: goal, before: before) },
-            onToggleDone: actions.toggle
+            onToggleDone: actions.toggle,
+            dragging: dragging,
+            accepts: { id in goal.tasks.contains { $0.id == id } },
+            onDragging: { dragging = $0 },
+            initialInsertion: initialDrop.flatMap { drop in
+                drop.column == column && goal.tasks.contains { $0.id == drop.task } ? BoardInsertion(before: drop.before) : nil
+            }
         ) { task in
             card(task, in: column, actions: actions)
         }
@@ -411,12 +423,10 @@ struct PlanningBoard: View {
                 onOpen: { open(task) }
             )
             .modifier(CardStyle(isOpen: false))
-            .draggable(task.id) {
-                Text(task.title).appText(.sm).foregroundStyle(Theme.foreground)
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .frame(width: 220, alignment: .leading)
-                    .background(Theme.card, in: .rect(cornerRadius: 12))
-            }
+            .modifier(BoardDragSource(task: task) { dragging = $0 })
+            // Faded where it was while it's dragged, so the line shows where it's going instead.
+            .opacity(dragging == task.id ? 0.4 : 1)
+            .animation(.easeOut(duration: 0.12), value: dragging == task.id)
         }
     }
 
@@ -565,8 +575,8 @@ struct PlanningBoard: View {
 
     // MARK: Moving
 
-    /// A drop on a column (before nil) or on one of its cards, within a goal: a card dragged from
-    /// another goal's row stays where it was. Within its own column a task only changes place, so a
+    /// A drop in a column, before one of its cards or at its end (before nil), within a goal: a card
+    /// from another goal's row can't land (its lanes refuse it). Within its own column a task only changes place, so a
     /// day it has stays.
     private func drop(_ id: String, on column: BoardColumn, of goal: BoardGoal, before: String?) {
         guard let task = goal.tasks.first(where: { $0.id == id }), before != id else { return }
@@ -818,6 +828,46 @@ private struct ShowCompletedButton: View {
     }
 }
 
+// MARK: - Dragging
+
+/// Where a dragged card would land in a lane: before this card, or at the end (nil).
+struct BoardInsertion: Equatable {
+    let before: String?
+}
+
+/// A card dragged onto a lane, shown as if it were there: for previews and snapshot tests.
+struct BoardDrop {
+    let task: String
+    let column: BoardColumn
+    let before: String?
+}
+
+/// Each lane's own coordinates, which its cards' frames and the pointer are measured in.
+private let laneSpace = "boardLane"
+
+/// A card that can be dragged to another lane or place, saying when its drag starts and ends so
+/// the board can fade it and know whose it is.
+private struct BoardDragSource: ViewModifier {
+    let task: TaskItem
+    let onDragging: (String?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .draggable(task.id) {
+                Text(task.title).appText(.sm).foregroundStyle(Theme.foreground)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .frame(width: 220, alignment: .leading)
+                    .background(Theme.card, in: .rect(cornerRadius: 12))
+            }
+            .onDragSessionUpdated { session in
+                switch session.phase {
+                case .initial, .active: onDragging(task.id)
+                default: onDragging(nil)
+                }
+            }
+    }
+}
+
 // MARK: - A lane
 
 private struct BoardColumnView<Card: View>: View {
@@ -850,14 +900,25 @@ private struct BoardColumnView<Card: View>: View {
     let initiallyHovered: Bool
     let showsCapacityInitially: Bool
     let onAdd: (String) -> Void
-    /// A task's id dropped here, and the card it landed on (nil: the lane itself, so the end).
+    /// A task's id dropped here, and the card it goes before (nil: the end of the lane).
     let onDrop: (String, String?) -> Void
     let onToggleDone: (TaskItem) -> Void
+    /// The card being dragged, anywhere on the board, if it's one of the board's.
+    var dragging: String?
+    /// Whether a dragged card can land here: only within its own goal.
+    var accepts: (String) -> Bool = { _ in true }
+    /// A card here starting to be dragged (its id), or the drag ending (nil).
+    var onDragging: (String?) -> Void = { _ in }
     @ViewBuilder let card: (TaskItem) -> Card
 
-    @State private var isTargeted = false
+    @State private var isTargeted: Bool
     @State private var isHovered: Bool
     @State private var isAdding = false
+    /// Where a card dragged over the lane would land, while it's over it and that would move it.
+    @State private var insertion: BoardInsertion?
+    /// Each open card's frame, and the scrolling area's, in the lane's coordinates.
+    @State private var cardFrames: [String: CGRect] = [:]
+    @State private var scrollFrame = CGRect.zero
 
     init(
         title: String, subtitle: String?, showsTitle: Bool = true, open: [TaskItem], done: [TaskItem], color: String, capacity: Capacity?,
@@ -867,6 +928,8 @@ private struct BoardColumnView<Card: View>: View {
         clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
         initiallyHovered: Bool, showsCapacityInitially: Bool, onAdd: @escaping (String) -> Void,
         onDrop: @escaping (String, String?) -> Void, onToggleDone: @escaping (TaskItem) -> Void,
+        dragging: String? = nil, accepts: @escaping (String) -> Bool = { _ in true },
+        onDragging: @escaping (String?) -> Void = { _ in }, initialInsertion: BoardInsertion? = nil,
         @ViewBuilder card: @escaping (TaskItem) -> Card
     ) {
         self.title = title
@@ -892,8 +955,13 @@ private struct BoardColumnView<Card: View>: View {
         self.onAdd = onAdd
         self.onDrop = onDrop
         self.onToggleDone = onToggleDone
+        self.dragging = dragging
+        self.accepts = accepts
+        self.onDragging = onDragging
         self.card = card
         _isHovered = State(initialValue: initiallyHovered)
+        _isTargeted = State(initialValue: initialInsertion != nil)
+        _insertion = State(initialValue: initialInsertion)
     }
 
     var body: some View {
@@ -903,17 +971,13 @@ private struct BoardColumnView<Card: View>: View {
                 .padding(.top, 10)
             // Cards that don't fit scroll within the lane, clipped at its bottom.
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Self.cardGap) {
                     if open.isEmpty && done.isEmpty {
                         EmptyLane(title: emptyTitle, detail: emptyDetail)
                     }
                     ForEach(open) { task in
                         card(task)
-                            .dropDestination(for: String.self) { ids, _ in
-                                guard let id = ids.first else { return false }
-                                onDrop(id, task.id)
-                                return true
-                            }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(laneSpace)) } action: { cardFrames[task.id] = $0 }
                     }
                     if isAdding {
                         AddField(placeholder: addPlaceholder, onAdd: onAdd) { isAdding = false }
@@ -929,19 +993,84 @@ private struct BoardColumnView<Card: View>: View {
             }
             .scrollIndicators(.never)
             .scrollBounceBehavior(.basedOnSize)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(laneSpace)) } action: { scrollFrame = $0 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .coordinateSpace(.named(laneSpace))
         .background(isTargeted ? Theme.foreground(0.07) : laneFill, in: .rect(cornerRadius: 14))
+        .overlay(alignment: .topLeading) { dropLine }
         .clipShape(.rect(cornerRadius: 14))
         .contentShape(.rect(cornerRadius: 14))
         .onHover { isHovered = $0 }
-        .dropDestination(for: String.self) { ids, _ in
-            guard let id = ids.first else { return false }
-            onDrop(id, nil)
-            return true
-        } isTargeted: { isTargeted = $0 }
+        // The whole lane takes the drop, and where the pointer is among the cards says where the
+        // card goes: before the first card whose middle is below it, or else at the end.
+        .dropDestination(for: String.self) { ids, session in
+            let target = insertion(at: session.location.y, for: ids.first)
+            isTargeted = false
+            insertion = nil
+            guard let id = ids.first, accepts(id), let target else { return }
+            onDrop(id, target.before)
+        }
+        .onDropSessionUpdated { session in
+            switch session.phase {
+            case .entering, .active:
+                isTargeted = canDrop
+                insertion = canDrop ? insertion(at: session.location.y, for: dragging) : nil
+            default:
+                isTargeted = false
+                insertion = nil
+            }
+        }
+        .dropConfiguration { _ in DropConfiguration(operation: canDrop ? .move : .forbidden) }
         .animation(.easeOut(duration: 0.12), value: isTargeted)
     }
+
+    /// A card from another goal can't land here. One that isn't known (a drag the board didn't
+    /// start) is let through, and its drop decides.
+    private var canDrop: Bool { dragging.map(accepts) ?? true }
+
+    /// Where a card dropped at this height would go, or nil where it would stay as it is: just
+    /// before or after itself in its own lane.
+    private func insertion(at y: CGFloat, for id: String?) -> BoardInsertion? {
+        let before = open.first { task in cardFrames[task.id].map { $0.midY > y } ?? false }?.id
+        if let id, let index = open.firstIndex(where: { $0.id == id }) {
+            let next = open.indices.contains(index + 1) ? open[index + 1].id : nil
+            if before == id || before == next { return nil }
+        }
+        return BoardInsertion(before: before)
+    }
+
+    /// The line between cards where a dragged one would land: halfway into the gap above the card
+    /// it'd go before, or below the last. An empty lane has no line; its tint says it all.
+    private var dropLineY: CGFloat? {
+        guard let insertion, let last = open.last else { return nil }
+        let half = Self.cardGap / 2
+        let y: CGFloat
+        if let before = insertion.before, let frame = cardFrames[before] {
+            y = frame.minY - half
+        } else if let frame = cardFrames[last.id] {
+            y = frame.maxY + half
+        } else {
+            return nil
+        }
+        // Kept inside the scrolling area, so a line at its top or bottom edge isn't cut off.
+        return min(max(y, scrollFrame.minY + 1), scrollFrame.maxY - 1)
+    }
+
+    @ViewBuilder private var dropLine: some View {
+        if let y = dropLineY {
+            Capsule()
+                .fill(GoalPalette.color(color))
+                .frame(height: 2)
+                .padding(.horizontal, 6)
+                .offset(y: y - 1)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .animation(.easeOut(duration: 0.1), value: y)
+        }
+    }
+
+    private static var cardGap: CGFloat { 6 }
 
     private var heading: some View {
         HStack(spacing: 6) {
@@ -974,12 +1103,7 @@ private struct BoardColumnView<Card: View>: View {
             .padding(.bottom, 2)
             ForEach(fill.tasks) { task in
                 FillerCard(task: task, source: fillSource(task), action: fillAction, initiallyHovered: hoveredFiller == task.id) { onFill(task) }
-                    .draggable(task.id) {
-                        Text(task.title).appText(.sm).foregroundStyle(Theme.foreground)
-                            .padding(.horizontal, 12).padding(.vertical, 10)
-                            .frame(width: 220, alignment: .leading)
-                            .background(Theme.card, in: .rect(cornerRadius: 12))
-                    }
+                    .modifier(BoardDragSource(task: task, onDragging: onDragging))
             }
         }
     }
