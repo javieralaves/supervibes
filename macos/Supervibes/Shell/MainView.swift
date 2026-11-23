@@ -527,6 +527,11 @@ private struct PlanScreen: View {
                         data: data,
                         scope: scope(in: data),
                         actions: model.actions(for:),
+                        fit: BoardFitActions(
+                            move: { model.move($0, of: $1) },
+                            protect: { model.protect($0, for: $1) },
+                            give: { model.give($0, to: $1) }
+                        ),
                         onScope: { shell.planScope = $0 },
                         onBack: shell.planOrigin.map { id in { shell.openGoal(id) } }
                     )

@@ -18,7 +18,8 @@ import { startOfDayIn } from "@/lib/zoned-day";
 
 /*
  * The planning board, across goals: each goal's open tasks, what it finished this week, its
- * objective, and its session time this week and next to weigh them against. The Mac app shows it
+ * objective, and its session time this week and next to weigh them against; and every block in
+ * those two weeks with the person's waking hours, for finding time when a day is over. The Mac app shows it
  * for every goal (Plan on the rail) or one (Plan tasks on a goal's page).
  */
 
@@ -37,11 +38,27 @@ const PlanGoalSchema = z
   })
   .openapi("PlanGoal");
 
+const PlanBlockSchema = z
+  .object({
+    id: z.string(),
+    goalId: z.string(),
+    startsAt: z.iso.datetime(),
+    endsAt: z.iso.datetime(),
+    reserved: z.boolean().openapi({ description: "Kept for its own sake: no room for tasks." }),
+    taskId: z.string().nullable().openapi({ description: "The task it gives a time to, if it does." }),
+  })
+  .openapi("PlanBlock");
+
 const PlanSchema = z
   .object({
     today: z.iso.date().openapi({ description: "Today in `timeZone`." }),
     weekStart: z.iso.date().openapi({ description: "The Monday this week starts on." }),
     clock: z.enum(CLOCKS).nullable().openapi({ description: "The person's clock; null follows the device." }),
+    wakeTime: z.int().openapi({ description: "When their day starts, in minutes after midnight." }),
+    sleepStart: z.int().openapi({ description: "When they go to sleep, in minutes after midnight (before wakeTime: after midnight)." }),
+    blocks: z.array(PlanBlockSchema).openapi({
+      description: "Every block this week and next, across goals, earliest first: for finding free time and giving time.",
+    }),
     goals: z.array(PlanGoalSchema).openapi({ description: "Every goal, in their order." }),
   })
   .openapi("Plan");
@@ -82,6 +99,16 @@ export const plan = new OpenAPIHono<ApiEnv>().openapi(planRoute, async (c) => {
       today,
       weekStart,
       clock: settings.clock,
+      wakeTime: settings.wakeTime,
+      sleepStart: settings.sleepStart,
+      blocks: blocks.map((block) => ({
+        id: block.id,
+        goalId: block.goalId,
+        startsAt: block.startsAt.toISOString(),
+        endsAt: block.endsAt.toISOString(),
+        reserved: block.reserved,
+        taskId: block.taskId,
+      })),
       goals: list.map((goal) => ({
         id: goal.id,
         title: goal.title,

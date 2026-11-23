@@ -1647,6 +1647,21 @@
             ],
             "description": "The person's clock; null follows the device."
           },
+          "wakeTime": {
+            "type": "integer",
+            "description": "When their day starts, in minutes after midnight."
+          },
+          "sleepStart": {
+            "type": "integer",
+            "description": "When they go to sleep, in minutes after midnight (before wakeTime: after midnight)."
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanBlock"
+            },
+            "description": "Every block this week and next, across goals, earliest first: for finding free time and giving time."
+          },
           "goals": {
             "type": "array",
             "items": {
@@ -1659,7 +1674,46 @@
           "today",
           "weekStart",
           "clock",
+          "wakeTime",
+          "sleepStart",
+          "blocks",
           "goals"
+        ]
+      },
+      "PlanBlock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reserved": {
+            "type": "boolean",
+            "description": "Kept for its own sake: no room for tasks."
+          },
+          "taskId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The task it gives a time to, if it does."
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "startsAt",
+          "endsAt",
+          "reserved",
+          "taskId"
         ]
       },
       "PlanGoal": {

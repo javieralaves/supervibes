@@ -23,11 +23,33 @@ struct BoardGoal: Identifiable, Hashable, Sendable {
     var protectedBlocks: [ProtectedBlock]
 }
 
+/// A block on the calendar this week or next, any goal's: for finding free time and giving time.
+struct BoardBlock: Identifiable, Hashable, Sendable {
+    let id: String
+    let goalId: String
+    var start: Date
+    var end: Date
+    /// Kept for its own sake: no room for tasks.
+    var reserved = false
+    /// The task it gives a time to, if any.
+    var taskId: String?
+
+    var minutes: Int { max(0, Int((end.timeIntervalSince(start) / 60).rounded())) }
+    /// A session: time to work on its goal, not reserved and not a task's own time.
+    var isSession: Bool { !reserved && taskId == nil }
+}
+
 struct BoardData: Hashable, Sendable {
     /// "YYYY-MM-DD".
     let today: String
     var clock: Clock?
     var goals: [BoardGoal]
+    /// Every block this week and next, across goals, earliest first.
+    var blocks: [BoardBlock] = []
+    /// When the person's day starts and they go to sleep, in minutes after midnight (a sleep
+    /// before the wake time falls after midnight).
+    var wakeTime = 8 * 60
+    var sleepStart = 23 * 60
 
     func goal(_ id: String) -> BoardGoal? { goals.first { $0.id == id } }
 }

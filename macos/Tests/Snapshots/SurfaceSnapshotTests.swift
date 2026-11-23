@@ -336,6 +336,44 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// The panel an over day's ring opens, built as the board builds it.
+    private func fitPanel(_ goalId: String, day: String, dayName: String, label: String, mode: MakeItFitPanel.Mode = .move) -> some View {
+        let data = Fixtures.board
+        let goal = data.goal(goalId)!
+        let capacity = Capacity.day(day, open: goal.tasks.filter { $0.plannedFor == day }.reduce(0) { $0 + $1.minutes }, blocks: goal.protectedBlocks, now: now)
+        let free = Fit.freeSlots(for: goal, day: day, in: data, now: now).map { FitSource(give: nil, goalTitle: nil, goalColor: nil, slot: $0) }
+        let given = Fit.gives(to: goal, day: day, in: data, now: now).map { give in
+            FitSource(give: give, goalTitle: data.goal(give.fromGoal)!.title, goalColor: data.goal(give.fromGoal)!.color, slot: give.slot)
+        }
+        return MakeItFitPanel(
+            label: label, dayName: dayName, capacity: capacity, color: goal.color,
+            moves: Fit.moves(goal, day: day, today: data.today, now: now), sources: free + given,
+            today: data.today, clock: .device, initialMode: mode, onMove: { _ in }, onProtect: { _ in }
+        )
+        .padding(24)
+        .background(Theme.background)
+    }
+
+    func testMakeItFitMovingTasksOut() {
+        // Build Supervibes today, 2 h over: the rebuild goes to Saturday, which has 5 h.
+        assertAppearances(fitPanel("1", day: "2026-11-18", dayName: "Today", label: "Today · Wed, Nov 18"), width: 420, height: 400)
+    }
+
+    func testMakeItFitProtectingTime() {
+        // The same day, keeping the tasks: free time right after its 4 PM session, the evening,
+        // then time Superfocus and Jacob's app have to spare.
+        assertAppearances(fitPanel("1", day: "2026-11-18", dayName: "Today", label: "Today · Wed, Nov 18", mode: .protect), width: 420, height: 460)
+    }
+
+    func testMakeItFitWhenOnlySomeCanMove() {
+        // The playbook tomorrow on All goals: the commute map goes to Friday, the interviews fit
+        // nowhere, so tomorrow stays 30 min over.
+        assertAppearances(
+            fitPanel("3", day: "2026-11-19", dayName: "Tomorrow", label: "Tomorrow · Thu, Nov 19 · Deliver research-backed housing playbook for Madrid"),
+            width: 420, height: 400
+        )
+    }
+
     func testPlanningBoardWeekCapacity() {
         assertAppearances(
             board(PlanningBoard(data: Fixtures.board, scope: .goal("1"), now: now, initialCapacity: .thisWeek, onBack: {})),

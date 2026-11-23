@@ -90,6 +90,8 @@ struct PlanningBoard: View {
     var scope: BoardScope = .all
     /// What a goal's cards and lanes can do.
     var actions: (String) -> TaskActions = { _ in TaskActions() }
+    /// What an over day's ring offers, to make it fit.
+    var fit = BoardFitActions()
     /// For "Today 2:00 PM" and the protected time gone by; fixed in snapshots.
     var now = Date()
     /// Opens with this task open, for snapshot tests.
@@ -114,13 +116,14 @@ struct PlanningBoard: View {
 
     init(
         data: BoardData, scope: BoardScope = .all, actions: @escaping (String) -> TaskActions = { _ in TaskActions() },
-        now: Date = Date(), initiallyOpen: String? = nil, initiallyHovered: BoardColumn? = nil,
+        fit: BoardFitActions = BoardFitActions(), now: Date = Date(), initiallyOpen: String? = nil, initiallyHovered: BoardColumn? = nil,
         initialCapacity: BoardColumn? = nil, initiallyExpanded: Set<String> = [],
         onScope: @escaping (BoardScope) -> Void = { _ in }, onBack: (() -> Void)? = nil
     ) {
         self.data = data
         self.scope = scope
         self.actions = actions
+        self.fit = fit
         self.now = now
         self.initiallyOpen = initiallyOpen
         self.initiallyHovered = initiallyHovered
@@ -216,7 +219,7 @@ struct PlanningBoard: View {
 
     private var subtitle: String {
         if let goal = single { return goal.objective.map { "This week: \($0)" } ?? "No objective for this week yet." }
-        let withTime = data.goals.filter { goal in goal.protectedBlocks.contains { CalendarDay.weekStart(CalendarDay.string($0.start)) == thisWeek } }.count
+        let withTime = data.goals.filter { goal in goal.protectedBlocks.contains { CalendarDay.weekStart(CalendarDay.today($0.start)) == thisWeek } }.count
         switch withTime {
         case 0: return "No goal has session time this week yet."
         case 1: return "1 goal with session time this week."
@@ -348,6 +351,7 @@ struct PlanningBoard: View {
 
     private func column(_ column: BoardColumn, of goal: BoardGoal, open: [TaskItem], done: [TaskItem], compact: Bool) -> some View {
         let actions = actions(goal.id)
+        let label = compact ? "\(capacityLabel(column)) · \(goal.title)" : capacityLabel(column)
         return BoardColumnView(
             title: title(column),
             subtitle: subtitle(column),
@@ -356,7 +360,8 @@ struct PlanningBoard: View {
             done: done,
             color: goal.color,
             capacity: capacity(column, of: goal),
-            capacityLabel: compact ? "\(capacityLabel(column)) · \(goal.title)" : capacityLabel(column),
+            capacityLabel: label,
+            fitPanel: fitPanel(column, of: goal, label: label),
             clock: clock,
             emptyDetail: emptyDetail(column, of: goal),
             emptyTitle: "Nothing planned for \(relativeName(column))",
@@ -439,6 +444,31 @@ struct PlanningBoard: View {
         case .day: "Add for \(relativeName(column))"
         case .thisWeek: "Add to this week"
         case .nextWeek: "Add to next week"
+        }
+    }
+
+    // MARK: Making a day fit
+
+    /// What clicking a day's ring opens when more is planned than there's time for, today or later.
+    private func fitPanel(_ column: BoardColumn, of goal: BoardGoal, label: String) -> (() -> AnyView)? {
+        guard case .day(let day) = column, day >= today, let capacity = capacity(column, of: goal), capacity.planned > capacity.protected else {
+            return nil
+        }
+        let dayName = title(column)
+        return { [data, now, today, clock, fit] in
+            let free = Fit.freeSlots(for: goal, day: day, in: data, now: now).map { FitSource(give: nil, goalTitle: nil, goalColor: nil, slot: $0) }
+            let given = Fit.gives(to: goal, day: day, in: data, now: now).compactMap { give in
+                data.goal(give.fromGoal).map { FitSource(give: give, goalTitle: $0.title, goalColor: $0.color, slot: give.slot) }
+            }
+            return AnyView(MakeItFitPanel(
+                label: label, dayName: dayName, capacity: capacity, color: goal.color,
+                moves: Fit.moves(goal, day: day, today: today, now: now), sources: free + given,
+                today: today, clock: clock,
+                onMove: { fit.move($0, goal.id) },
+                onProtect: { source in
+                    if let give = source.give { fit.give(give, goal.id) } else { fit.protect(source.slot, goal.id) }
+                }
+            ))
         }
     }
 
@@ -787,6 +817,8 @@ private struct BoardColumnView<Card: View>: View {
     /// Nil for Unplanned, which shows its plain total.
     let capacity: Capacity?
     let capacityLabel: String
+    /// Clicking the ring, for a day that's over: how to make it fit.
+    var fitPanel: (() -> AnyView)?
     let clock: Clock
     let emptyDetail: String
     let emptyTitle: String
@@ -805,7 +837,7 @@ private struct BoardColumnView<Card: View>: View {
 
     init(
         title: String, subtitle: String?, showsTitle: Bool = true, open: [TaskItem], done: [TaskItem], color: String, capacity: Capacity?,
-        capacityLabel: String, clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
+        capacityLabel: String, fitPanel: (() -> AnyView)? = nil, clock: Clock, emptyDetail: String, emptyTitle: String, addPlaceholder: String,
         initiallyHovered: Bool, showsCapacityInitially: Bool, onAdd: @escaping (String) -> Void,
         onDrop: @escaping (String, String?) -> Void, onToggleDone: @escaping (TaskItem) -> Void,
         @ViewBuilder card: @escaping (TaskItem) -> Card
@@ -818,6 +850,7 @@ private struct BoardColumnView<Card: View>: View {
         self.color = color
         self.capacity = capacity
         self.capacityLabel = capacityLabel
+        self.fitPanel = fitPanel
         self.clock = clock
         self.emptyDetail = emptyDetail
         self.emptyTitle = emptyTitle
@@ -887,7 +920,7 @@ private struct BoardColumnView<Card: View>: View {
                 Spacer(minLength: 4)
             }
             if let capacity {
-                CapacityChip(capacity: capacity, color: color, label: capacityLabel, clock: clock, showsInitially: showsCapacityInitially)
+                CapacityChip(capacity: capacity, color: color, label: capacityLabel, clock: clock, showsInitially: showsCapacityInitially, fitPanel: fitPanel)
             } else if !open.isEmpty {
                 Text(BoardDuration.text(open.reduce(0) { $0 + $1.minutes })).appText(.xs).foregroundStyle(Theme.muted).monospacedDigit()
             }
@@ -1046,6 +1079,8 @@ private struct CapacityChip: View {
     let label: String
     let clock: Clock
     var showsInitially = false
+    /// For a day that's over: clicking opens how to make it fit.
+    var fitPanel: (() -> AnyView)?
 
     @Environment(\.overlays) private var overlays
     @State private var anchor = CGRect.zero
@@ -1071,6 +1106,8 @@ private struct CapacityChip: View {
         .contentShape(.rect(cornerRadius: 6))
         .modifier(AnchorReader(frame: $anchor))
         .onHover { $0 ? show() : hide() }
+        .onTapGesture(perform: openFit)
+        .pointerStyle(fitPanel == nil ? nil : .link)
         .onChange(of: anchor) {
             // Follows the chip as the board lays out or scrolls.
             if isShowing { return show() }
@@ -1088,8 +1125,14 @@ private struct CapacityChip: View {
         // A menu or dialog that's open keeps its place.
         if let presented = overlays.presented, presented.owner?.hasPrefix("capacity#") != true { return }
         overlays.showHoverCard(anchor: anchor, owner: owner) {
-            CapacityPopover(capacity: capacity, color: color, label: label, clock: clock)
+            CapacityPopover(capacity: capacity, color: color, label: label, clock: clock, hint: fitPanel == nil ? nil : "Click to make it fit")
         }
+    }
+
+    private func openFit() {
+        guard let fitPanel, let overlays else { return }
+        hide()
+        overlays.showMenu(anchor: anchor, owner: "fit#\(label)", alignLeading: true) { fitPanel() }
     }
 
     private func hide() {
@@ -1104,6 +1147,8 @@ struct CapacityPopover: View {
     let color: String
     let label: String
     let clock: Clock
+    /// A line at the foot, e.g. that clicking makes it fit.
+    var hint: String?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1145,6 +1190,10 @@ struct CapacityPopover: View {
                     .monospacedDigit()
                     .padding(.vertical, 4)
                 }
+            }
+            if let hint {
+                Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.vertical, 10)
+                Text(hint).appText(.xs, .medium).foregroundStyle(Theme.foreground(0.8))
             }
         }
         .padding(12)

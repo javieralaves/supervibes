@@ -191,7 +191,7 @@ enum Fixtures {
             BoardGoal(id: goals[index].id, title: goals[index].title, icon: goals[index].icon, color: goals[index].color,
                       objective: objective, tasks: tasks, done: done, protectedBlocks: blocks)
         }
-        return BoardData(today: "2026-11-18", clock: nil, goals: [
+        var data = BoardData(today: "2026-11-18", clock: nil, goals: [
             goal(0, objective: detail.week.objective, tasks: detail.tasks, done: detail.week.done, blocks: detail.week.protectedBlocks),
             goal(1, objective: "Get the agent answering with real listings", tasks: [
                 TaskItem(id: "j1", title: "Follow up with Idealista re: API access", minutes: 15, plannedFor: "2026-11-18", plannedWeek: "2026-11-16"),
@@ -213,6 +213,13 @@ enum Fixtures {
                 TaskItem(id: "s0", title: "Follow up with the community", minutes: 30, done: true, plannedFor: "2026-11-17", plannedWeek: "2026-11-16"),
             ], blocks: blocks([(18, 13, 0, 16, 0), (19, 13, 0, 15, 0), (23, 13, 0, 16, 0)])),
         ])
+        // Every goal's sessions as blocks, and lunch kept for its own sake; awake 8 AM to 11:30 PM.
+        data.blocks = data.goals.flatMap { goal in
+            goal.protectedBlocks.enumerated().map { BoardBlock(id: "\(goal.id)-b\($0.offset)", goalId: goal.id, start: $0.element.start, end: $0.element.end) }
+        } + [BoardBlock(id: "lunch", goalId: goals[3].id, start: at(18, 14), end: at(18, 15), reserved: true)]
+        data.wakeTime = 8 * 60
+        data.sleepStart = 23 * 60 + 30
+        return data
     }
 
     /// The goal's protected time around `referenceNow` (Wednesday 10:18): Monday's and Tuesday's
