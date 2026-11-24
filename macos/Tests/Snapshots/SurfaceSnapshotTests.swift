@@ -74,6 +74,27 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testCalendarEventsCard() {
+        let calendars = [
+            ExternalCalendar(id: "work", title: "Work"),
+            ExternalCalendar(id: "personal", title: "Personal"),
+            ExternalCalendar(id: "holidays", title: "Holidays in Spain"),
+        ]
+        let picked = EventImportSettings(calendarIds: ["work", "personal"], goalId: "g1")
+        let goals = Fixtures.calendar.goals
+        assertAppearances(
+            VStack(spacing: 12) {
+                CalendarEventsCard(settings: .defaults, access: .notAsked, calendars: [], goals: goals)
+                CalendarEventsCard(settings: picked, access: .allowed, calendars: calendars, goals: goals)
+                CalendarEventsCard(settings: .defaults, access: .allowed, calendars: [], goals: goals)
+                CalendarEventsCard(settings: picked, access: .denied, calendars: [], goals: goals)
+            }
+            .padding(32)
+            .background(Theme.background),
+            width: 768, height: 1340
+        )
+    }
+
     func testSessionRoutineCard() {
         let slack = SessionRoutine.App(bundleId: "com.tinyspeck.slackmacgap", name: "Slack")
         let mail = SessionRoutine.App(bundleId: "com.apple.mail", name: "Mail")

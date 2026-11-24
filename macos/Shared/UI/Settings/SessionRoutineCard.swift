@@ -186,7 +186,7 @@ struct SessionRoutineCard: View {
 // MARK: - Pieces
 
 /// A row's title and detail, with its control on the right.
-private struct RowHeader<Control: View>: View {
+struct RowHeader<Control: View>: View {
     let title: String
     let detail: String
     @ViewBuilder var control: Control
@@ -204,7 +204,7 @@ private struct RowHeader<Control: View>: View {
     }
 }
 
-private struct Switch: View {
+struct Switch: View {
     let label: String
     let isOn: Bool
     let onChange: (Bool) -> Void

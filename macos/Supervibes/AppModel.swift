@@ -17,6 +17,8 @@ final class AppModel {
     let notifier = SessionNotifier()
     /// What happens as sessions start and end: Do Not Disturb, quitting apps, Shortcuts.
     let routineRunner = SessionRoutineRunner()
+    /// Events in the person's Google calendars, to import onto the calendar.
+    let eventFeed = EventFeed()
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client

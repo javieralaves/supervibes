@@ -162,6 +162,10 @@ enum Icon: String {
     case circle = "Circle-1_5"
     case refresh = "Refresh01-1_5"
     case unlink = "Unlink04-1_5"
+    /// Calendar import: the events button, and a block that came from a calendar.
+    case calendarImport = "CalendarDownload01-1_5"
+    case calendarRemoved = "CalendarRemove01-1_5"
+    case repeats = "Repeat-1_5"
     case linearMark = "LinearMark"
     case githubMark = "GitHubMark"
     case granolaMark = "GranolaMark"

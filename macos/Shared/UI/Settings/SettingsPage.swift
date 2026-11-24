@@ -12,6 +12,8 @@ struct SettingsPage: View {
     var usage: UsageSummary?
     /// What the Calendar opens on; kept on this Mac, so it saves itself rather than through `onChange`.
     var calendar: CalendarViewCard?
+    /// Calendar import: which Google calendars, and where imports go; kept on this Mac too.
+    var events: CalendarEventsCard?
     /// Notices before sessions; kept on this Mac, so it saves itself rather than through `onChange`.
     var notices: NoticesCard?
     /// What happens as sessions start and end; kept on this Mac too.
@@ -28,6 +30,7 @@ struct SettingsPage: View {
                     sleepCard
                     clockCard
                     if let calendar { calendar }
+                    if let events { events }
                     if let notices { notices }
                     if let routine { routine }
                 }

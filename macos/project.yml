@@ -63,11 +63,15 @@ targets:
         SupervibesAppGroup: $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Calendar import reads the person's Google calendars through macOS Calendar (EventKit).
+        NSCalendarsFullAccessUsageDescription: Supervibes shows your events beside your goals’ time so you can import the ones you need. It never changes them.
     entitlements:
       path: Supervibes/Supervibes.entitlements
       properties:
         com.apple.security.application-groups:
           - $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
+        # Release builds run with the hardened runtime, which needs this to read calendars at all.
+        com.apple.security.personal-information.calendars: true
     settings:
       base:
         # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.

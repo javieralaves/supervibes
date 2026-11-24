@@ -13,6 +13,8 @@ final class SettingsModel {
     private(set) var load: Load = .idle
     private(set) var email: String?
     private(set) var usage: UsageSummary?
+    /// The person's goals, for the goal Calendar import sends events to.
+    private(set) var goals: [CalendarGoal] = []
     /// What's on screen. The page calls `changed(_:)` after editing it, which saves it.
     var settings = SleepSettings.defaults
     /// The card changed last and how its save went, as the web app shows it.
@@ -34,6 +36,7 @@ final class SettingsModel {
         do {
             async let meOutput = client.getMe()
             async let usageOutput = client.getUsage()
+            async let goalsOutput = client.listGoals(query: .init(timeZone: TimeZone.current.identifier))
 
             switch try await meOutput {
             case .ok(let ok):
@@ -59,6 +62,10 @@ final class SettingsModel {
                 return await auth.sessionEnded()
             case .undocumented(let status, _):
                 throw AuthError.server(status)
+            }
+            // Only Calendar import's goal menu needs these, so the page loads without them.
+            if case .ok(let ok) = try? await goalsOutput, let body = try? ok.body.json {
+                goals = body.goals.map { CalendarGoal(id: $0.id, title: $0.title, icon: $0.icon, color: $0.color) }
             }
             load = .loaded
         } catch {

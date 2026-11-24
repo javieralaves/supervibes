@@ -33,6 +33,8 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     /// The recap as posted to the goal's activity.
     var recapPost: PostedRecap?
     var isPending = false
+    /// For a block imported from an event in the person's Google calendars: where it came from.
+    var source: EventSource?
 
     var isIntention: Bool { fromSuggestion != nil || taskId != nil }
 

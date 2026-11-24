@@ -20,6 +20,7 @@ struct MainView: View {
     @Bindable var shell: ShellModel
     let notifier: SessionNotifier
     let routineRunner: SessionRoutineRunner
+    let eventFeed: EventFeed
 
     var body: some View {
         Group {
@@ -68,7 +69,7 @@ struct MainView: View {
                     case .settings:
                         ZStack {
                             Backdrop()
-                            SettingsScreen(auth: auth, notifier: notifier, routineRunner: routineRunner)
+                            SettingsScreen(auth: auth, notifier: notifier, routineRunner: routineRunner, eventFeed: eventFeed)
                         }
                     case .connections:
                         ZStack {
@@ -606,11 +607,13 @@ private struct SettingsScreen: View {
     @State private var calendarSpan = CalendarSpan.opening()
     let notifier: SessionNotifier
     let routineRunner: SessionRoutineRunner
+    let eventFeed: EventFeed
 
-    init(auth: AuthModel, notifier: SessionNotifier, routineRunner: SessionRoutineRunner) {
+    init(auth: AuthModel, notifier: SessionNotifier, routineRunner: SessionRoutineRunner, eventFeed: EventFeed) {
         _model = State(initialValue: SettingsModel(auth: auth))
         self.notifier = notifier
         self.routineRunner = routineRunner
+        self.eventFeed = eventFeed
     }
 
     var body: some View {
@@ -635,6 +638,15 @@ private struct SettingsScreen: View {
                         calendarSpan = span
                         CalendarSpan.setOpening(span)
                     },
+                    events: CalendarEventsCard(
+                        settings: eventFeed.settings,
+                        access: eventFeed.access,
+                        calendars: eventFeed.calendars,
+                        goals: model.goals,
+                        onChange: eventFeed.change,
+                        onAllow: eventFeed.requestAccess,
+                        onOpenSystemSettings: eventFeed.openSystemSettings
+                    ),
                     notices: NoticesCard(
                         settings: notifier.settings,
                         permission: notifier.permission,

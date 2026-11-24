@@ -759,7 +759,14 @@ extension CalendarBlock {
             hasRecapPost: block.hasRecapPost,
             agenda: block.agenda.map(BlockAgenda.init(api:)),
             recap: block.recap.map(RecapDraft.init(api:)),
-            recapPost: block.recapPost.map { PostedRecap(body: $0.body, breadcrumbs: $0.breadcrumbs.compactMap(NoteItem.Breadcrumb.init(api:))) }
+            recapPost: block.recapPost.map { PostedRecap(body: $0.body, breadcrumbs: $0.breadcrumbs.compactMap(NoteItem.Breadcrumb.init(api:))) },
+            source: block.source.map { source in
+                EventSource(
+                    key: source.key,
+                    calendar: source.calendar,
+                    snapshot: .init(title: source.snapshot.title, startsAt: source.snapshot.startsAt, endsAt: source.snapshot.endsAt)
+                )
+            }
         )
     }
 }
