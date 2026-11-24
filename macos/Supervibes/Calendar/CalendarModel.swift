@@ -174,6 +174,8 @@ final class CalendarModel {
                 }
             case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that block.")
             case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore.")
+            // Only an import sends an event, and drawing a block never does.
+            case .conflict(let taken): return .failed((try? taken.body.json.error.message) ?? "That event is already on your calendar.")
             case .unauthorized: return .signedOut
             case .undocumented(let status, _): return .failed("Couldn’t save that block (the server answered \(status)).")
             }

@@ -52,6 +52,22 @@ export const BlockRecapSchema = z
   })
   .openapi("BlockRecap");
 
+export const BlockSourceSnapshotSchema = z
+  .object({
+    title: z.string(),
+    startsAt: z.iso.datetime({ offset: true }),
+    endsAt: z.iso.datetime({ offset: true }),
+  })
+  .openapi("BlockSourceSnapshot", { description: "An event as it was when the person last agreed with it." });
+
+export const BlockSourceSchema = z
+  .object({
+    key: z.string().openapi({ description: "The event's stable key, unique per person." }),
+    calendar: z.string().openapi({ description: "The name of the calendar it's in, e.g. \"Work\"." }),
+    snapshot: BlockSourceSnapshotSchema,
+  })
+  .openapi("BlockSource");
+
 export const CalendarBlockSchema = z
   .object({
     id: z.string(),
@@ -76,6 +92,9 @@ export const CalendarBlockSchema = z
       .object({ body: z.string(), breadcrumbs: z.array(BreadcrumbSchema) })
       .nullable()
       .openapi({ description: "The recap as posted to the goal's activity." }),
+    source: BlockSourceSchema.nullable().openapi({
+      description: "For a block imported from an event in the person's own calendars: where it came from. Null otherwise.",
+    }),
   })
   .openapi("CalendarBlock");
 
@@ -165,6 +184,10 @@ export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer
     agenda: block.agenda && asAgenda(block.agenda),
     recap: block.recap && asRecap(block.recap),
     recapPost: block.recapPost ?? null,
+    source:
+      block.sourceKey && block.sourceCalendar && block.sourceSnapshot
+        ? { key: block.sourceKey, calendar: block.sourceCalendar, snapshot: block.sourceSnapshot }
+        : null,
   };
 }
 

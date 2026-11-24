@@ -5,10 +5,26 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { AgendaError, prepareAgenda, suggestFocus } from "@/lib/agenda";
-import { asAgenda, asCalendarBlock, asRecap, BlockAgendaSchema, BlockRecapSchema, CalendarBlockSchema } from "@/lib/api/routes/calendar";
+import {
+  asAgenda,
+  asCalendarBlock,
+  asRecap,
+  BlockAgendaSchema,
+  BlockRecapSchema,
+  BlockSourceSnapshotSchema,
+  CalendarBlockSchema,
+} from "@/lib/api/routes/calendar";
 import { requestRead } from "@/lib/background-read";
-import { BLOCK_KINDS, blockDescriptionSchema, blockDetailsSchema, blockTimesSchema, newBlockSchema } from "@/lib/block-schema";
-import { createBlock, deleteBlock, getBlock, updateBlock } from "@/lib/blocks";
+import {
+  BLOCK_KINDS,
+  blockDescriptionSchema,
+  blockDetailsSchema,
+  blockSourceSchema,
+  blockSourceSyncSchema,
+  blockTimesSchema,
+  newBlockSchema,
+} from "@/lib/block-schema";
+import { createBlock, deleteBlock, getBlock, getBlockBySource, syncBlockSource, unlinkBlockSource, updateBlock } from "@/lib/blocks";
 import { postBodySchema } from "@/lib/post-schema";
 import { createRecapPost } from "@/lib/posts";
 import { discardRecap, prepareRecap, RecapError } from "@/lib/recap";
@@ -27,6 +43,7 @@ const GONE = "That block doesn’t exist anymore.";
 /** Reserved time is kept for its own sake: it has no aim, agenda or recap. */
 const RESERVED = "This time is reserved, not a session. Make it a session first.";
 const TASK_GONE = "That task doesn’t exist anymore.";
+const NOT_LINKED = "That block isn’t linked to an event anymore.";
 const notFound = { description: "Not found.", content: { "application/json": { schema: ErrorSchema } } };
 const blockParam = z.object({ blockId: z.uuid().openapi({ param: { name: "blockId", in: "path" } }) });
 const taskParam = z.object({ taskId: z.uuid().openapi({ param: { name: "taskId", in: "path" } }) });
@@ -47,6 +64,13 @@ const NewBlockSchema = z
         "Left out: a session. `reserved`: time kept for its own sake. `task`: time for the task `taskId` names (its goal and title win), or, without one, a new task in the goal titled with `title`.",
     }),
     taskId: z.string().optional().openapi({ description: "With `kind: task`, the open task to give this time." }),
+    source: z
+      .object({ key: z.string(), calendar: z.string(), snapshot: BlockSourceSnapshotSchema })
+      .optional()
+      .openapi({
+        description:
+          "Importing an event from the person's own calendars: its stable key, its calendar's name, and the event as it is now. Only for a session or reserved time.",
+      }),
   })
   .openapi("NewBlock");
 
@@ -59,7 +83,43 @@ const createRoute_ = createRoute({
   summary: "Protect time for a goal, drawn on the calendar: a session, reserved time, or time for a task",
   security: [{ bearerAuth: [] }],
   request: { body: { required: true, content: { "application/json": { schema: NewBlockSchema } } } },
-  responses: { 201: { ...blockResponse, description: "Created" }, ...errorResponses, 404: notFound },
+  responses: {
+    201: { ...blockResponse, description: "Created" },
+    ...errorResponses,
+    404: notFound,
+    409: { description: "That event is already imported.", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const SourceSyncSchema = z
+  .object({
+    snapshot: BlockSourceSnapshotSchema.openapi({ description: "The event as it is now: the new baseline." }),
+    title: z.string().optional().openapi({ description: "The event's title, to rename the block with it. Left out: keep the block's." }),
+    startsAt: z.iso.datetime({ offset: true }).optional().openapi({ description: "With `endsAt`: the event's times, to move the block to." }),
+    endsAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .openapi("BlockSourceSync");
+
+const sourceSyncRoute = createRoute({
+  method: "put",
+  path: "/blocks/{blockId}/source",
+  operationId: "syncBlockSource",
+  summary: "Answer a change to an imported block's event",
+  description:
+    "Whatever is sent of the event (its title, its times) goes on the block, and `snapshot` becomes the baseline, so the same change isn't offered again. Send only `snapshot` to keep the block as it is.",
+  security: [{ bearerAuth: [] }],
+  request: { params: blockParam, body: { required: true, content: { "application/json": { schema: SourceSyncSchema } } } },
+  responses: { 200: blockResponse, ...errorResponses, 404: notFound },
+});
+
+const unlinkSourceRoute = createRoute({
+  method: "delete",
+  path: "/blocks/{blockId}/source",
+  operationId: "unlinkBlockSource",
+  summary: "Let go of the event a block was imported from; the block stays",
+  security: [{ bearerAuth: [] }],
+  request: { params: blockParam },
+  responses: { 204: { description: "Unlinked" }, 401: errorResponses[401], 404: notFound },
 });
 
 const detailsRoute = createRoute({
@@ -313,8 +373,16 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     const userId = c.var.user.id;
     const { startsAt, endsAt, kind, taskId, ...details } = parsed.data;
     const times = { startsAt: new Date(startsAt), endsAt: new Date(endsAt) };
+    // An imported event comes in as protected time, once.
+    const body = c.req.valid("json");
+    const source = body.source ? blockSourceSchema.safeParse(body.source) : null;
+    if (source && !source.success) return c.json(apiError("invalid_request", firstIssue(source.error)), 400);
+    if (source && kind === "task") return c.json(apiError("invalid_request", "An event comes in as a session or reserved time."), 400);
+    if (source && (await getBlockBySource(userId, source.data.key))) {
+      return c.json(apiError("already_imported", "That event is already on your calendar."), 409);
+    }
     if (kind !== "task") {
-      const block = await createBlock(userId, { ...details, ...times, reserved: kind === "reserved" });
+      const block = await createBlock(userId, { ...details, ...times, reserved: kind === "reserved", source: source?.data ?? null });
       if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
       return c.json(asCalendarBlock(block, new Set()), 201);
     }
@@ -332,6 +400,27 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
     await planTaskForBlock(userId, block);
     return c.json(asCalendarBlock(block, new Set()), 201);
+  })
+  .openapi(sourceSyncRoute, async (c) => {
+    const userId = c.var.user.id;
+    const parsed = blockSourceSyncSchema.safeParse(c.req.valid("json"));
+    if (!parsed.success) return c.json(apiError("invalid_request", firstIssue(parsed.error)), 400);
+    const { snapshot, title, startsAt, endsAt } = parsed.data;
+    const before = await getBlock(userId, c.req.valid("param").blockId);
+    if (!before) return c.json(apiError("not_found", GONE), 404);
+    const block = await syncBlockSource(userId, before.id, {
+      snapshot,
+      ...(title !== undefined ? { title } : {}),
+      ...(startsAt && endsAt ? { startsAt: new Date(startsAt), endsAt: new Date(endsAt) } : {}),
+    });
+    if (!block) return c.json(apiError("not_found", NOT_LINKED), 404);
+    // Moved with its event, a task's time keeps its task planned for the new day.
+    if (startsAt) await planTaskForBlock(userId, block);
+    return c.json(asCalendarBlock(block, new Set()), 200);
+  })
+  .openapi(unlinkSourceRoute, async (c) => {
+    if (!(await unlinkBlockSource(c.var.user.id, c.req.valid("param").blockId))) return c.json(apiError("not_found", GONE), 404);
+    return c.body(null, 204);
   })
   .openapi(detailsRoute, async (c) => {
     const userId = c.var.user.id;

@@ -1,10 +1,10 @@
 import "server-only";
 
-import { and, asc, eq, gt, lt } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, lt } from "drizzle-orm";
 
 import { db } from "@/db";
 import { calendarBlocks, goalPosts, goals, goalTasks } from "@/db/schema";
-import type { BlockAgenda } from "@/lib/block-schema";
+import type { BlockAgenda, BlockSource, BlockSourceSnapshot } from "@/lib/block-schema";
 import { AUTO_STALE_MS, autoRecapExpired, type BlockRecap, type PostedRecap } from "@/lib/recap-schema";
 
 /*
@@ -35,6 +35,10 @@ export type BlockDTO = {
   recapPost?: PostedRecap | null;
   /** Whether a recap is drafting itself in the background right now; only filled when listing. */
   recapDrafting?: boolean;
+  /** For a block imported from an event: the event's key, its calendar, and the event as last agreed. */
+  sourceKey: string | null;
+  sourceCalendar: string | null;
+  sourceSnapshot: BlockSourceSnapshot | null;
 };
 
 const columns = {
@@ -49,6 +53,9 @@ const columns = {
   reserved: calendarBlocks.reserved,
   agenda: calendarBlocks.agenda,
   recap: calendarBlocks.recap,
+  sourceKey: calendarBlocks.sourceKey,
+  sourceCalendar: calendarBlocks.sourceCalendar,
+  sourceSnapshot: calendarBlocks.sourceSnapshot,
 };
 
 const mine = (userId: string, blockId: string) =>
@@ -123,14 +130,20 @@ export async function createBlock(
     fromSuggestion?: string | null;
     taskId?: string | null;
     reserved?: boolean;
+    /** The event it's imported from, if it is. */
+    source?: BlockSource | null;
   },
 ): Promise<BlockDTO | null> {
   if (!(await ownsGoal(userId, input.goalId))) return null;
+  const { source, ...rest } = input;
   const [block] = await db
     .insert(calendarBlocks)
     .values({
       userId,
-      ...input,
+      ...rest,
+      sourceKey: source?.key ?? null,
+      sourceCalendar: source?.calendar ?? null,
+      sourceSnapshot: source?.snapshot ?? null,
       fromSuggestion: input.fromSuggestion ?? null,
       taskId: input.taskId ?? null,
       // Only protected time can be reserved: an intention is time for its task.
@@ -159,5 +172,43 @@ export async function updateBlock(
 
 export async function deleteBlock(userId: string, blockId: string): Promise<boolean> {
   const rows = await db.delete(calendarBlocks).where(mine(userId, blockId)).returning({ id: calendarBlocks.id });
+  return rows.length > 0;
+}
+
+/** The block imported from the event with this key, if there is one. */
+export async function getBlockBySource(userId: string, sourceKey: string): Promise<BlockDTO | null> {
+  const [block] = await db
+    .select(columns)
+    .from(calendarBlocks)
+    .where(and(eq(calendarBlocks.userId, userId), eq(calendarBlocks.sourceKey, sourceKey)));
+  return block ?? null;
+}
+
+/**
+ * Answers a change to an imported block's event in one write: what the person takes of the event
+ * (its title, its times) goes on the block, and the event as it is now becomes the baseline. Null
+ * if the block isn't theirs or isn't linked to an event.
+ */
+export async function syncBlockSource(
+  userId: string,
+  blockId: string,
+  change: { snapshot: BlockSourceSnapshot; title?: string | null; startsAt?: Date; endsAt?: Date },
+): Promise<BlockDTO | null> {
+  const { snapshot, ...taken } = change;
+  const [block] = await db
+    .update(calendarBlocks)
+    .set({ ...taken, sourceSnapshot: snapshot })
+    .where(and(mine(userId, blockId), isNotNull(calendarBlocks.sourceKey)))
+    .returning(columns);
+  return block ?? null;
+}
+
+/** Lets go of the event a block was imported from; the block stays as it is. False if it isn't theirs. */
+export async function unlinkBlockSource(userId: string, blockId: string): Promise<boolean> {
+  const rows = await db
+    .update(calendarBlocks)
+    .set({ sourceKey: null, sourceCalendar: null, sourceSnapshot: null })
+    .where(mine(userId, blockId))
+    .returning({ id: calendarBlocks.id });
   return rows.length > 0;
 }

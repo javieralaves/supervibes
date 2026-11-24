@@ -97,6 +97,8 @@ final class PlanBoardModel {
         case .created: nil
         case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t protect that time."
         case .notFound(let gone): (try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore."
+        // Only an import sends an event; protecting time never does.
+        case .conflict(let taken): (try? taken.body.json.error.message) ?? "That event is already on your calendar."
         case .unauthorized: signedOut
         case .undocumented(let status, _): "Couldn’t protect that time (the server answered \(status))."
         }

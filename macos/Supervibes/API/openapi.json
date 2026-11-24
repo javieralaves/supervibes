@@ -96,6 +96,9 @@
               "breadcrumbs"
             ],
             "description": "The recap as posted to the goal's activity."
+          },
+          "source": {
+            "$ref": "#/components/schemas/BlockSource"
           }
         },
         "required": [
@@ -115,7 +118,8 @@
           "hasRecapPost",
           "agenda",
           "recap",
-          "recapPost"
+          "recapPost",
+          "source"
         ]
       },
       "BlockAgenda": {
@@ -251,6 +255,51 @@
           "url"
         ]
       },
+      "BlockSource": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The event's stable key, unique per person."
+          },
+          "calendar": {
+            "type": "string",
+            "description": "The name of the calendar it's in, e.g. \"Work\"."
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/BlockSourceSnapshot"
+          }
+        },
+        "required": [
+          "key",
+          "calendar",
+          "snapshot"
+        ],
+        "description": "For a block imported from an event in the person's own calendars: where it came from. Null otherwise."
+      },
+      "BlockSourceSnapshot": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "title",
+          "startsAt",
+          "endsAt"
+        ],
+        "description": "An event as it was when the person last agreed with it."
+      },
       "Error": {
         "type": "object",
         "properties": {
@@ -305,12 +354,63 @@
           "taskId": {
             "type": "string",
             "description": "With `kind: task`, the open task to give this time."
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "calendar": {
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/BlockSourceSnapshot"
+              }
+            },
+            "required": [
+              "key",
+              "calendar",
+              "snapshot"
+            ],
+            "description": "Importing an event from the person's own calendars: its stable key, its calendar's name, and the event as it is now. Only for a session or reserved time."
           }
         },
         "required": [
           "goalId",
           "startsAt",
           "endsAt"
+        ]
+      },
+      "BlockSourceSync": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockSourceSnapshot"
+              },
+              {
+                "description": "The event as it is now: the new baseline."
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "The event's title, to rename the block with it. Left out: keep the block's."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "With `endsAt`: the event's times, to move the block to."
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "snapshot"
         ]
       },
       "BlockDetails": {
@@ -2226,6 +2326,136 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That event is already imported.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/source": {
+      "put": {
+        "operationId": "syncBlockSource",
+        "summary": "Answer a change to an imported block's event",
+        "description": "Whatever is sent of the event (its title, its times) goes on the block, and `snapshot` becomes the baseline, so the same change isn't offered again. Send only `snapshot` to keep the block as it is.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockSourceSync"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unlinkBlockSource",
+        "summary": "Let go of the event a block was imported from; the block stays",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unlinked"
           },
           "401": {
             "description": "Not signed in, or the session ended.",

@@ -12,7 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import type { BlockAgenda } from "../lib/block-schema";
+import type { BlockAgenda, BlockSourceSnapshot } from "../lib/block-schema";
 import type { BlockRecap, Breadcrumb, RecapSession } from "../lib/recap-schema";
 import type { GoalStatus, Outlook, StatusBasis } from "../lib/status-schema";
 
@@ -262,13 +262,30 @@ export const calendarBlocks = pgTable(
      * so a session is drafted or passed over at most once. Null: not tried.
      */
     autoRecap: text().$type<"drafting" | "done">(),
+    /**
+     * For a block imported from an event in the person's own calendars (read on their Mac): the
+     * event's stable key, unique per person, so the same event can't be imported twice. Null for
+     * a block made in Supervibes, or one unlinked from its event.
+     */
+    sourceKey: text(),
+    /** The name of the calendar the event is in, e.g. "Work". Set with `sourceKey`. */
+    sourceCalendar: text(),
+    /**
+     * The event as it was when the person last agreed with it: on import, and each time they
+     * answer a change. The Mac app compares the event now with this to offer changes. Set with
+     * `sourceKey`.
+     */
+    sourceSnapshot: jsonb().$type<BlockSourceSnapshot>(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt)],
+  (t) => [
+    index("calendar_blocks_user_starts_idx").on(t.userId, t.startsAt),
+    uniqueIndex("calendar_blocks_user_source_idx").on(t.userId, t.sourceKey),
+  ],
 );
 
 /**
