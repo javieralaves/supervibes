@@ -40,6 +40,7 @@ export const PROVIDERS = {
     oauthScope: undefined,
     /** GitHub has no dynamic registration; uses a GitHub App with read-only permissions. */
     registration: "static",
+    clientEnv: { id: "GITHUB_CLIENT_ID", secret: "GITHUB_CLIENT_SECRET" },
     relationHint:
       "e.g. The javieralaves/supervibes repo. Merged PRs are progress; open PRs show what I’m in the middle of.",
     readingTools: [
@@ -69,6 +70,33 @@ export const PROVIDERS = {
       "get_meeting_transcript",
       "search_transcripts",
       "list_meeting_folders",
+    ],
+  },
+  slack: {
+    label: "Slack",
+    description: "Messages, threads and canvases.",
+    serverUrl: "https://mcp.slack.com/mcp",
+    /**
+     * Read-only user scopes for channels the person can see. No DM scopes (im:*, mpim:*) and
+     * nothing that writes: Slack only offers the tools these scopes allow.
+     */
+    oauthScope: "search:read.public search:read.private channels:history groups:history users:read canvases:read",
+    /**
+     * Slack has no dynamic registration: a Slack app with "Enable Slack MCP Server" switched on
+     * (its Agents settings). Slack only lets internal or Marketplace apps use MCP, so an internal
+     * app works in its own workspace only.
+     */
+    registration: "static",
+    clientEnv: { id: "SLACK_CLIENT_ID", secret: "SLACK_CLIENT_SECRET" },
+    relationHint:
+      "e.g. #supervibes-design and threads with Pablo. Decisions made there shape the direction; skip day-to-day chatter.",
+    readingTools: [
+      "slack_search_public_and_private",
+      "slack_search_public",
+      "slack_search_channels",
+      "slack_read_channel",
+      "slack_read_thread",
+      "slack_read_canvas",
     ],
   },
 } as const;

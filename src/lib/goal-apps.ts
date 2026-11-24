@@ -174,7 +174,10 @@ export async function askWithApps(
       outcome = message.stop_reason ?? "unknown";
       for (const block of message.content) {
         if (block.type !== "mcp_tool_result") continue;
-        toolText.push(typeof block.content === "string" ? block.content : block.content.map((c) => c.text).join("\n"));
+        const text = typeof block.content === "string" ? block.content : block.content.map((c) => c.text).join("\n");
+        // Slack returns its results as a JSON string, so links come back as https:\/\/…; the
+        // answer cites them unescaped, so unescape here for the link check to match.
+        toolText.push(text.replaceAll("\\/", "/"));
       }
       if (message.stop_reason !== "pause_turn") break;
       messages.push({ role: "assistant", content: message.content });

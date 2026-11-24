@@ -115,6 +115,7 @@ extension ConnectionItem.Provider {
         case .linear: "Linear"
         case .github: "GitHub"
         case .granola: "Granola"
+        case .slack: "Slack"
         }
     }
 }

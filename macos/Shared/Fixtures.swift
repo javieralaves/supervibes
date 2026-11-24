@@ -90,6 +90,8 @@ enum Fixtures {
                            configured: true, state: .needsAttention(message: "The token expired.")),
             ConnectionItem(provider: .granola, label: "Granola", description: "Meeting notes and summaries.",
                            configured: true, state: .notConnected),
+            ConnectionItem(provider: .slack, label: "Slack", description: "Messages, threads and canvases.",
+                           configured: true, state: .notConnected),
         ]
     }
 

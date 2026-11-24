@@ -32,16 +32,28 @@ export function redirectUrl(): string {
   return new URL("/api/connections/callback", base).toString();
 }
 
-/** RFC 8707 resource indicator. GitHub's OAuth server isn't an MCP-aware server, so skip it there. */
+/**
+ * RFC 8707 resource indicator, for apps that register dynamically. Skipped for apps with their
+ * own client: GitHub's OAuth server isn't MCP-aware, and Slack doesn't need it.
+ */
 function resourceFor(provider: ProviderKey, discovered?: string): string | undefined {
   return PROVIDERS[provider].registration === "dynamic" ? discovered : undefined;
 }
 
 export class ProviderNotConfiguredError extends Error {}
 
+/** The client id and secret for an app registered ahead of time, from the env vars it names. */
+function staticClient(provider: ProviderKey): { id: string; secret: string } | null {
+  const config = PROVIDERS[provider];
+  if (!("clientEnv" in config)) return null;
+  const id = process.env[config.clientEnv.id];
+  const secret = process.env[config.clientEnv.secret];
+  return id && secret ? { id, secret } : null;
+}
+
 export function isProviderConfigured(provider: ProviderKey): boolean {
   if (PROVIDERS[provider].registration === "dynamic") return true;
-  return Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+  return staticClient(provider) !== null;
 }
 
 async function clientInfoFor(
@@ -52,10 +64,9 @@ async function clientInfoFor(
   const config = PROVIDERS[provider];
 
   if (config.registration === "static") {
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-    if (!clientId || !clientSecret) throw new ProviderNotConfiguredError();
-    return { client_id: clientId, client_secret: clientSecret, token_endpoint_auth_method: "client_secret_post" };
+    const client = staticClient(provider);
+    if (!client) throw new ProviderNotConfiguredError();
+    return { client_id: client.id, client_secret: client.secret, token_endpoint_auth_method: "client_secret_post" };
   }
 
   // Dynamic client registration (RFC 7591): a public client protected by PKCE.

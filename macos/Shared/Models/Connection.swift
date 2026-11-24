@@ -3,7 +3,7 @@ import Foundation
 /// An app Supervibes can read activity from, and whether it's connected.
 struct ConnectionItem: Identifiable, Hashable, Sendable {
     enum Provider: String, CaseIterable, Hashable, Sendable {
-        case linear, github, granola
+        case linear, github, granola, slack
     }
 
     enum State: Hashable, Sendable {

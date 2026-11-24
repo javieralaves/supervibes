@@ -164,6 +164,11 @@ struct ProviderMark: View {
                     .overlay(RoundedRectangle(cornerRadius: size * 0.3).strokeBorder(.white.opacity(0.1)))
             case .granola:
                 Icon.granolaMark.image(size: size)
+            case .slack:
+                // Slack's one-colour mark, white on its aubergine.
+                Icon.slackMark.image(size: mark).foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background(Color(nsColor: .rgb(0x4a154b)))
             }
         }
         .clipShape(.rect(cornerRadius: size * 0.3))
@@ -174,5 +179,5 @@ struct ProviderMark: View {
 #Preview("Connections") {
     ConnectionsPage(items: Fixtures.connections, notice: .connected("Linear"))
         .background(Theme.background)
-        .frame(width: 900, height: 620)
+        .frame(width: 900, height: 720)
 }

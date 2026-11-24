@@ -169,6 +169,7 @@ enum Icon: String {
     case linearMark = "LinearMark"
     case githubMark = "GitHubMark"
     case granolaMark = "GranolaMark"
+    case slackMark = "SlackMark"
 
     func image(size: CGFloat) -> some View {
         Image(rawValue, bundle: Fonts.bundle)

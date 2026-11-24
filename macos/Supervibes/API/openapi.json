@@ -239,7 +239,8 @@
             "enum": [
               "linear",
               "github",
-              "granola"
+              "granola",
+              "slack"
             ]
           },
           "title": {
@@ -808,7 +809,8 @@
         "enum": [
           "linear",
           "github",
-          "granola"
+          "granola",
+          "slack"
         ]
       },
       "ConnectionStart": {
@@ -1574,7 +1576,8 @@
             "enum": [
               "linear",
               "github",
-              "granola"
+              "granola",
+              "slack"
             ]
           },
           "relation": {
@@ -1610,7 +1613,8 @@
             "enum": [
               "linear",
               "github",
-              "granola"
+              "granola",
+              "slack"
             ]
           },
           "label": {

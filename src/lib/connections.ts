@@ -84,7 +84,17 @@ export async function getUsableConnection(userId: string, connectionId: string) 
   const clientInfo = decryptJson<OAuthClientInformationMixed>(row.clientInfo);
   let tokens = decryptJson<StoredTokens>(row.tokens);
 
-  const refreshed = await refreshIfNeeded(row.provider, clientInfo, tokens);
+  let refreshed: StoredTokens | null;
+  try {
+    refreshed = await refreshIfNeeded(row.provider, clientInfo, tokens);
+  } catch (error) {
+    // Some apps (Slack) rotate refresh tokens: each works once. If a read running alongside this
+    // one refreshed first, ours was spent, but the new tokens it saved are good to use.
+    const [latest] = await db.select({ tokens: connections.tokens }).from(connections).where(eq(connections.id, row.id));
+    const saved = latest && decryptJson<StoredTokens>(latest.tokens);
+    if (!saved || saved.access_token === tokens.access_token || (saved.expires_at ?? Infinity) - Date.now() < 60_000) throw error;
+    return { id: row.id, provider: row.provider, serverUrl: row.serverUrl, readTools: row.readTools, accessToken: saved.access_token };
+  }
   if (refreshed) {
     tokens = refreshed;
     await db

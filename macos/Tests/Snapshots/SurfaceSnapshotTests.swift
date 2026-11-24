@@ -211,7 +211,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(
             ConnectionsPage(items: Fixtures.connections, notice: .connected("Linear"))
                 .background(Theme.background),
-            width: 900, height: 620
+            width: 900, height: 720
         )
     }
 
