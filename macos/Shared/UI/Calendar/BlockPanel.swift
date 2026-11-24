@@ -25,6 +25,9 @@ struct BlockPanelActions {
     var setTaskDone: (_ taskId: String, _ done: Bool) async -> String?
     var toggleDone: (_ blockId: String) -> Void
     var openGoal: (_ goalId: String) -> Void
+    /// Answering a change to an imported block's event: take it, or keep the block as it is.
+    var takeChange: (_ blockId: String, _ change: ImportChange) -> Void = { _, _ in }
+    var keepBlock: (_ blockId: String, _ change: ImportChange) -> Void = { _, _ in }
 }
 
 struct BlockPanel: View {
@@ -49,6 +52,8 @@ struct BlockPanel: View {
     let actions: BlockPanelActions?
     /// The calendar's own changes: rename, goal, day, time, type, and the ⋯ menu.
     var calendar: CalendarActions?
+    /// For an imported block: how its event has changed since, to answer here.
+    var importChange: ImportChange?
     var onClose: () -> Void = {}
 
     @State private var preparing = false
@@ -63,7 +68,8 @@ struct BlockPanel: View {
 
     init(block: CalendarBlock, goal: CalendarGoal?, goals: [CalendarGoal] = [], description: String?, day: Int, start: Int, end: Int,
          clock: Clock = .twelveHour, when: String, openTaskIds: Set<String>, ended: Bool, now: Date,
-         actions: BlockPanelActions?, calendar: CalendarActions? = nil, suggestion: FocusSuggestion? = nil, onClose: @escaping () -> Void = {}) {
+         actions: BlockPanelActions?, calendar: CalendarActions? = nil, suggestion: FocusSuggestion? = nil,
+         importChange: ImportChange? = nil, onClose: @escaping () -> Void = {}) {
         self.block = block
         self.goal = goal
         self.goals = goals
@@ -78,6 +84,7 @@ struct BlockPanel: View {
         self.now = now
         self.actions = actions
         self.calendar = calendar
+        self.importChange = importChange
         self.onClose = onClose
         _suggestion = State(initialValue: suggestion)
     }
@@ -146,9 +153,21 @@ struct BlockPanel: View {
                     Text(agendaError).appText(.sm).foregroundStyle(Theme.danger).padding(.top, 8)
                 }
 
+                // Its event changed since: what happened, and the two answers.
+                if let importChange, let source = block.source {
+                    ChangeNotice(
+                        copy: ImportChangeCopy(importChange, block: block, source: source, clock: clock, now: now),
+                        isEnabled: actions != nil && !block.isPending,
+                        onTake: { actions?.takeChange(block.id, importChange) },
+                        onKeep: { actions?.keepBlock(block.id, importChange) }
+                    )
+                    .padding(.top, 12)
+                }
+
                 PropertyRows(
                     block: block, goal: goal, goals: goals, day: day, start: start, end: end, clock: clock, now: now,
-                    calendar: block.isPending ? nil : calendar
+                    calendar: block.isPending ? nil : calendar,
+                    sourceChanged: importChange != nil
                 )
                 .padding(.top, 16)
 
@@ -554,6 +573,91 @@ private struct PropertyRows: View {
             CalendarDayMath.midnight(day, from: now)
                 .formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(Locale(identifier: "en_US")))
         }
+    }
+}
+
+/// A change to an imported block's event: a heading, where it was seen, the values side by side,
+/// and two answers. Either answer settles it until the event changes again.
+private struct ChangeNotice: View {
+    let copy: ImportChangeCopy
+    let isEnabled: Bool
+    let onTake: () -> Void
+    let onKeep: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                (copy.takeRemoves ? Icon.calendarRemoved : Icon.refresh).image(size: 14)
+                Text(copy.heading).appText(.px(13), .semibold)
+            }
+            .foregroundStyle(Theme.foreground)
+            Text(copy.source).appText(.xs).foregroundStyle(Theme.muted).padding(.top, 2)
+
+            if !copy.lines.isEmpty {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 4) {
+                    ForEach(Array(copy.lines.enumerated()), id: \.offset) { _, line in
+                        GridRow {
+                            Text(line.label).appText(.xs).foregroundStyle(Theme.muted)
+                            Text(line.value)
+                                .appText(.px(13), line.isNew ? .medium : .regular)
+                                .monospacedDigit()
+                                .strikethrough(line.was, color: Theme.muted)
+                                .foregroundStyle(line.was ? Theme.muted : Theme.foreground)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.top, 10)
+            }
+            if let body = copy.body {
+                Text(body).appText(.px(13)).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
+
+            HStack(spacing: 6) {
+                if copy.keepFirst {
+                    AnswerButton(title: copy.keep, style: .primary, action: onKeep)
+                    AnswerButton(title: copy.take, style: copy.takeRemoves ? .destructive : .secondary, action: onTake)
+                } else {
+                    AnswerButton(title: copy.take, style: copy.takeRemoves ? .destructive : .primary, action: onTake)
+                    AnswerButton(title: copy.keep, style: .secondary, action: onKeep)
+                }
+            }
+            .padding(.top, 12)
+            .inactive(!isEnabled)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.wash, in: .rect(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// The answers to a change: `h-7 rounded-lg px-3 text-xs`, filled, ringed, or ringed in red.
+struct AnswerButton: View {
+    enum Style { case primary, secondary, destructive }
+
+    let title: String
+    let style: Style
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title).appText(.xs, style == .primary ? .semibold : .medium)
+                .foregroundStyle(style == .primary ? Theme.background : style == .destructive ? Theme.danger : Theme.foreground)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(style == .primary ? Theme.foreground : Theme.card, in: .rect(cornerRadius: 8))
+                .overlay {
+                    if style != .primary { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.lineStrong) }
+                }
+                .opacity(isHovered ? 0.85 : 1)
+                .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

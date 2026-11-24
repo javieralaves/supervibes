@@ -72,6 +72,8 @@ struct DayView: View {
     var eventsHelp = "Events from Google"
     /// A hovered event, previewed on the grid.
     var eventPreview: EventPreview?
+    /// Imported blocks whose events changed since, by block: marked on the grid, offered in their panel.
+    var importChanges: [String: ImportChange] = [:]
 
     @State private var drag = TaskDragState()
     /// Time drawn on the week and waiting to be named.
@@ -89,7 +91,7 @@ struct DayView: View {
          setObjective: ((String, String, String) async -> String?)? = nil,
          dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil,
          eventsPanel: AnyView? = nil, showsEvents: Bool = false, onToggleEvents: (() -> Void)? = nil, eventChanges: Int = 0,
-         eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil) {
+         eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil, importChanges: [String: ImportChange] = [:]) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -118,6 +120,7 @@ struct DayView: View {
         self.eventChanges = eventChanges
         self.eventsHelp = eventsHelp
         self.eventPreview = eventPreview
+        self.importChanges = importChanges
         _editing = State(initialValue: editing)
     }
 
@@ -179,6 +182,19 @@ struct DayView: View {
 
     /// The events panel shows: open, wide enough, and no block's panel in its place.
     private var showsEventsPanel: Bool { showsEvents && eventsPanel != nil && width >= 1024 && selected == nil }
+    /// With a changed block's panel open: where its event moved to, previewed on the grid.
+    private var changePreview: EventPreview? {
+        guard let selected, let times = importChanges[selected.id]?.times else { return nil }
+        let day = CalendarDayMath.dayOffset(times.start, from: now)
+        return EventPreview(
+            day: day,
+            start: CalendarDayMath.minutes(times.start),
+            end: CalendarDayMath.dayOffset(times.end, from: now) > day ? CalendarDayMath.dayMinutes : CalendarDayMath.minutes(times.end),
+            title: importChanges[selected.id]?.bothMoved == true ? "Meeting’s time" : "New time",
+            color: data.goal(selected.goalId)?.color ?? "slate"
+        )
+    }
+
     /// Something open on the right: a block's panel or the events panel.
     private var hasRightPanel: Bool { selected != nil || showsEventsPanel }
 
@@ -224,7 +240,8 @@ struct DayView: View {
         }
         .pointerStyle(drag.placing?.moved == true ? .grabActive : nil)
         .environment(\.taskDrag, actions == nil ? nil : drag)
-        .environment(\.eventPreview, showsEventsPanel ? eventPreview : nil)
+        .environment(\.eventPreview, showsEventsPanel ? eventPreview : changePreview)
+        .environment(\.changedBlocks, Set(importChanges.keys))
         .onChange(of: offset, initial: true) {
             // Let go on the timeline: a time on the shown day; on the strip: the day itself.
             drag.onDrop = { [offset, actions] placing in
@@ -360,6 +377,7 @@ struct DayView: View {
             now: now,
             actions: panel,
             calendar: actions,
+            importChange: importChanges[block.id],
             onClose: { selectedId.wrappedValue = nil }
         )
         .id(block.id)
@@ -1597,6 +1615,8 @@ struct BlockCardView: View {
     /// Height a block needs for its title and time on two lines; shorter ones get a single line.
     private static let twoLines: CGFloat = 48
     @Environment(\.dayGrid) private var grid
+    /// Imported blocks whose events have changed since.
+    @Environment(\.changedBlocks) private var changedBlocks
 
     private var color: String { goal?.color ?? "slate" }
     private var title: String { block.title ?? goal?.title ?? "Protected time" }
@@ -1642,15 +1662,18 @@ struct BlockCardView: View {
                 // Imported from a calendar: the events button's icon in the corner, beside a
                 // waiting recap's dot, out of the way of the menu that shows on hover.
                 if let source = block.source, !compact || geometry.size.height >= 18 {
-                    Icon.calendarImport.image(size: 11).foregroundStyle(Theme.muted)
+                    let changed = changedBlocks.contains(block.id)
+                    // Changed since: the sync arrows on a dark dot, in the same place.
+                    (changed ? Icon.refresh : Icon.calendarImport).image(size: 11)
+                        .foregroundStyle(changed ? Theme.background : Theme.muted)
                         .frame(width: 18, height: 18)
-                        .background(Theme.card.opacity(0.7), in: .rect(cornerRadius: 5))
+                        .background(changed ? Theme.foreground : Theme.card.opacity(0.7), in: changed ? AnyShape(.circle) : AnyShape(.rect(cornerRadius: 5)))
                         .opacity(isHovered ? 0 : 1)
                         .frame(maxWidth: .infinity, alignment: .topTrailing)
                         .padding(.top, compact ? 3 : 6)
                         .padding(.trailing, (compact ? 3 : 6) + (block.recapWaiting ? 14 : 0))
-                        .help("From \(source.calendar) · Google")
-                        .accessibilityLabel("Imported from \(source.calendar)")
+                        .help(changed ? "Changed in \(source.calendar) since you imported it" : "From \(source.calendar) · Google")
+                        .accessibilityLabel(changed ? "Imported from \(source.calendar), changed since" : "Imported from \(source.calendar)")
                 }
             }
             .clipShape(.rect(cornerRadius: compact ? 6 : 8))

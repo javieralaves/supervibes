@@ -232,6 +232,107 @@ final class CalendarModel {
         data.blocks.first { $0.source?.key == key }
     }
 
+    // MARK: - Changes to imported events
+
+    /// Compares each imported block with its event as the feed has it now: what to offer, by block.
+    /// An event missing from the feed only counts as gone when its calendar is still being read,
+    /// so unticking a calendar never offers to remove its blocks. Where the block already matches
+    /// the event, the baseline catches up without asking.
+    func importChanges(events: [ExternalEvent], isReading: (String) -> Bool) -> [String: ImportChange] {
+        let byKey = Dictionary(events.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var changes: [String: ImportChange] = [:]
+        for block in data.blocks where !block.isPending {
+            guard let source = block.source else { continue }
+            let event = byKey[source.key]
+            if event == nil, !isReading(source.calendar) { continue }
+            switch ImportCheck.check(source, title: block.title, start: block.startsAt, end: block.endsAt, event: event) {
+            case .inStep: break
+            case .catchUp(let snapshot): catchUp(block.id, to: snapshot)
+            case .changed(let change): changes[block.id] = change
+            }
+        }
+        return changes
+    }
+
+    /// Baselines being caught up, so each is sent once.
+    @ObservationIgnored private var catchingUp: Set<String> = []
+
+    private func catchUp(_ blockId: String, to snapshot: EventSource.Snapshot) {
+        guard !catchingUp.contains(blockId) else { return }
+        catchingUp.insert(blockId)
+        Task {
+            defer { catchingUp.remove(blockId) }
+            let body = Components.Schemas.BlockSourceSync(snapshot: Self.snapshot(snapshot))
+            guard case .ok(let ok) = try? await client.syncBlockSource(path: .init(blockId: blockId), body: .json(body)),
+                  let saved = try? ok.body.json else { return }
+            replace(blockId, with: CalendarBlock(api: saved))
+            Log.app.info("Calendar import: caught up an imported block with its event")
+        }
+    }
+
+    /// Takes a change: its title and times go on the block, or, for an event that's gone, the block
+    /// is removed. The event as it is now becomes the baseline.
+    func takeChange(_ blockId: String, _ change: ImportChange) {
+        guard let before = block(blockId), let event = change.event else { return remove(blockId) }
+        update(blockId) { block in
+            if let title = change.title { block.title = title.isEmpty ? nil : title }
+            if let times = change.times {
+                block.startsAt = times.start
+                block.endsAt = times.end
+            }
+            block.source = block.source.map { EventSource(key: $0.key, calendar: $0.calendar, snapshot: event) }
+        }
+        syncSource(blockId, before: before, change: change, snapshot: event, take: true)
+    }
+
+    /// Keeps the block as it is: the event as it is now becomes the baseline, or, for an event
+    /// that's gone, the block lets go of it and stays.
+    func keepBlock(_ blockId: String, _ change: ImportChange) {
+        guard let before = block(blockId) else { return }
+        guard let event = change.event else {
+            update(blockId) { $0.source = nil }
+            write(undo: { [weak self] in self?.replace(blockId, with: before) }) { client in
+                switch try await client.unlinkBlockSource(path: .init(blockId: blockId)) {
+                case .noContent: return .done
+                case .notFound: return .gone
+                case .unauthorized: return .signedOut
+                case .undocumented(let status, _): return .failed("Couldn’t keep that block (the server answered \(status)).")
+                }
+            }
+            return
+        }
+        update(blockId) { block in
+            block.source = block.source.map { EventSource(key: $0.key, calendar: $0.calendar, snapshot: event) }
+        }
+        syncSource(blockId, before: before, change: change, snapshot: event, take: false)
+    }
+
+    private func syncSource(_ blockId: String, before: CalendarBlock, change: ImportChange, snapshot: EventSource.Snapshot, take: Bool) {
+        let title = take ? change.title : nil
+        let times = take ? change.times : nil
+        write(undo: { [weak self] in self?.replace(blockId, with: before) }) { client in
+            let body = Components.Schemas.BlockSourceSync(
+                snapshot: Self.snapshot(snapshot),
+                title: title,
+                startsAt: times?.start,
+                endsAt: times?.end
+            )
+            switch try await client.syncBlockSource(path: .init(blockId: blockId), body: .json(body)) {
+            case .ok(let ok):
+                let block = CalendarBlock(api: try ok.body.json)
+                return .apply { model in model.replace(blockId, with: block) }
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that change.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t save that change (the server answered \(status)).")
+            }
+        }
+    }
+
+    private static func snapshot(_ snapshot: EventSource.Snapshot) -> Components.Schemas.BlockSourceSnapshot {
+        .init(title: String(snapshot.title.prefix(1000)), startsAt: snapshot.startsAt, endsAt: snapshot.endsAt)
+    }
+
     /// Rename a block or give it another goal. An intention keeps its title when it's left empty.
     func saveDetails(_ blockId: String, goalId: String, title: String?) {
         UserDefaults.standard.set(goalId, forKey: Self.lastGoalKey)

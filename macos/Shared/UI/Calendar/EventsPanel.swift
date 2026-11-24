@@ -60,6 +60,18 @@ extension EventPreview {
 extension EnvironmentValues {
     /// The hovered event's time, for the day and week grids to draw.
     @Entry var eventPreview: EventPreview?
+    /// Imported blocks whose events have changed since, for their cards to mark.
+    @Entry var changedBlocks: Set<String> = []
+}
+
+/// An imported block whose event has changed, as the events panel lists it.
+struct PendingChange: Identifiable, Hashable {
+    let block: CalendarBlock
+    let change: ImportChange
+    let copy: ImportChangeCopy
+    /// The block's goal colour.
+    let color: String
+    var id: String { block.id }
 }
 
 struct EventsPanel: View {
@@ -80,6 +92,13 @@ struct EventsPanel: View {
     var onUndo: (ExternalEvent) -> Void = { _ in }
     var onSync: () -> Void = {}
     var onClose: () -> Void = {}
+    /// Imported events that changed since: listed first, each with its two answers.
+    var changes: [PendingChange] = []
+    var onTake: (PendingChange) -> Void = { _ in }
+    var onKeep: (PendingChange) -> Void = { _ in }
+    var onTakeAll: () -> Void = {}
+    /// Opens a changed block's own panel.
+    var onOpenBlock: (String) -> Void = { _ in }
 
     @State private var hovered: String?
     /// Goals picked for an event instead of the default, by event key.
@@ -88,7 +107,9 @@ struct EventsPanel: View {
     init(days: [EventDay], goals: [CalendarGoal], imported: [String: String], defaultGoalId: String?, lastRead: Date?,
          clock: Clock = .twelveHour, justImported: String? = nil, hovered: String? = nil,
          onHover: @escaping (ExternalEvent?, String?) -> Void = { _, _ in }, onImport: @escaping (ExternalEvent, String) -> Void = { _, _ in },
-         onUndo: @escaping (ExternalEvent) -> Void = { _ in }, onSync: @escaping () -> Void = {}, onClose: @escaping () -> Void = {}) {
+         onUndo: @escaping (ExternalEvent) -> Void = { _ in }, onSync: @escaping () -> Void = {}, onClose: @escaping () -> Void = {},
+         changes: [PendingChange] = [], onTake: @escaping (PendingChange) -> Void = { _ in }, onKeep: @escaping (PendingChange) -> Void = { _ in },
+         onTakeAll: @escaping () -> Void = {}, onOpenBlock: @escaping (String) -> Void = { _ in }) {
         self.days = days
         self.goals = goals
         self.imported = imported
@@ -101,6 +122,11 @@ struct EventsPanel: View {
         self.onUndo = onUndo
         self.onSync = onSync
         self.onClose = onClose
+        self.changes = changes
+        self.onTake = onTake
+        self.onKeep = onKeep
+        self.onTakeAll = onTakeAll
+        self.onOpenBlock = onOpenBlock
         _hovered = State(initialValue: hovered)
     }
 
@@ -120,6 +146,11 @@ struct EventsPanel: View {
                     Spacer(minLength: 0)
                     PanelIconButton(icon: .refresh, label: "Sync now", action: onSync)
                     PanelIconButton(icon: .close, label: "Close", action: onClose)
+                }
+
+                if !changes.isEmpty {
+                    ChangesSection(changes: changes, onTake: onTake, onKeep: onKeep, onTakeAll: onTakeAll, onOpenBlock: onOpenBlock)
+                        .padding(.top, 16)
                 }
 
                 if days.isEmpty {
@@ -186,6 +217,61 @@ struct EventsPanel: View {
                 onHover(nil, nil)
             }
         }
+    }
+}
+
+/// At the top of the panel after a sync: each imported event that changed, what changed, and its
+/// two answers; Update all takes every one.
+private struct ChangesSection: View {
+    let changes: [PendingChange]
+    let onTake: (PendingChange) -> Void
+    let onKeep: (PendingChange) -> Void
+    let onTakeAll: () -> Void
+    let onOpenBlock: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(changes.count == 1 ? "1 imported event changed" : "\(changes.count) imported events changed")
+                    .appText(.xs, .semibold).foregroundStyle(Theme.foreground)
+                Spacer()
+                if changes.count > 1 {
+                    Button("Update all", action: onTakeAll)
+                        .buttonStyle(.plain)
+                        .font(.app(12, .medium))
+                        .foregroundStyle(Theme.muted)
+                        .help("Takes each change; a removed meeting's block goes too")
+                }
+            }
+            ForEach(changes) { pending in
+                HStack(alignment: .top, spacing: 10) {
+                    Circle().fill(GoalPalette.color(pending.color)).frame(width: 8, height: 8).padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Button { onOpenBlock(pending.block.id) } label: {
+                            Text(pending.block.title ?? pending.copy.heading).appText(.px(13), .medium)
+                                .foregroundStyle(Theme.foreground).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open it")
+                        Text(pending.copy.summary).appText(.xs).foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 6) {
+                            if pending.copy.keepFirst {
+                                AnswerButton(title: pending.copy.keep, style: .primary) { onKeep(pending) }
+                                AnswerButton(title: pending.copy.take, style: .destructive) { onTake(pending) }
+                            } else {
+                                AnswerButton(title: pending.copy.take, style: pending.copy.takeRemoves ? .destructive : .primary) { onTake(pending) }
+                                AnswerButton(title: pending.copy.keep, style: .secondary) { onKeep(pending) }
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.wash, in: .rect(cornerRadius: 12))
     }
 }
 

@@ -154,4 +154,61 @@ final class EventImportTests: XCTestCase {
         let event = ExternalEvent(key: "k", calendarId: "w", calendarName: "Work", title: "Quick call", start: start, end: start.addingTimeInterval(600))
         XCTAssertEqual(ImportCheck.check(short, title: "Quick call", start: block.start, end: block.end, event: event), .inStep)
     }
+
+    // MARK: - How changes read
+
+    private func block(title: String? = "Design review", shift: TimeInterval = 0, recap: Bool = false) -> CalendarBlock {
+        var block = CalendarBlock(
+            id: "b", goalId: "g1", title: title,
+            startsAt: source.snapshot.startsAt.addingTimeInterval(shift), endsAt: source.snapshot.endsAt.addingTimeInterval(shift),
+            hasRecapPost: recap
+        )
+        block.source = source
+        return block
+    }
+
+    private func copy(_ check: ImportCheck, block: CalendarBlock) throws -> ImportChangeCopy {
+        guard case .changed(let change) = check else {
+            XCTFail("Expected a change, got \(check)")
+            throw CancellationError()
+        }
+        return ImportChangeCopy(change, block: block, source: source, clock: .twelveHour, now: source.snapshot.startsAt)
+    }
+
+    func testAMoveReadsAsWasAndNow() throws {
+        let copy = try copy(check(event: event(shift: 1800)), block: block())
+        XCTAssertEqual(copy.heading, "The meeting moved")
+        XCTAssertEqual(copy.lines.map(\.label), ["Was", "Now"])
+        XCTAssertEqual(copy.take, "Move it")
+        XCTAssertEqual(copy.keep, "Keep mine")
+        XCTAssertTrue(copy.summary.hasPrefix("Moved to Today · "))
+    }
+
+    func testARenameOffersTheNewTitle() throws {
+        let copy = try copy(check(event: event(title: "Design review: blocks")), block: block())
+        XCTAssertEqual(copy.heading, "The meeting was renamed")
+        XCTAssertEqual(copy.lines.last?.value, "Design review: blocks")
+        XCTAssertEqual(copy.take, "Rename it")
+    }
+
+    func testBothMovingShowsAllThreeTimes() throws {
+        let copy = try copy(check(shift: 900, event: event(shift: 1800)), block: block(shift: 900))
+        XCTAssertEqual(copy.heading, "You both moved it")
+        XCTAssertEqual(copy.lines.map(\.label), ["Imported", "Yours", "Meeting’s"])
+        XCTAssertEqual(copy.take, "Use the meeting’s")
+    }
+
+    func testARemovedMeetingOffersToRemoveTheBlock() throws {
+        let copy = try copy(check(event: nil), block: block())
+        XCTAssertEqual(copy.take, "Remove block")
+        XCTAssertTrue(copy.takeRemoves)
+        XCTAssertFalse(copy.keepFirst)
+        XCTAssertEqual(copy.summary, "No longer in Work")
+    }
+
+    func testARemovedMeetingWithAPostedRecapKeepsTheBlockFirst() throws {
+        let copy = try copy(check(event: nil), block: block(recap: true))
+        XCTAssertTrue(copy.keepFirst)
+        XCTAssertEqual(copy.keep, "Keep it")
+    }
 }

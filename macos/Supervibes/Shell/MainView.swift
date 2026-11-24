@@ -409,6 +409,27 @@ private struct CalendarScreen: View {
         justImported = nil
     }
 
+    /// Imported blocks whose events changed since, by block. Reading them also lets baselines the
+    /// blocks already match catch up, without asking.
+    private var importChanges: [String: ImportChange] {
+        guard eventFeed.isActive else { return [:] }
+        return model.importChanges(events: eventFeed.events, isReading: eventFeed.isReading(calendarNamed:))
+    }
+
+    /// The changes as the events panel lists them, soonest block first.
+    private func pendingChanges(_ changes: [String: ImportChange]) -> [PendingChange] {
+        let clock = model.data.clock ?? .device
+        return changes.compactMap { blockId, change -> PendingChange? in
+            guard let block = model.data.blocks.first(where: { $0.id == blockId }), let source = block.source else { return nil }
+            return PendingChange(
+                block: block, change: change,
+                copy: ImportChangeCopy(change, block: block, source: source, clock: clock, now: model.now),
+                color: model.data.goal(block.goalId)?.color ?? "slate"
+            )
+        }
+        .sorted { $0.block.startsAt < $1.block.startsAt }
+    }
+
     /// "Events from Google · synced 9:40 AM".
     private var eventsHelp: String {
         guard let read = eventFeed.lastRead else { return "Events from Google" }
@@ -456,7 +477,14 @@ private struct CalendarScreen: View {
                 justImported = nil
             },
             onSync: eventFeed.syncNow,
-            onClose: toggleEvents
+            onClose: toggleEvents,
+            changes: pendingChanges(importChanges),
+            onTake: { model.takeChange($0.block.id, $0.change) },
+            onKeep: { model.keepBlock($0.block.id, $0.change) },
+            onTakeAll: {
+                for (blockId, change) in importChanges { model.takeChange(blockId, change) }
+            },
+            onOpenBlock: { selectedId = $0 }
         )
     }
 
@@ -521,7 +549,9 @@ private struct CalendarScreen: View {
                         discardRecap: model.discardRecap,
                         setTaskDone: model.setTaskDone,
                         toggleDone: model.toggleDone,
-                        openGoal: { shell.openGoal($0) }
+                        openGoal: { shell.openGoal($0) },
+                        takeChange: model.takeChange,
+                        keepBlock: model.keepBlock
                     ),
                     span: span,
                     dayCount: CalendarSpan.dayCounts.contains(dayCount) ? dayCount : 3,
@@ -534,8 +564,10 @@ private struct CalendarScreen: View {
                     eventsPanel: AnyView(eventsPanel),
                     showsEvents: showsEvents,
                     onToggleEvents: eventsToggle,
+                    eventChanges: importChanges.count,
                     eventsHelp: eventsHelp,
-                    eventPreview: eventPreview
+                    eventPreview: eventPreview,
+                    importChanges: importChanges
                 )
                 .focusable()
                 .focusEffectDisabled()

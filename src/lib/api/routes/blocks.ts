@@ -93,7 +93,8 @@ const createRoute_ = createRoute({
 
 const SourceSyncSchema = z
   .object({
-    snapshot: BlockSourceSnapshotSchema.openapi({ description: "The event as it is now: the new baseline." }),
+    // The event as it is now: the new baseline.
+    snapshot: BlockSourceSnapshotSchema,
     title: z.string().optional().openapi({ description: "The event's title, to rename the block with it. Left out: keep the block's." }),
     startsAt: z.iso.datetime({ offset: true }).optional().openapi({ description: "With `endsAt`: the event's times, to move the block to." }),
     endsAt: z.iso.datetime({ offset: true }).optional(),

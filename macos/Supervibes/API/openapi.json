@@ -386,14 +386,7 @@
         "type": "object",
         "properties": {
           "snapshot": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlockSourceSnapshot"
-              },
-              {
-                "description": "The event as it is now: the new baseline."
-              }
-            ]
+            "$ref": "#/components/schemas/BlockSourceSnapshot"
           },
           "title": {
             "type": "string",

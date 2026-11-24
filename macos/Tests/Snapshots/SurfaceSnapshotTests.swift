@@ -864,6 +864,106 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// The User research call (b4, today 12:00–12:30), imported from General, and its event changed
+    /// in each of the ways a sync can find.
+    private func importedCall(title: String? = "User research call", shift: TimeInterval = 0, recap: Bool = false) -> CalendarBlock {
+        var block = Fixtures.calendar.blocks.first { $0.id == "b4" }!
+        block.title = title
+        block.hasRecapPost = recap
+        block.source = EventSource(key: "call", calendar: "General", snapshot: .init(title: "User research call", startsAt: block.startsAt, endsAt: block.endsAt))
+        block.startsAt += shift
+        block.endsAt += shift
+        return block
+    }
+
+    private func changes(for block: CalendarBlock, event: ExternalEvent?) -> ImportChange? {
+        guard case .changed(let change) = ImportCheck.check(block.source!, title: block.title, start: block.startsAt, end: block.endsAt, event: event) else { return nil }
+        return change
+    }
+
+    private func callEvent(title: String = "User research call", shift: TimeInterval = 0) -> ExternalEvent {
+        let block = importedCall()
+        return ExternalEvent(key: "call", calendarId: "general", calendarName: "General", title: title,
+                             start: block.startsAt + shift, end: block.endsAt + shift)
+    }
+
+    func testImportChangeNotices() {
+        // Moved, renamed, moved where you'd moved it too, removed, and removed after its recap was posted.
+        let data = Fixtures.calendar
+        let cases: [(CalendarBlock, ExternalEvent?)] = [
+            (importedCall(), callEvent(shift: 1800)),
+            (importedCall(), callEvent(title: "User research call: Lisbon cohort")),
+            (importedCall(shift: 900), callEvent(shift: 1800)),
+            (importedCall(), nil),
+            (importedCall(recap: true), nil),
+        ]
+        let now = now
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(Array(cases.enumerated()), id: \.offset) { _, item in
+                    let (block, event) = item
+                    BlockPanel(
+                        block: block, goal: data.goal(block.goalId), goals: data.goals, description: nil,
+                        day: 0, start: CalendarDayMath.minutes(block.startsAt), end: CalendarDayMath.minutes(block.endsAt),
+                        when: "", openTaskIds: [], ended: false, now: now, actions: nil,
+                        importChange: self.changes(for: block, event: event)
+                    )
+                    .frame(width: 320, height: 560)
+                }
+            }
+            .padding(16)
+            .background(Theme.background),
+            width: 1712, height: 592
+        )
+    }
+
+    func testEventsPanelWithChanges() {
+        // A sync found three imported events changed: they lead the panel, each with its two answers.
+        let data = Fixtures.calendar
+        let now = now
+        let items: [(CalendarBlock, ExternalEvent?)] = [
+            (importedCall(), callEvent(shift: 1800)),
+            (importedCall(title: "Weekly sync"), nil),
+        ]
+        let pending = items.enumerated().compactMap { index, item -> PendingChange? in
+            var block = item.0
+            block = CalendarBlock(id: "c\(index)", goalId: block.goalId, title: block.title, startsAt: block.startsAt, endsAt: block.endsAt, source: block.source)
+            guard let change = changes(for: block, event: item.1) else { return nil }
+            return PendingChange(block: block, change: change,
+                                 copy: ImportChangeCopy(change, block: block, source: block.source!, clock: .twelveHour, now: now),
+                                 color: data.goal(block.goalId)?.color ?? "slate")
+        }
+        assertAppearances(
+            EventsPanel(days: Fixtures.eventDays, goals: data.goals, imported: ["research": "g3"], defaultGoalId: "g1",
+                        lastRead: now, changes: pending)
+                .frame(width: 320, height: 720)
+                .padding(16)
+                .background(Theme.background),
+            width: 352, height: 752
+        )
+    }
+
+    func testChangedBlockOnTheGrid() {
+        // The research call's event moved half an hour later: its card carries the sync arrows, and the
+        // new time is previewed beside it, as while its panel is open.
+        var data = Fixtures.calendar
+        if let index = data.blocks.firstIndex(where: { $0.id == "b4" }) { data.blocks[index] = importedCall() }
+        let preview = EventPreview(day: 0, start: 12 * 60 + 30, end: 13 * 60, title: "New time", color: "indigo")
+        let top = WeekGrid.standard.y(11 * 60)
+        let now = now
+        assertAppearances(
+            WeekView(data: data, first: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
+                .environment(\.changedBlocks, ["b4"])
+                .environment(\.eventPreview, preview)
+                .frame(width: 760, height: 260 + WeekGrid.standard.height)
+                .offset(y: -top)
+                .frame(width: 760, height: WeekGrid.standard.y(14 * 60) - top, alignment: .topLeading)
+                .clipped()
+                .background(Theme.background),
+            width: 760, height: WeekGrid.standard.y(14 * 60) - top
+        )
+    }
+
     func testDayViewTop() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now).background(Theme.background),

@@ -209,3 +209,115 @@ struct ImportChange: Hashable, Sendable {
         hasher.combine(bothMoved)
     }
 }
+
+/// How a change to an imported event reads: in the block's panel (a heading, the values side by side
+/// and two answers) and as one line in the events panel's list of changes.
+struct ImportChangeCopy: Hashable, Sendable {
+    struct Line: Hashable, Sendable {
+        let label: String
+        let value: String
+        /// What it was: struck through.
+        var was = false
+        /// What it is now: stronger.
+        var isNew = false
+    }
+
+    let heading: String
+    /// "In General".
+    let source: String
+    let lines: [Line]
+    let body: String?
+    /// Taking the change: its title and times, or removing the block when the event's gone.
+    let take: String
+    /// Keeping the block as it is.
+    let keep: String
+    /// Taking it removes the block.
+    let takeRemoves: Bool
+    /// Keeping is the first answer, as for a session that's a record now.
+    let keepFirst: Bool
+    /// One line for the events panel: "Tomorrow · moved to 12:30–1:00 PM".
+    let summary: String
+
+    init(_ change: ImportChange, block: CalendarBlock, source: EventSource, clock: Clock, now: Date) {
+        self.source = "In \(source.calendar)"
+        let base = source.snapshot
+        let baseTimes = ImportCheck.blockTimes(base.startsAt, base.endsAt)
+        let when = { (start: Date, end: Date) in Self.when(start, end, clock: clock, now: now) }
+
+        guard change.event != nil else {
+            heading = "The meeting was removed"
+            lines = []
+            take = "Remove block"
+            takeRemoves = true
+            summary = "No longer in \(source.calendar)"
+            if block.hasRecapPost {
+                body = "Its recap is posted to the goal’s activity, so the block stays as a record. Keeping it unlinks it from the event."
+                keep = "Keep it"
+                keepFirst = true
+            } else {
+                body = "It’s no longer in \(source.calendar). Remove the block, or keep the time."
+                keep = "Keep the time"
+                keepFirst = false
+            }
+            return
+        }
+
+        body = nil
+        takeRemoves = false
+        keepFirst = false
+        keep = "Keep mine"
+        let oldTitle = ImportCheck.blockTitle(base.title)
+
+        if let times = change.times, change.bothMoved {
+            heading = "You both moved it"
+            var rows = [
+                Line(label: "Imported", value: when(baseTimes.start, baseTimes.end), was: true),
+                Line(label: "Yours", value: when(block.startsAt, block.endsAt)),
+                Line(label: "Meeting’s", value: when(times.start, times.end), isNew: true),
+            ]
+            if let title = change.title { rows.append(Line(label: "Renamed", value: title, isNew: true)) }
+            lines = rows
+            take = "Use the meeting’s"
+            summary = "Moved, and you’d moved it too"
+        } else if let times = change.times, let title = change.title {
+            heading = "The meeting changed"
+            lines = [
+                Line(label: "Was", value: "\(oldTitle) · \(when(baseTimes.start, baseTimes.end))", was: true),
+                Line(label: "Now", value: "\(title) · \(when(times.start, times.end))", isNew: true),
+            ]
+            take = "Update it"
+            summary = "Renamed and moved to \(when(times.start, times.end))"
+        } else if let times = change.times {
+            heading = "The meeting moved"
+            lines = [
+                Line(label: "Was", value: when(baseTimes.start, baseTimes.end), was: true),
+                Line(label: "Now", value: when(times.start, times.end), isNew: true),
+            ]
+            take = "Move it"
+            summary = "Moved to \(when(times.start, times.end))"
+        } else {
+            let title = change.title ?? ""
+            heading = "The meeting was renamed"
+            lines = [
+                Line(label: "Was", value: oldTitle, was: true),
+                Line(label: "Now", value: title, isNew: true),
+            ]
+            take = "Rename it"
+            summary = "Renamed “\(title)”"
+        }
+    }
+
+    /// "Tue · 12:00–12:30 PM", or "Today · …" and "Tomorrow · …".
+    static func when(_ start: Date, _ end: Date, clock: Clock, now: Date) -> String {
+        let day = CalendarDayMath.dayOffset(start, from: now)
+        let name = switch day {
+        case 0: "Today"
+        case 1: "Tomorrow"
+        case -1: "Yesterday"
+        default: start.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "en_US")))
+        }
+        let startMinutes = CalendarDayMath.minutes(start)
+        let endMinutes = CalendarDayMath.dayOffset(end, from: now) > day ? CalendarDayMath.dayMinutes : CalendarDayMath.minutes(end)
+        return "\(name) · \(clock.formatRange(startMinutes, endMinutes))"
+    }
+}
