@@ -79,7 +79,7 @@ struct MainView: View {
                     case .plan:
                         PlanScreen(auth: auth, shell: shell)
                     case .calendar:
-                        CalendarScreen(auth: auth, shell: shell)
+                        CalendarScreen(auth: auth, shell: shell, eventFeed: eventFeed)
                     }
                 }
             }
@@ -369,13 +369,21 @@ private struct CalendarScreen: View {
     @AppStorage("sv-calendar-week-hour") private var weekHour = Double(WeekGrid.hour)
     @State private var selectedId: String?
     @State private var width: CGFloat = 0
+    /// Calendar import's events panel beside the days.
+    @State private var showsEvents = false
+    /// The event under the pointer in the events panel, previewed on the grid.
+    @State private var eventPreview: EventPreview?
+    /// The event just imported from the panel, whose row offers Undo.
+    @State private var justImported: String?
     let shell: ShellModel
+    let eventFeed: EventFeed
 
     /// The view showing: the one picked, though below the width the multi-day views need, the day.
     private var span: CalendarSpan { width >= 1024 ? model.window.span : .day }
 
-    init(auth: AuthModel, shell: ShellModel) {
+    init(auth: AuthModel, shell: ShellModel, eventFeed: EventFeed) {
         self.shell = shell
+        self.eventFeed = eventFeed
         // Opens on the view picked in Settings; the switch changes it for this visit.
         _model = State(initialValue: CalendarModel(auth: auth, span: .opening()))
     }
@@ -383,6 +391,73 @@ private struct CalendarScreen: View {
     private func setSpan(_ span: CalendarSpan) {
         if let n = span.dayCount { dayCount = n }
         model.setSpan(span)
+    }
+
+    // MARK: Calendar import
+
+    /// The events button's action, while events can be listed; nil hides the button.
+    private var eventsToggle: (() -> Void)? {
+        guard eventFeed.isActive else { return nil }
+        return { toggleEvents() }
+    }
+
+    private func toggleEvents() {
+        showsEvents.toggle()
+        // Opening it closes a block's panel, which would otherwise stand in its place.
+        if showsEvents { selectedId = nil }
+        eventPreview = nil
+        justImported = nil
+    }
+
+    /// "Events from Google · synced 9:40 AM".
+    private var eventsHelp: String {
+        guard let read = eventFeed.lastRead else { return "Events from Google" }
+        return "Events from Google · synced \((model.data.clock ?? .device).format(minutes: CalendarDayMath.minutes(read)))"
+    }
+
+    /// The days shown, from today on (a week ahead in Day), with their events.
+    private var eventDays: [EventDay] {
+        let start = span.isMultiDay ? model.window.first : model.offset
+        let count = span.isMultiDay ? span.count : 7
+        let last = start + count - 1
+        guard last >= 0 else { return [] }
+        let byDay = Dictionary(grouping: eventFeed.events) { CalendarDayMath.dayOffset($0.start, from: model.now) }
+        let en = Locale(identifier: "en_US")
+        return (max(start, 0)...last).compactMap { day in
+            guard let events = byDay[day], !events.isEmpty else { return nil }
+            let label = DayView.dayLabel(day)
+                ?? CalendarDayMath.midnight(day, from: model.now).formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(en))
+            return EventDay(day: day, label: label, events: events)
+        }
+    }
+
+    private var eventsPanel: some View {
+        let goals = model.data.goals
+        return EventsPanel(
+            days: eventDays,
+            goals: goals,
+            imported: Dictionary(model.data.blocks.compactMap { block in block.source.map { ($0.key, block.goalId) } }, uniquingKeysWith: { first, _ in first }),
+            defaultGoalId: eventFeed.settings.goal(among: goals.map(\.id)),
+            lastRead: eventFeed.lastRead,
+            clock: model.data.clock ?? .device,
+            justImported: justImported,
+            onHover: { event, goalId in
+                eventPreview = event.map { event in
+                    EventPreview(event: event, color: goals.first { $0.id == goalId }?.color ?? "slate", now: model.now)
+                }
+            },
+            onImport: { event, goalId in
+                model.importEvent(event, goalId: goalId, kind: eventFeed.settings.kind)
+                justImported = event.key
+                eventPreview = nil
+            },
+            onUndo: { event in
+                if let block = model.importedBlock(event.key), !block.isPending { model.remove(block.id) }
+                justImported = nil
+            },
+            onSync: eventFeed.syncNow,
+            onClose: toggleEvents
+        )
     }
 
     /// ← → a page (a day, N days, a week); with ⌥, a day in the multi-day views too.
@@ -455,14 +530,23 @@ private struct CalendarScreen: View {
                     onToggleOverview: { weekPanel = weekPanel == "off" ? "on" : "off" },
                     setObjective: model.setObjective(_:weekStart:_:),
                     dayHour: Binding(get: { CGFloat(dayHour) }, set: { dayHour = Double($0) }),
-                    weekHour: Binding(get: { CGFloat(weekHour) }, set: { weekHour = Double($0) })
+                    weekHour: Binding(get: { CGFloat(weekHour) }, set: { weekHour = Double($0) }),
+                    eventsPanel: AnyView(eventsPanel),
+                    showsEvents: showsEvents,
+                    onToggleEvents: eventsToggle,
+                    eventsHelp: eventsHelp,
+                    eventPreview: eventPreview
                 )
                 .focusable()
                 .focusEffectDisabled()
                 .onKeyPress(.escape) {
-                    // Esc closes the block panel.
-                    guard selectedId != nil else { return .ignored }
-                    selectedId = nil
+                    // Esc closes the block panel, then the events panel.
+                    if selectedId != nil {
+                        selectedId = nil
+                        return .handled
+                    }
+                    guard showsEvents else { return .ignored }
+                    toggleEvents()
                     return .handled
                 }
                 .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in

@@ -146,6 +146,13 @@ enum ImportCheck: Hashable, Sendable {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxBlockTitle))
     }
 
+    /// The times a block takes from an event: at least 15 minutes and at most a day, as blocks
+    /// must be. A 10-minute call comes in as 15 minutes; it isn't offered as moved for that.
+    static func blockTimes(_ start: Date, _ end: Date) -> (start: Date, end: Date) {
+        let length = min(max(end.timeIntervalSince(start), 15 * 60), 24 * 60 * 60)
+        return (start, start.addingTimeInterval(length))
+    }
+
     /// `event` is nil when the event is gone from a calendar that's still ticked and readable.
     static func check(_ source: EventSource, title: String?, start: Date, end: Date, event: ExternalEvent?) -> ImportCheck {
         guard let event else { return .changed(ImportChange(event: nil)) }
@@ -158,15 +165,17 @@ enum ImportCheck: Hashable, Sendable {
         let titleOffer = renamed && mineTitle != theirsTitle
 
         let moved = !same(now.startsAt, base.startsAt) || !same(now.endsAt, base.endsAt)
-        let mineMoved = !same(start, base.startsAt) || !same(end, base.endsAt)
-        let agrees = same(start, now.startsAt) && same(end, now.endsAt)
+        let baseTimes = blockTimes(base.startsAt, base.endsAt)
+        let theirs = blockTimes(now.startsAt, now.endsAt)
+        let mineMoved = !same(start, baseTimes.start) || !same(end, baseTimes.end)
+        let agrees = same(start, theirs.start) && same(end, theirs.end)
         let timesOffer = moved && !agrees
 
         guard titleOffer || timesOffer else { return now == base ? .inStep : .catchUp(now) }
         return .changed(ImportChange(
             event: now,
             title: titleOffer ? theirsTitle : nil,
-            times: timesOffer ? (now.startsAt, now.endsAt) : nil,
+            times: timesOffer ? theirs : nil,
             bothMoved: timesOffer && mineMoved
         ))
     }

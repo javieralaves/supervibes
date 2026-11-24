@@ -182,6 +182,56 @@ final class CalendarModel {
         }
     }
 
+    // MARK: - Importing events
+
+    /// Imports an event from the person's Google calendars as a session or reserved time in a goal.
+    /// It shows straight away, as a drawn block does, and remembers the event it came from.
+    func importEvent(_ event: ExternalEvent, goalId: String, kind: ImportKind) {
+        guard !data.blocks.contains(where: { $0.source?.key == event.key }) else { return }
+        let title = ImportCheck.blockTitle(event.title)
+        let times = ImportCheck.blockTimes(event.start, event.end)
+        let source = EventSource(key: event.key, calendar: event.calendarName, snapshot: event.snapshot)
+        var pending = CalendarBlock(
+            id: "pending-\(UUID().uuidString)", goalId: goalId, title: title.isEmpty ? nil : title,
+            startsAt: times.start, endsAt: times.end, isPending: true
+        )
+        pending.reserved = kind == .reserved
+        pending.source = source
+        data.blocks.append(pending)
+        let pendingId = pending.id
+        Log.app.info("Calendar import: importing an event as \(kind.rawValue, privacy: .public)")
+        write(undo: { [weak self] in self?.data.blocks.removeAll { $0.id == pendingId } }) { client in
+            let body = Components.Schemas.NewBlock(
+                goalId: goalId,
+                title: title.isEmpty ? nil : title,
+                startsAt: Self.iso(times.start),
+                endsAt: Self.iso(times.end),
+                kind: kind == .reserved ? .reserved : .session,
+                taskId: nil,
+                source: .init(
+                    key: event.key,
+                    calendar: event.calendarName,
+                    snapshot: .init(title: String(event.title.prefix(1000)), startsAt: event.start, endsAt: event.end)
+                )
+            )
+            switch try await client.createBlock(body: .json(body)) {
+            case .created(let created):
+                let block = CalendarBlock(api: try created.body.json)
+                return .apply { model in model.replace(pendingId, with: block) }
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t import that event.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore.")
+            case .conflict(let taken): return .failed((try? taken.body.json.error.message) ?? "That event is already on your calendar.")
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t import that event (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// The block imported from the event with this key, if there is one.
+    func importedBlock(_ key: String) -> CalendarBlock? {
+        data.blocks.first { $0.source?.key == key }
+    }
+
     /// Rename a block or give it another goal. An intention keeps its title when it's left empty.
     func saveDetails(_ blockId: String, goalId: String, title: String?) {
         UserDefaults.standard.set(goalId, forKey: Self.lastGoalKey)

@@ -145,4 +145,13 @@ final class EventImportTests: XCTestCase {
             .inStep
         )
     }
+
+    func testAShortEventComesInAsFifteenMinutesWithoutLookingMoved() {
+        let start = source.snapshot.startsAt
+        let short = EventSource(key: "k", calendar: "Work", snapshot: .init(title: "Quick call", startsAt: start, endsAt: start.addingTimeInterval(600)))
+        let block = ImportCheck.blockTimes(start, start.addingTimeInterval(600))
+        XCTAssertEqual(block.end, start.addingTimeInterval(900))
+        let event = ExternalEvent(key: "k", calendarId: "w", calendarName: "Work", title: "Quick call", start: start, end: start.addingTimeInterval(600))
+        XCTAssertEqual(ImportCheck.check(short, title: "Quick call", start: block.start, end: block.end, event: event), .inStep)
+    }
 }

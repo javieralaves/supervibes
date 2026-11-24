@@ -402,4 +402,37 @@ enum Fixtures {
                             ])
     }
 
+
+    // MARK: - Calendar import
+
+    /// A time on a day of the reference week (Wednesday Nov 18 is today), in Madrid.
+    private static func madrid(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        var components = DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute)
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(identifier: "Europe/Madrid")
+        return components.date!
+    }
+
+    /// Events in the person's Google calendars around `referenceNow`; "research" is imported (to g3).
+    static var externalEvents: [ExternalEvent] {
+        [
+            ExternalEvent(key: "review", calendarId: "work", calendarName: "Work", title: "Design review: block editing",
+                          start: madrid(18, 12), end: madrid(18, 12, 30)),
+            ExternalEvent(key: "research", calendarId: "work", calendarName: "Work", title: "User research call",
+                          start: madrid(18, 15), end: madrid(18, 15, 30)),
+            ExternalEvent(key: "physio", calendarId: "personal", calendarName: "Personal", title: "Physio",
+                          start: madrid(19, 8), end: madrid(19, 8, 45)),
+            ExternalEvent(key: "planning", calendarId: "work", calendarName: "Work", title: "Planning with Pablo",
+                          start: madrid(19, 14), end: madrid(19, 15)),
+            ExternalEvent(key: "weekly", calendarId: "work", calendarName: "Work", title: "Superfocus weekly",
+                          start: madrid(20, 12, 15), end: madrid(20, 12, 45), repeats: true),
+        ]
+    }
+
+    /// The events panel's days for `externalEvents`.
+    static var eventDays: [EventDay] {
+        let labels = [0: "Today", 1: "Tomorrow", 2: "Friday, Nov 20"]
+        let byDay = Dictionary(grouping: externalEvents) { CalendarDayMath.dayOffset($0.start, from: referenceNow) }
+        return byDay.keys.sorted().map { EventDay(day: $0, label: labels[$0] ?? "", events: byDay[$0] ?? []) }
+    }
 }

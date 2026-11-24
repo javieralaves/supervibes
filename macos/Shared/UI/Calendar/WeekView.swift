@@ -74,6 +74,8 @@ struct WeekView: View {
     /// Where a pinch last scrolled to, applied again once the content has its new height.
     @State private var pinchY: CGFloat?
     @Environment(\.overlays) private var overlays
+    /// A hovered event from the events panel, previewed where it would go.
+    @Environment(\.eventPreview) private var eventPreview
 
     /// The first of the days as drawn.
     private var shownFirst: Int { scrollingFirst ?? first }
@@ -419,6 +421,20 @@ struct WeekView: View {
                 .frame(width: columnWidth - 4, height: grid.y(draft.end) - grid.y(draft.start) - 2)
                 .offset(x: x(of: draft.day) + 2, y: grid.y(draft.start) + 1)
                 .zIndex(2)
+        }
+
+        // A hovered event, where it would go: over a block, on its right half
+        if let eventPreview, days.contains(eventPreview.day) {
+            let width = columnWidth - 4
+            let aside = eventPreview.overlaps(data.blocks, now: now)
+            let height = max(grid.y(eventPreview.end) - grid.y(eventPreview.start) - 2, 14)
+            EventPreviewCard(
+                title: eventPreview.title, color: eventPreview.color,
+                range: clock.formatRange(eventPreview.start, eventPreview.end), height: height
+            )
+            .frame(width: aside ? width / 2 : width, height: height)
+            .offset(x: x(of: eventPreview.day) + 2 + (aside ? width / 2 : 0), y: grid.y(eventPreview.start) + 1)
+            .zIndex(2)
         }
 
         // Now

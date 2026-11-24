@@ -683,6 +683,42 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testEventsPanel() {
+        // Hovering Design review offers the default goal and Import; once imported, its row says where
+        // it went with Undo; the User research call was imported before. Then no events at all.
+        let goals = Fixtures.calendar.goals
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                EventsPanel(days: Fixtures.eventDays, goals: goals, imported: ["research": "g3"], defaultGoalId: "g1",
+                            lastRead: now, hovered: "review")
+                EventsPanel(days: Fixtures.eventDays, goals: goals, imported: ["research": "g3", "review": "g1"], defaultGoalId: "g1",
+                            lastRead: now, justImported: "review", hovered: "weekly")
+                EventsPanel(days: [], goals: goals, imported: [:], defaultGoalId: "g1", lastRead: now)
+            }
+            .frame(height: 560)
+            .frame(width: 1008)
+            .padding(16)
+            .background(Theme.background),
+            width: 1040, height: 592
+        )
+    }
+
+    func testWeekWithEventsPanel() {
+        // Five days from today with the events panel open where a block's panel would be, and Design
+        // review under the pointer: its time previewed on Wednesday in Ship Supervibes' colour.
+        let review = Fixtures.externalEvents[0]
+        let panel = EventsPanel(days: Fixtures.eventDays, goals: Fixtures.calendar.goals, imported: ["research": "g3"],
+                                defaultGoalId: "g1", lastRead: now, hovered: review.key)
+        assertAppearances(
+            DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
+                    span: .days(5), onSetSpan: { _ in }, showsOverview: false, onToggleOverview: {},
+                    eventsPanel: AnyView(panel), showsEvents: true, onToggleEvents: {},
+                    eventPreview: EventPreview(event: review, color: "sky", now: now))
+                .background(Theme.background),
+            width: 1400, height: 720
+        )
+    }
+
     func testThreeDaysFromToday() {
         // Wednesday to Friday, today first: "Nov 18–20 · From today", and columns roomy enough for
         // the day's block cards.
@@ -766,6 +802,29 @@ final class SurfaceSnapshotTests: XCTestCase {
                 .clipped()
                 .background(Theme.background),
             width: 1100, height: WeekGrid.standard.y(18 * 60) - top
+        )
+    }
+
+    func testWeekGridWithEventPreview() {
+        // 10 AM to 4 PM, with Design review hovered in the events panel: its time previewed on
+        // Wednesday, ringed in Ship Supervibes' colour; over a block it would take the right half.
+        let top = WeekGrid.standard.y(10 * 60)
+        let review = Fixtures.externalEvents[0]
+        let planning = Fixtures.externalEvents[3]
+        let now = now
+        assertAppearances(
+            HStack(spacing: 16) {
+                ForEach([review, planning], id: \.key) { event in
+                    WeekView(data: Fixtures.calendar, first: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
+                        .environment(\.eventPreview, EventPreview(event: event, color: "sky", now: now))
+                        .frame(width: 700, height: 260 + WeekGrid.standard.height)
+                        .offset(y: -top)
+                        .frame(width: 700, height: WeekGrid.standard.y(16 * 60) - top, alignment: .topLeading)
+                        .clipped()
+                }
+            }
+            .background(Theme.background),
+            width: 1416, height: WeekGrid.standard.y(16 * 60) - top
         )
     }
 

@@ -60,6 +60,18 @@ struct DayView: View {
     /// How tall an hour is in the day and in the week, as last pinched; without them each keeps its own.
     var dayHour: Binding<CGFloat>?
     var weekHour: Binding<CGFloat>?
+    /// Calendar import's events panel, beside the days where a block's panel opens; a block's panel
+    /// takes its place while one is open.
+    var eventsPanel: AnyView?
+    var showsEvents = false
+    /// Opens or closes it; without it there's no events button.
+    var onToggleEvents: (() -> Void)?
+    /// Imported events that changed since, as a count on the button.
+    var eventChanges = 0
+    /// The button's tooltip: where events come from and when they were last read.
+    var eventsHelp = "Events from Google"
+    /// A hovered event, previewed on the grid.
+    var eventPreview: EventPreview?
 
     @State private var drag = TaskDragState()
     /// Time drawn on the week and waiting to be named.
@@ -75,7 +87,9 @@ struct DayView: View {
          panel: BlockPanelActions? = nil, span: CalendarSpan = .day, dayCount: Int = 3, onSetSpan: ((CalendarSpan) -> Void)? = nil,
          showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
          setObjective: ((String, String, String) async -> String?)? = nil,
-         dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil) {
+         dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil,
+         eventsPanel: AnyView? = nil, showsEvents: Bool = false, onToggleEvents: (() -> Void)? = nil, eventChanges: Int = 0,
+         eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -98,6 +112,12 @@ struct DayView: View {
         self.setObjective = setObjective
         self.dayHour = dayHour
         self.weekHour = weekHour
+        self.eventsPanel = eventsPanel
+        self.showsEvents = showsEvents
+        self.onToggleEvents = onToggleEvents
+        self.eventChanges = eventChanges
+        self.eventsHelp = eventsHelp
+        self.eventPreview = eventPreview
         _editing = State(initialValue: editing)
     }
 
@@ -157,6 +177,11 @@ struct DayView: View {
         return data.blocks.first { $0.id == id && !$0.isPending }
     }
 
+    /// The events panel shows: open, wide enough, and no block's panel in its place.
+    private var showsEventsPanel: Bool { showsEvents && eventsPanel != nil && width >= 1024 && selected == nil }
+    /// Something open on the right: a block's panel or the events panel.
+    private var hasRightPanel: Bool { selected != nil || showsEventsPanel }
+
     private var clock: Clock { data.clock ?? .device }
     private var isToday: Bool { offset == 0 }
     private var shownDay: Date { CalendarDayMath.midnight(offset, from: now) }
@@ -170,6 +195,10 @@ struct DayView: View {
                 showsTasks: isMultiDay ? (onToggleOverview == nil ? nil : showsOverview) : (onToggleTasks == nil ? nil : showsTasks),
                 weekPanel: isMultiDay,
                 onToggleTasks: { if isMultiDay { onToggleOverview?() } else { onToggleTasks?() } },
+                showsEvents: onToggleEvents != nil && eventsPanel != nil && width >= 1024 ? showsEvents : nil,
+                eventChanges: eventChanges,
+                eventsHelp: eventsHelp,
+                onToggleEvents: { onToggleEvents?() },
                 title: isMultiDay
                     ? CalendarDay.formatRange(CalendarDay.today(CalendarDayMath.midnight(shownFirst, from: now)), days: span.count)
                     : shownDay.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(Locale(identifier: "en_US"))),
@@ -195,6 +224,7 @@ struct DayView: View {
         }
         .pointerStyle(drag.placing?.moved == true ? .grabActive : nil)
         .environment(\.taskDrag, actions == nil ? nil : drag)
+        .environment(\.eventPreview, showsEventsPanel ? eventPreview : nil)
         .onChange(of: offset, initial: true) {
             // Let go on the timeline: a time on the shown day; on the strip: the day itself.
             drag.onDrop = { [offset, actions] placing in
@@ -216,9 +246,11 @@ struct DayView: View {
             day
             if let selected {
                 blockPanel(selected).frame(width: 320)
+            } else if showsEventsPanel, let eventsPanel {
+                eventsPanel.frame(width: 320)
             }
         }
-        .frame(maxWidth: showsTasks && selected != nil ? 1408 : showsTasks ? 1072 : selected != nil ? 1104 : 768)
+        .frame(maxWidth: showsTasks && hasRightPanel ? 1408 : showsTasks ? 1072 : hasRightPanel ? 1104 : 768)
         .padding(16)
         .frame(maxWidth: .infinity)
     }
@@ -263,6 +295,8 @@ struct DayView: View {
             }
             if let selected {
                 blockPanel(selected).frame(width: 320)
+            } else if showsEventsPanel, let eventsPanel {
+                eventsPanel.frame(width: 320)
             }
         }
         // The week takes the whole width, however wide the window: more room for each day.
@@ -356,6 +390,12 @@ struct CalendarTopBar: View {
     /// The week's panel rather than the day's.
     var weekPanel = false
     var onToggleTasks: () -> Void = {}
+    /// Whether Calendar import's events panel is open; nil hides its button.
+    var showsEvents: Bool?
+    /// Imported events that changed since, as a count on the button.
+    var eventChanges = 0
+    var eventsHelp = "Events from Google"
+    var onToggleEvents: () -> Void = {}
     let title: String
     var relative: String?
     /// What the arrows move by: a day, N days or a week.
@@ -384,6 +424,24 @@ struct CalendarTopBar: View {
                 }
             }
             Spacer()
+            if showsEvents != nil {
+                // The same open or closed: the panel beside the days says it's open.
+                BarButton(action: onToggleEvents) { Icon.calendarImport.image(size: 16).frame(width: 32) }
+                    .overlay(alignment: .topTrailing) {
+                        if eventChanges > 0 {
+                            Text("\(eventChanges)").font(.app(10, .semibold)).monospacedDigit()
+                                .foregroundStyle(Theme.background)
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .background(Theme.foreground, in: .capsule)
+                                .overlay(Capsule().strokeBorder(Theme.background, lineWidth: 2).padding(-2))
+                                .offset(x: 6, y: -6)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .help(eventsHelp)
+                    .accessibilityLabel(eventChanges > 0 ? "Events, \(eventChanges) changed" : "Events")
+            }
             if showsToday {
                 BarButton(action: onToday) { Text("Today").appText(.sm, .medium).padding(.horizontal, 12) }
             }
@@ -946,6 +1004,8 @@ struct DayTimeline: View {
     @State private var dragging: BlockDrag?
     @State private var width: CGFloat = 0
     @Environment(\.overlays) private var overlays
+    /// A hovered event from the events panel, previewed where it would go.
+    @Environment(\.eventPreview) private var eventPreview
     @Environment(\.taskDrag) private var drag
     @Environment(\.dayGrid) private var grid
 
@@ -1094,6 +1154,24 @@ struct DayTimeline: View {
                     .padding(.trailing, 8)
                     .offset(y: grid.y(start) + 1)
                     .zIndex(2)
+            }
+
+            // A hovered event, where it would go: over a block, on its right half
+            if let eventPreview, eventPreview.day == offset {
+                let height = max(grid.y(eventPreview.end) - grid.y(eventPreview.start) - 2, 14)
+                HStack(spacing: 0) {
+                    if eventPreview.overlaps(data.blocks, now: now) { Color.clear }
+                    EventPreviewCard(
+                        title: eventPreview.title, color: eventPreview.color,
+                        range: clock.formatRange(eventPreview.start, eventPreview.end), height: height
+                    )
+                }
+                .frame(height: height)
+                .padding(.leading, DayGrid.gutter + 4)
+                .padding(.trailing, 8)
+                .offset(y: grid.y(eventPreview.start) + 1)
+                .allowsHitTesting(false)
+                .zIndex(2)
             }
 
             // Now

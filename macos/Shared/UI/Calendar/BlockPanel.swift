@@ -1137,7 +1137,7 @@ private struct Skeleton: View {
 }
 
 /// `h-7 w-7 rounded-lg text-muted hover:bg-wash`, an icon at 15.
-private struct PanelIconButton: View {
+struct PanelIconButton: View {
     let icon: Icon
     let label: String
     let action: () -> Void
