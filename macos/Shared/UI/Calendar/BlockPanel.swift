@@ -477,6 +477,8 @@ private struct PropertyRows: View {
     let clock: Clock
     let now: Date
     let calendar: CalendarActions?
+    /// An imported block's event has changed since: its source row says so.
+    var sourceChanged = false
 
     @Environment(\.overlays) private var overlays
 
@@ -486,6 +488,11 @@ private struct PropertyRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Imported: where it came from, first.
+            if let source = block.source {
+                SourceRow(calendar: source.calendar, changed: sourceChanged)
+            }
+
             PropertyRow(title: goal?.title ?? "No goal", accessibility: "Goal", isEnabled: calendar != nil && goals.count > 1) {
                 if let goal { GoalIconImage(name: goal.icon, size: 16) } else { Icon.target.image(size: 16) }
             } menu: {
@@ -547,6 +554,31 @@ private struct PropertyRows: View {
             CalendarDayMath.midnight(day, from: now)
                 .formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(Locale(identifier: "en_US")))
         }
+    }
+}
+
+/// An imported block's row for where it came from: the events button's icon and "From General ·
+/// Google", in the property rows' shape, with nothing to open. Changed once its event has.
+private struct SourceRow: View {
+    let calendar: String
+    let changed: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Icon.calendarImport.image(size: 16).foregroundStyle(Theme.muted).frame(width: 18, height: 18)
+            Text("From \(calendar) · Google").appText(.sm).foregroundStyle(Theme.foreground).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if changed {
+                HStack(spacing: 4) {
+                    Circle().fill(Theme.foreground).frame(width: 6, height: 6)
+                    Text("Changed").appText(.xs, .medium).foregroundStyle(Theme.foreground)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 36)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(changed ? "Imported from \(calendar), changed since" : "Imported from \(calendar)")
     }
 }
 

@@ -828,6 +828,42 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    func testImportedBlocks() {
+        // The User research call, Lunch and the Week view sketch came from Google: the events
+        // button's icon in each one's corner, in the week's narrow cards too. The research call's
+        // panel leads with where it came from.
+        var data = Fixtures.calendar
+        let source = { (title: String) in
+            EventSource(key: title, calendar: "General", snapshot: .init(title: title, startsAt: Fixtures.referenceNow, endsAt: Fixtures.referenceNow))
+        }
+        for id in ["b4", "b6", "w3"] {
+            if let index = data.blocks.firstIndex(where: { $0.id == id }) {
+                data.blocks[index].source = source(data.blocks[index].title ?? "")
+            }
+        }
+        let call = data.blocks.first { $0.id == "b4" }!
+        let top = WeekGrid.standard.y(9 * 60)
+        let now = now
+        assertAppearances(
+            HStack(alignment: .top, spacing: 16) {
+                WeekView(data: data, first: -2, now: now, clock: .twelveHour, creating: .constant(nil), scrolls: false)
+                    .frame(width: 760, height: 260 + WeekGrid.standard.height)
+                    .offset(y: -top)
+                    .frame(width: 760, height: WeekGrid.standard.y(15 * 60) - top, alignment: .topLeading)
+                    .clipped()
+                BlockPanel(
+                    block: call, goal: data.goal(call.goalId), goals: data.goals, description: nil,
+                    day: 0, start: 12 * 60, end: 12 * 60 + 30, when: "Wednesday, November 18 (today), 12:00–12:30 PM",
+                    openTaskIds: [], ended: false, now: now, actions: nil
+                )
+                .frame(width: 320, height: 420)
+            }
+            .padding(16)
+            .background(Theme.background),
+            width: 1128, height: WeekGrid.standard.y(15 * 60) - top + 32
+        )
+    }
+
     func testDayViewTop() {
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now).background(Theme.background),

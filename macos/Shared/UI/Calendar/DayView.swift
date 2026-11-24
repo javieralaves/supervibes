@@ -1638,6 +1638,20 @@ struct BlockCardView: View {
                         .padding(.trailing, compact ? 6 : 10)
                         .help(block.hasRecapDraft ? "Recap to review" : "Drafting recap")
                 }
+
+                // Imported from a calendar: the events button's icon in the corner, beside a
+                // waiting recap's dot, out of the way of the menu that shows on hover.
+                if let source = block.source, !compact || geometry.size.height >= 18 {
+                    Icon.calendarImport.image(size: 11).foregroundStyle(Theme.muted)
+                        .frame(width: 18, height: 18)
+                        .background(Theme.card.opacity(0.7), in: .rect(cornerRadius: 5))
+                        .opacity(isHovered ? 0 : 1)
+                        .frame(maxWidth: .infinity, alignment: .topTrailing)
+                        .padding(.top, compact ? 3 : 6)
+                        .padding(.trailing, (compact ? 3 : 6) + (block.recapWaiting ? 14 : 0))
+                        .help("From \(source.calendar) · Google")
+                        .accessibilityLabel("Imported from \(source.calendar)")
+                }
             }
             .clipShape(.rect(cornerRadius: compact ? 6 : 8))
             .overlay(RoundedRectangle(cornerRadius: compact ? 6 : 8).strokeBorder(GoalPalette.color(color).opacity(0.22)))
@@ -1660,7 +1674,9 @@ struct BlockCardView: View {
                     Text(time).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.leading, 8)
+            // Clear of the imported mark in the corner.
+            .padding(.trailing, block.source == nil ? 8 : 22)
             .padding(.top, height >= 44 ? 6 : 2)
         }
     }
