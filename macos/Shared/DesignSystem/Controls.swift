@@ -487,11 +487,7 @@ private struct OverlayHost: ViewModifier {
                             }
                             switch presented.placement {
                             case .menu(let anchor, let leading):
-                                presented.content
-                                    .fixedSize()
-                                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .overlayHost) } action: { if center.presentedFrame != $0 { center.presentedFrame = $0 } }
-                                    .alignmentGuide(.leading) { leading ? -anchor.minX : $0[.trailing] - anchor.maxX }
-                                    .alignmentGuide(.top) { _ in -(anchor.maxY + 6) }
+                                AnchoredMenu(content: presented.content, anchor: anchor, leading: leading, bounds: geometry.size) { if center.presentedFrame != $0 { center.presentedFrame = $0 } }
                             case .point(let point):
                                 PointMenu(content: presented.content, point: point, bounds: geometry.size) { if center.presentedFrame != $0 { center.presentedFrame = $0 } }
                             case .dialog:
@@ -608,6 +604,46 @@ private struct ContextPanel: ViewModifier {
         target.open = { [weak overlays] point in
             overlays?.showMenu(at: point, owner: owner) { menu() }
         }
+    }
+}
+
+/// A menu opened from a button: below it, lined up with its left or right edge, or above it where the window
+/// ends below, and moved sideways to stay in the window.
+private struct AnchoredMenu: View {
+    let content: AnyView
+    let anchor: CGRect
+    let leading: Bool
+    let bounds: CGSize
+    let onFrame: (CGRect) -> Void
+
+    @State private var size = CGSize.zero
+    @Environment(\.staticRendering) private var staticRendering
+    private static let margin: CGFloat = 8
+    private static let gap: CGFloat = 6
+
+    var body: some View {
+        content
+            .fixedSize()
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            // Inside the offset, so the frame is where it's drawn, not where it's laid out.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .overlayHost) } action: { onFrame($0) }
+            .offset(x: x, y: y)
+            // Hidden for the one pass before it's measured, so it never shows in the wrong place.
+            .opacity(size == .zero && !staticRendering ? 0 : 1)
+    }
+
+    private var x: CGFloat {
+        let x = leading ? anchor.minX : anchor.maxX - size.width
+        return max(Self.margin, min(x, bounds.width - size.width - Self.margin))
+    }
+
+    private var y: CGFloat {
+        let below = anchor.maxY + Self.gap
+        if below + size.height <= bounds.height - Self.margin { return below }
+        let above = anchor.minY - Self.gap - size.height
+        if above >= Self.margin { return above }
+        // Fits neither way: as low as it can go and still end inside the window.
+        return max(Self.margin, bounds.height - size.height - Self.margin)
     }
 }
 

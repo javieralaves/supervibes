@@ -22,6 +22,12 @@ struct GoalPage<Sections: View>: View {
     var onBack: () -> Void = {}
     /// Opens the goal's area, by id, from its name under the title.
     var onOpenArea: (String) -> Void = { _ in }
+    /// The person's areas, for a goal with none to be placed in one.
+    var areas: [Area] = []
+    /// Places the goal in an area (by id) from "Add to an area"; nil leaves the chip out.
+    var onSetArea: ((String?) -> Void)?
+    /// Makes a new area for the goal, from the menu's New area….
+    var onNewArea: (() -> Void)?
     var onUpdateStatus: () -> Void = {}
     var onEdit: () -> Void = {}
     var onDelete: () -> Void = {}
@@ -41,6 +47,9 @@ struct GoalPage<Sections: View>: View {
                     reading: reading,
                     error: headerError,
                     onOpenArea: onOpenArea,
+                    areas: areas,
+                    onSetArea: onSetArea,
+                    onNewArea: onNewArea,
                     onUpdateStatus: onUpdateStatus,
                     onEdit: onEdit,
                     onDelete: onDelete
@@ -108,6 +117,9 @@ private struct GoalHeader: View {
     let reading: Bool
     let error: String?
     let onOpenArea: (String) -> Void
+    let areas: [Area]
+    let onSetArea: ((String?) -> Void)?
+    let onNewArea: (() -> Void)?
     let onUpdateStatus: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -131,8 +143,9 @@ private struct GoalHeader: View {
                 .foregroundStyle(Theme.foreground)
                 .padding(.top, 20)
 
-            // Under the title: its area, which links to the area's page, then its target date.
-            if detail.area != nil || goal.targetDate != nil {
+            // Under the title: its area, which links to the area's page, then its target date; with no area, a
+            // quiet way to give it one after the date.
+            if detail.area != nil || goal.targetDate != nil || onSetArea != nil {
                 HStack(spacing: 8) {
                     if let area = detail.area {
                         AreaChip(area: area) { onOpenArea(area.id) }
@@ -145,6 +158,9 @@ private struct GoalHeader: View {
                                 .appText(.sm).monospacedDigit()
                         }
                         .foregroundStyle(days < 0 ? Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24)) : Theme.muted)
+                    }
+                    if detail.area == nil, let onSetArea {
+                        AddToAreaChip(areas: areas, onPick: onSetArea, onNewArea: onNewArea)
                     }
                 }
                 .padding(.top, 8)
@@ -187,6 +203,48 @@ private struct GoalHeader: View {
                 }
             }
         }
+    }
+}
+
+/// "+ Add to an area", dashed, after a goal's target date while it has no area: opens the areas, then New area….
+private struct AddToAreaChip: View {
+    let areas: [Area]
+    let onPick: (String?) -> Void
+    let onNewArea: (() -> Void)?
+    @State private var anchor = CGRect.zero
+    @State private var isHovered = false
+    @Environment(\.overlays) private var overlays
+
+    private static let owner = "goal-add-to-area"
+    private var isOpen: Bool { overlays?.presented?.owner == Self.owner }
+
+    var body: some View {
+        Button {
+            overlays?.showMenu(anchor: anchor, owner: Self.owner, alignLeading: true) {
+                AreaMenu(areas: areas, selected: nil, onPick: { picked in
+                    overlays?.dismiss()
+                    onPick(picked)
+                }, onNewArea: onNewArea.map { new in { overlays?.dismiss(); new() } })
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Icon.add.image(size: 13)
+                Text("Add to an area").appText(.sm)
+            }
+            .foregroundStyle(isHovered || isOpen ? Theme.foreground : Theme.muted)
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background(isOpen ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 6))
+            .overlay {
+                if !isOpen {
+                    RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.foreground(0.2), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                }
+            }
+            .contentShape(.rect(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .modifier(AnchorReader(frame: $anchor))
     }
 }
 

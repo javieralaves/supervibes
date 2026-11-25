@@ -84,7 +84,8 @@ extension GoalInput {
             description: goal.description ?? "",
             targetDate: goal.targetDate,
             icon: GoalPalette.iconName(goal.icon),
-            color: GoalPalette.colorInfo(goal.color).key
+            color: GoalPalette.colorInfo(goal.color).key,
+            areaId: goal.areaId
         )
     }
 }
@@ -96,6 +97,8 @@ struct GoalInput: Hashable, Sendable {
     var targetDate: String?
     var icon = GoalPalette.defaultIcon
     var color = GoalPalette.defaultColor
+    /// The area it sits in, if any. Set separately from the rest when editing (PUT /goals/{id}/area).
+    var areaId: String?
 
     static let maxTitle = 120
     static let maxDescription = 1000

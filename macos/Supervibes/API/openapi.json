@@ -1788,19 +1788,8 @@
         "type": "object",
         "properties": {
           "areaId": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "string",
-                "enum": [
-                  ""
-                ]
-              }
-            ],
-            "description": "One of the person's areas, or an empty string to take the goal out of its area."
+            "type": "string",
+            "description": "One of the person's areas (its id), or an empty string to take the goal out of its area."
           }
         },
         "required": [

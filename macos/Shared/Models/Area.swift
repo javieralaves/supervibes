@@ -49,3 +49,53 @@ struct AreaDetail: Hashable, Sendable {
 func areaStatusLabel(_ status: GoalStatus) -> String {
     statusLabel(status, .target)
 }
+
+/// An area as the person edits it, whole (AreaInput in src/lib/area-schema.ts): a name and an icon, and optionally
+/// where they are and where they're going. Blank words are sent as none.
+struct AreaInput: Hashable, Sendable {
+    var name = ""
+    var icon = AreaInput.defaultIcon
+    var now = ""
+    var want = ""
+
+    static let maxName = 40
+    static let maxWords = 600
+    /// What a new area starts with until an icon is picked.
+    static let defaultIcon = "Target02Icon"
+
+    init(name: String = "", icon: String = AreaInput.defaultIcon, now: String = "", want: String = "") {
+        self.name = name
+        self.icon = icon
+        self.now = now
+        self.want = want
+    }
+
+    /// An area as it is, for editing.
+    init(editing area: Area) {
+        self.init(name: area.name, icon: area.icon, now: area.now ?? "", want: area.want ?? "")
+    }
+
+    /// The server's checks, with its messages, so they show before anything is sent.
+    var problem: String? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { return "Give the area a name." }
+        if name.count > Self.maxName { return "Keep the name under \(Self.maxName) characters." }
+        if now.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxWords {
+            return "Keep where you are under \(Self.maxWords) characters."
+        }
+        if want.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxWords {
+            return "Keep where you’re going under \(Self.maxWords) characters."
+        }
+        return nil
+    }
+
+    /// The area with these edits, as it shows before the server answers.
+    func applied(to area: Area) -> Area {
+        var edited = area
+        edited.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        edited.icon = icon
+        edited.now = now.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : now
+        edited.want = want.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : want
+        return edited
+    }
+}

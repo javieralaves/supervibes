@@ -161,7 +161,13 @@ private struct LifeScreen: View {
                         updateStatus: { shell.openGoal($0.id, then: .updateStatus) },
                         edit: edit,
                         delete: confirmDelete
-                    )
+                    ),
+                    areaActions: AreaEditActions(
+                        create: { await model.createArea($0) },
+                        update: { model.updateArea($0, $1) },
+                        remove: { model.deleteArea($0) }
+                    ),
+                    areaError: model.areaError
                 )
             }
         }
@@ -175,6 +181,7 @@ private struct LifeScreen: View {
                 input: GoalInput(editing: goal),
                 mode: .edit,
                 today: model.today,
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()
@@ -210,6 +217,7 @@ private struct LifeScreen: View {
             GoalDialog(
                 input: input,
                 today: model.today,
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()
@@ -224,6 +232,7 @@ private struct LifeScreen: View {
 private struct AreaScreen: View {
     let shell: ShellModel
     @State private var model: AreaPageModel
+    @Environment(\.overlays) private var overlays
 
     init(id: String, auth: AuthModel, shell: ShellModel) {
         self.shell = shell
@@ -255,13 +264,38 @@ private struct AreaScreen: View {
                 if let detail = model.detail {
                     AreaPage(
                         detail: detail,
+                        otherGoals: model.otherGoals,
+                        error: model.error,
                         onBack: { shell.open(.life) },
-                        onOpenGoal: { shell.openGoal($0.id) }
+                        onOpenGoal: { shell.openGoal($0.id) },
+                        actions: AreaPageActions(
+                            save: { await model.save($0) },
+                            remove: { Task { if await model.remove() { shell.open(.life) } } },
+                            takeOut: { model.takeOut($0) },
+                            moveIn: { model.moveIn($0) },
+                            newGoal: { newGoal(today: detail.today) }
+                        )
                     )
                 }
             }
         }
         .task { await model.refresh() }
+    }
+
+    /// A new goal, started in this area.
+    private func newGoal(today: String) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            GoalDialog(
+                input: GoalInput(),
+                today: today,
+                onCancel: { overlays.dismiss() },
+                onSave: { saved in
+                    overlays.dismiss()
+                    model.createGoal(saved)
+                }
+            )
+        }
     }
 }
 
@@ -310,6 +344,9 @@ private struct GoalScreen: View {
                         focusesObjective: focusesObjective,
                         onBack: { shell.open(.life) },
                         onOpenArea: { shell.openArea($0) },
+                        areas: model.areas,
+                        onSetArea: { areaId in Task { await model.setArea(areaId) } },
+                        onNewArea: newArea,
                         onUpdateStatus: model.updateStatus,
                         onEdit: { edit(detail.goal) },
                         onDelete: confirmDelete,
@@ -361,6 +398,18 @@ private struct GoalScreen: View {
         .onDisappear { model.stop() }
     }
 
+    /// A new area from the goal's area menu, made and the goal placed in it.
+    private func newArea() {
+        guard let overlays else { return }
+        overlays.showDialog {
+            NewAreaDialog(onCancel: { overlays.dismiss() }) { input in
+                let problem = await model.createArea(input)
+                if problem == nil { overlays.dismiss() }
+                return problem
+            }
+        }
+    }
+
     /// The page's task actions, with "Plan tasks" opening the board on this goal.
     private var pageTaskActions: TaskActions {
         var actions = model.taskActions
@@ -376,6 +425,7 @@ private struct GoalScreen: View {
                 input: GoalInput(editing: goal),
                 mode: .edit,
                 today: model.detail?.today ?? CalendarDay.today(),
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()

@@ -8,6 +8,8 @@ import XCTest
 @MainActor
 final class SurfaceSnapshotTests: XCTestCase {
     private let now = Fixtures.referenceNow
+    private let areaActions = AreaEditActions(create: { _ in true }, update: { _, _ in }, remove: { _ in })
+    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: {})
 
     func testMenuBarDuringBlock() {
         assertAppearances(
@@ -239,9 +241,32 @@ final class SurfaceSnapshotTests: XCTestCase {
     func testLifeHome() {
         assertAppearances(
             LifeHome(firstName: "Javier", goals: Fixtures.lifeGoals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
-                     areas: Fixtures.areas, now: now, actions: GoalCardActions(setObjective: { _ in }))
+                     areas: Fixtures.areas, now: now, actions: GoalCardActions(setObjective: { _ in }),
+                     areaActions: areaActions)
                 .background(Theme.background),
             width: 1180, height: 1300
+        )
+    }
+
+    /// Editing the areas, from the pencil: each card's icon a button, its name a field, a remove button in its
+    /// corner, a new area being named at the end, and the goals stepping back above.
+    func testLifeHomeEditingAreas() {
+        assertAppearances(
+            LifeHome(firstName: "Javier", goals: Fixtures.lifeGoals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                     areas: Fixtures.areas, now: now, actions: GoalCardActions(setObjective: { _ in }),
+                     areaActions: areaActions, startsEditingAreas: true, startsWithNewArea: true)
+                .background(Theme.background),
+            width: 1180, height: 1460
+        )
+    }
+
+    /// No areas yet: an Areas heading and one quiet way to start.
+    func testLifeHomeFirstArea() {
+        assertAppearances(
+            LifeHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                     now: now, actions: GoalCardActions(setObjective: { _ in }), areaActions: areaActions)
+                .background(Theme.background),
+            width: 1180, height: 1100
         )
     }
 
@@ -265,15 +290,26 @@ final class SurfaceSnapshotTests: XCTestCase {
     /// Madrid's page: its words, and its two goals with their objectives and statuses.
     func testAreaPage() {
         assertAppearances(
-            AreaPage(detail: Fixtures.areaDetail).background(Theme.background),
-            width: 900, height: 820
+            AreaPage(detail: Fixtures.areaDetail, actions: areaPageActions).background(Theme.background),
+            width: 900, height: 880
         )
     }
 
-    /// An area just made: prompts for its words, and no goals yet.
+    /// Madrid being edited: its icon a button, name and words as fields, its goals each with an ×, a way to move
+    /// another goal in, and removing it at the end.
+    func testAreaPageEditing() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.areaDetail, otherGoals: Fixtures.lifeGoals.filter { $0.areaId != "madrid" },
+                     actions: areaPageActions, startsEditing: true)
+                .background(Theme.background),
+            width: 900, height: 1000
+        )
+    }
+
+    /// An area just made: prompts for its words, and two ways to give it goals.
     func testAreaPageNew() {
         assertAppearances(
-            AreaPage(detail: Fixtures.newAreaDetail).background(Theme.background),
+            AreaPage(detail: Fixtures.newAreaDetail, actions: areaPageActions).background(Theme.background),
             width: 900, height: 720
         )
     }
@@ -295,6 +331,53 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(
             GoalPage(detail: Fixtures.goalDetail, now: now).background(Theme.background),
             width: 900, height: 880
+        )
+    }
+
+    /// A goal with no area: a dashed "Add to an area" after its target date.
+    func testGoalPageNoArea() {
+        assertAppearances(
+            GoalPage(detail: Fixtures.goalDetail, now: now, areas: Fixtures.areas, onSetArea: { _ in }, onNewArea: {}) { EmptyView() }
+                .background(Theme.background),
+            width: 900, height: 880
+        )
+    }
+
+    /// Edit goal with the person's areas: an Area field before the target date.
+    func testGoalDialogWithArea() {
+        assertAppearances(
+            GoalDialog(
+                input: GoalInput(title: "Deliver research-backed housing playbook for Madrid", targetDate: "2026-11-30",
+                                 icon: "Target02Icon", color: "coral", areaId: "madrid"),
+                mode: .edit,
+                today: "2026-11-18",
+                areas: Fixtures.areas
+            )
+            .padding(24)
+            .background(Theme.shell),
+            width: 528
+        )
+    }
+
+    /// The areas a goal can go in, from "Add to an area" or a goal in one: the one in force ticked.
+    func testAreaMenu() {
+        assertAppearances(
+            AreaMenu(areas: Fixtures.areas, selected: "madrid", onPick: { _ in }, onNewArea: {}).padding(24).background(Theme.shell),
+            width: 280
+        )
+    }
+
+    func testAreaIconPicker() {
+        assertAppearances(
+            AreaIconPicker(selected: "Building03Icon") { _ in }.padding(24).background(Theme.shell),
+            width: 328
+        )
+    }
+
+    func testNewAreaDialog() {
+        assertAppearances(
+            NewAreaDialog(input: AreaInput(name: "Learning", icon: "BookOpen01Icon")).padding(24).background(Theme.shell),
+            width: 432
         )
     }
 

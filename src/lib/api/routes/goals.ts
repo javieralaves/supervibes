@@ -113,8 +113,9 @@ const NewGoalSchema = z
 const GoalAreaInputSchema = z
   .object({
     // An empty string, not null, takes the goal out: the Mac app's generated client can't send an explicit null.
-    areaId: z.union([z.uuid(), z.literal("")]).openapi({
-      description: "One of the person's areas, or an empty string to take the goal out of its area.",
+    // A plain string here (checked in the handler), since a union would generate a wrapper type in Swift.
+    areaId: z.string().openapi({
+      description: "One of the person's areas (its id), or an empty string to take the goal out of its area.",
     }),
   })
   .openapi("GoalAreaInput");
@@ -498,7 +499,9 @@ export const goals = new OpenAPIHono<ApiEnv>()
     return c.body(null, 202);
   })
   .openapi(areaRoute, async (c) => {
-    const result = await setGoalArea(c.var.user.id, c.req.valid("param").id, c.req.valid("json").areaId || null);
+    const areaId = c.req.valid("json").areaId;
+    if (areaId && !z.uuid().safeParse(areaId).success) return c.json(apiError("invalid_request", AREA_GONE), 400);
+    const result = await setGoalArea(c.var.user.id, c.req.valid("param").id, areaId || null);
     if (result === "goal_not_found") return c.json(apiError("not_found", GOAL_GONE), 404);
     if (result === "area_not_found") return c.json(apiError("not_found", AREA_GONE), 404);
     return c.body(null, 204);
