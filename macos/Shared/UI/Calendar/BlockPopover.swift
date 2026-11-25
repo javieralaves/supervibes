@@ -111,18 +111,25 @@ struct BlockPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
                 BackButton { back(to: .goal) }
-                Text("Goal").appText(.sm, .semibold).foregroundStyle(Theme.foreground)
+                Text("Project or practice").appText(.sm, .semibold).foregroundStyle(Theme.foreground)
             }
             .padding(.horizontal, 4)
             .padding(.top, 2)
             .padding(.bottom, 4)
 
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(goals) { option in
-                        GoalRow(goal: option, isSelected: option.id == goalId) {
-                            goalId = option.id
-                            back(to: .title)
+                VStack(alignment: .leading, spacing: 0) {
+                    let sections = GoalSections(goals).sections
+                    ForEach(sections, id: \.title) { section in
+                        if sections.count > 1 {
+                            Text(section.title).appText(.xs, .medium).foregroundStyle(Theme.muted)
+                                .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+                        }
+                        ForEach(section.goals) { option in
+                            GoalRow(goal: option, isSelected: option.id == goalId) {
+                                goalId = option.id
+                                back(to: .title)
+                            }
                         }
                     }
                 }
@@ -147,7 +154,7 @@ private struct GoalButton: View {
 
     var body: some View {
         Button(action: action) {
-            GoalBadge(icon: goal.icon, color: goal.color, size: .field)
+            GoalBadge(icon: goal.icon, color: goal.color, size: .field, round: goal.isPractice)
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.foreground(isHovered ? 0.1 : 0), lineWidth: 2).padding(-1))
                 .contentShape(.rect(cornerRadius: 8))
         }
@@ -187,7 +194,7 @@ private struct GoalRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
+                GoalBadge(icon: goal.icon, color: goal.color, size: .xs, round: goal.isPractice)
                 Text(goal.title).appText(.sm).foregroundStyle(Theme.foreground)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)

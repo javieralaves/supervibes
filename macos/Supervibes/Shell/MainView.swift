@@ -692,6 +692,7 @@ private struct CalendarScreen: View {
                     selectedId: $selectedId,
                     panel: BlockPanelActions(
                         setReserved: model.setReserved,
+                        setMissed: model.setMissed,
                         setDescription: model.setDescription,
                         prepareAgenda: model.prepareAgenda(_:when:),
                         suggestFocus: model.suggestFocus(_:when:instead:),

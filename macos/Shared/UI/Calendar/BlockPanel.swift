@@ -16,6 +16,8 @@ import SwiftUI
 /// What the panel can do, each returning an error to show, or nil.
 struct BlockPanelActions {
     var setReserved: (_ blockId: String, _ reserved: Bool) -> Void = { _, _ in }
+    /// A practice's block that's over: it didn't happen (so it doesn't count), or it did after all.
+    var setMissed: (_ blockId: String, _ missed: Bool) -> Void = { _, _ in }
     var setDescription: (_ blockId: String, _ text: String) async -> String?
     var prepareAgenda: (_ blockId: String, _ when: String) async -> String?
     var suggestFocus: (_ blockId: String, _ when: String, _ instead: [String]) async -> FocusOutcome
@@ -96,9 +98,12 @@ struct BlockPanel: View {
     /// A task that's done (or gone) isn't open to describe here anymore.
     private var describable: Bool { !recapped && (block.taskId.map(openTaskIds.contains) ?? true) }
 
+    /// A practice has no tasks or read to plan a session from: its block says only where it stands in the week.
+    private var isPractice: Bool { goal?.isPractice == true }
+
     /// What Tab does in an empty description: suggest a focus, plan the session, or nothing.
     private var tab: DescriptionField.Tab {
-        guard actions != nil, !ended, block.isSession, !block.isPending, block.agenda == nil, !preparing else { return .none }
+        guard actions != nil, !ended, block.isSession, !block.isPending, block.agenda == nil, !preparing, !isPractice else { return .none }
         return needsFocus ? .suggest : .plan
     }
 
@@ -107,7 +112,7 @@ struct BlockPanel: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 4) {
                     if let goal {
-                        GoalBadge(icon: goal.icon, color: goal.color, size: .field).help(goal.title)
+                        GoalBadge(icon: goal.icon, color: goal.color, size: .field, round: goal.isPractice).help(goal.title)
                     }
                     Spacer(minLength: 0)
                     if calendar != nil, !block.isPending {
@@ -171,12 +176,21 @@ struct BlockPanel: View {
                 )
                 .padding(.top, 16)
 
-                // Reserved time has no recap to write; one posted while it was a session still shows.
-                if ended, block.isSession || recapped {
+                // For a practice: where this block stands in its week, and, once it's over, that it didn't happen.
+                if let goal, goal.isPractice {
+                    PracticeBlockBox(
+                        block: block, goal: goal, ended: ended, now: now,
+                        onMissed: actions.map { actions in { actions.setMissed(block.id, $0) } }
+                    )
+                    .padding(.top, 16)
+                }
+
+                // Reserved time has no recap to write, nor has a session that didn't happen; one posted before still shows.
+                if ended, (block.isSession && !block.missed) || recapped {
                     RecapSection(block: block, actions: actions).padding(.top, 24)
                 }
 
-                if block.isSession {
+                if block.isSession, !isPractice || block.agenda != nil {
                     AgendaSection(
                         block: block, color: goal?.color ?? "slate", ended: ended, now: now, openTaskIds: openTaskIds,
                         preparing: preparing, actions: actions, onPrepare: prepare
@@ -198,7 +212,7 @@ struct BlockPanel: View {
     private func showMore() {
         guard let calendar, let overlays else { return }
         overlays.showMenu(anchor: moreAnchor, owner: block.id) {
-            BlockMenu(block: block, day: day, actions: calendar)
+            BlockMenu(block: block, goal: goal, day: day, actions: calendar)
         }
     }
 
@@ -512,7 +526,8 @@ private struct PropertyRows: View {
                 SourceRow(calendar: source.calendar, changed: sourceChanged)
             }
 
-            PropertyRow(title: goal?.title ?? "No goal", accessibility: "Goal", isEnabled: calendar != nil && goals.count > 1) {
+            PropertyRow(title: goal?.title ?? "No goal", detail: goal?.isPractice == true ? "Practice" : nil, accessibility: "Goal",
+                        isEnabled: calendar != nil && goals.count > 1) {
                 if let goal { GoalIconImage(name: goal.icon, size: 16) } else { Icon.target.image(size: 16) }
             } menu: {
                 GoalMenu(goals: goals, selected: block.goalId) { calendar?.saveDetails(block.id, $0, block.title) }
@@ -546,7 +561,8 @@ private struct PropertyRows: View {
             } menu: {
                 MenuPanel(width: 208) {
                     MenuLabel("Type")
-                    ForEach(BlockKind.allCases, id: \.self) { kind in
+                    // A practice has no tasks, so its block can't be a task's time.
+                    ForEach(BlockKind.allCases.filter { $0 != .task || goal?.isPractice != true }, id: \.self) { kind in
                         MenuItem(
                             icon: kind.icon, title: kind.longLabel,
                             // A task is made from the block's title.
@@ -742,8 +758,8 @@ private struct PropertyRow<Leading: View, Menu: View>: View {
     }
 }
 
-/// The goals a block can be moved to.
-private struct GoalMenu: View {
+/// What a block can be for: projects, then practices, each under its own heading.
+struct GoalMenu: View {
     let goals: [CalendarGoal]
     let selected: String
     let onPick: (String) -> Void
@@ -751,14 +767,16 @@ private struct GoalMenu: View {
     @Environment(\.overlays) private var overlays
 
     var body: some View {
-        MenuPanel(width: 264) {
-            MenuLabel("Goal")
+        MenuPanel(width: 288) {
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(goals) { goal in
-                        GoalMenuRow(goal: goal, isSelected: goal.id == selected) {
-                            overlays?.dismiss()
-                            if goal.id != selected { onPick(goal.id) }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(GoalSections(goals).sections, id: \.title) { section in
+                        MenuLabel(section.title)
+                        ForEach(section.goals) { goal in
+                            GoalMenuRow(goal: goal, isSelected: goal.id == selected) {
+                                overlays?.dismiss()
+                                if goal.id != selected { onPick(goal.id) }
+                            }
                         }
                     }
                 }
@@ -779,9 +797,12 @@ private struct GoalMenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
+                GoalBadge(icon: goal.icon, color: goal.color, size: .xs, round: goal.isPractice)
                 Text(goal.title).appText(.sm, .medium).foregroundStyle(Theme.foreground).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let perWeek = goal.perWeek, goal.isPractice {
+                    Text("\(perWeek)× a week").appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
+                }
                 if isSelected {
                     Icon.tick.image(size: 16).foregroundStyle(Theme.foreground)
                 }

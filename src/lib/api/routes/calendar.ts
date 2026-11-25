@@ -10,6 +10,8 @@ import type { BlockRecap } from "@/lib/recap-schema";
 import { CALENDAR_DAYS_AHEAD, CALENDAR_DAYS_BACK, listBlocksAroundNow, type BlockDTO } from "@/lib/blocks";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
 import { GOAL_KINDS } from "@/lib/goal-schema";
+import { listPracticeStates } from "@/lib/practice";
+import type { PracticeState } from "@/lib/practice-count";
 import { listGoals } from "@/lib/goals";
 import { draftRecapsAfterResponse, listAutoRecapCandidates } from "@/lib/recap";
 import { getSettings, getTimeZone } from "@/lib/settings";
@@ -123,6 +125,16 @@ const CalendarGoalSchema = z
     color: z.string(),
     kind: z.enum(GOAL_KINDS).openapi({ description: "A project, or a practice kept up a number of times a week." }),
     perWeek: z.int().nullable().openapi({ description: "For a practice: how many sessions a week it's meant to have." }),
+    minMinutes: z.int().nullable().openapi({ description: "For a practice: blocks shorter than this don't count; null: any length." }),
+    week: z
+      .object({
+        start: z.iso.date().openapi({ description: "The Monday this week starts on." }),
+        done: z.int().openapi({ description: "Sessions that counted so far." }),
+        planned: z.int().openapi({ description: "Sessions still to come this week." }),
+      })
+      .nullable()
+      .openapi({ description: "For a practice: this week so far. Null for a project." }),
+    paused: z.boolean().openapi({ description: "For a practice: paused today." }),
   })
   .openapi("CalendarGoal");
 
@@ -196,11 +208,14 @@ export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer
   };
 }
 
+const practiceWeek = (state: PracticeState | undefined) =>
+  state ? { start: state.week.start, done: state.week.done, planned: state.week.planned } : null;
+
 export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) => {
   const userId = c.var.user.id;
   const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
   const today = todayIn(timeZone);
-  const [tasks, settings, goals, blocks, toRecap, objectives] = await Promise.all([
+  const [tasks, settings, goals, blocks, toRecap, objectives, practices] = await Promise.all([
     listOpenTasks(userId),
     getSettings(userId),
     listGoals(userId),
@@ -210,6 +225,13 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
       userId,
       weekStartOf(addDays(today, -CALENDAR_DAYS_BACK)),
       weekStartOf(addDays(today, CALENDAR_DAYS_AHEAD)),
+    ),
+    listGoals(userId).then((all) =>
+      listPracticeStates(
+        userId,
+        all.filter((goal) => goal.kind === "practice"),
+        timeZone,
+      ),
     ),
   ]);
   // Sessions that just ended draft their recaps after this responds, as when the web page opens.
@@ -229,6 +251,9 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
         color: isGoalColor(goal.color) ? goal.color : DEFAULT_GOAL_COLOR,
         kind: goal.kind,
         perWeek: goal.perWeek,
+        minMinutes: goal.minMinutes,
+        week: practiceWeek(practices.get(goal.id)),
+        paused: Boolean(practices.get(goal.id)?.paused),
       })),
       tasks: tasks.map(({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn }) => ({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn })),
       settings,

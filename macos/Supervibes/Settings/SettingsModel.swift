@@ -65,7 +65,7 @@ final class SettingsModel {
             }
             // Only Calendar import's goal menu needs these, so the page loads without them.
             if case .ok(let ok) = try? await goalsOutput, let body = try? ok.body.json {
-                goals = body.goals.map { CalendarGoal(id: $0.id, title: $0.title, icon: $0.icon, color: $0.color) }
+                goals = body.goals.map { CalendarGoal(goal: Goal(api: $0)) }
             }
             load = .loaded
         } catch {

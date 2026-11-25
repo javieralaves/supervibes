@@ -384,6 +384,34 @@ final class CalendarModel {
         }
     }
 
+    /// Says a practice's block didn't happen, so it doesn't count; or that it did after all. Only once it's over.
+    func setMissed(_ blockId: String, _ missed: Bool) {
+        guard let before = block(blockId), before.missed != missed, before.endsAt <= Date() else { return }
+        let goalsBefore = data.goals
+        update(blockId) { $0.missed = missed }
+        // Its practice's count this week follows, if the block is in it and counted (or would).
+        if let index = data.goals.firstIndex(where: { $0.id == before.goalId }), var week = data.goals[index].week,
+           CalendarDay.weekStart(CalendarDay.today(before.startsAt)) == week.start,
+           Int(before.endsAt.timeIntervalSince(before.startsAt) / 60) >= (data.goals[index].minMinutes ?? 0) {
+            week.done = max(0, week.done + (missed ? -1 : 1))
+            data.goals[index].week = week
+        }
+        write(undo: { [weak self] in
+            self?.replace(blockId, with: before)
+            self?.restoreGoals(goalsBefore)
+        }) { client in
+            switch try await client.setBlockMissed(path: .init(blockId: blockId), body: .json(.init(missed: missed))) {
+            case .noContent: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t save that (the server answered \(status)).")
+            }
+        }
+    }
+
+    private func restoreGoals(_ goals: [CalendarGoal]) { data.goals = goals }
+
     /// Make a block a session, reserved time or a task's time. Protected time becomes a task's time
     /// by making a task from its title and description; a task's time lets go of its task, which
     /// stays open.
@@ -929,7 +957,7 @@ extension CalendarData {
     init(api body: Components.Schemas.Calendar) {
         self.init(
             blocks: body.blocks.map(CalendarBlock.init(api:)),
-            goals: body.goals.map { CalendarGoal(id: $0.id, title: $0.title, icon: $0.icon, color: $0.color) },
+            goals: body.goals.map(CalendarGoal.init(api:)),
             tasks: body.tasks.map {
                 CalendarTask(
                     id: $0.id, goalId: $0.goalId, title: $0.title, minutes: $0.minutes,
@@ -941,6 +969,26 @@ extension CalendarData {
             clock: body.settings.clock.flatMap { Clock(rawValue: $0.rawValue) },
             objectives: body.objectives.map { WeekObjective(goalId: $0.goalId, weekStart: $0.weekStart, objective: $0.objective) }
         )
+    }
+}
+
+extension CalendarGoal {
+    init(api goal: Components.Schemas.CalendarGoal) {
+        self.init(
+            id: goal.id, title: goal.title, icon: goal.icon, color: goal.color,
+            kind: GoalKind(rawValue: goal.kind.rawValue) ?? .project,
+            perWeek: goal.perWeek,
+            minMinutes: goal.minMinutes,
+            week: goal.week.map { Practice.Week(start: $0.start, done: $0.done, planned: $0.planned) },
+            paused: goal.paused
+        )
+    }
+
+    /// A goal from Life's list, for menus that pick one (Calendar import's default).
+    init(goal: Goal) {
+        self.init(id: goal.id, title: goal.title, icon: goal.icon, color: goal.color, kind: goal.kind,
+                  perWeek: goal.practice?.perWeek, minMinutes: goal.practice?.minMinutes, week: goal.practice?.week,
+                  paused: goal.practice?.paused != nil)
     }
 }
 
@@ -970,7 +1018,8 @@ extension CalendarBlock {
                     calendar: source.calendar,
                     snapshot: .init(title: source.snapshot.title, startsAt: source.snapshot.startsAt, endsAt: source.snapshot.endsAt)
                 )
-            }
+            },
+            missed: block.missed
         )
     }
 }

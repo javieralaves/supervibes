@@ -1255,7 +1255,7 @@ struct DayTimeline: View {
     @ViewBuilder private func menu(_ block: CalendarBlock, _ segment: DaySegment) -> some View {
         if let actions {
             BlockMenu(
-                block: block, day: segment.day, actions: actions,
+                block: block, goal: data.goal(block.goalId), day: segment.day, actions: actions,
                 onEdit: {
                     editing = nil
                     edit(block, segment)
@@ -1320,6 +1320,8 @@ struct DayTimeline: View {
 /// goal, and remove it.
 struct BlockMenu: View {
     let block: CalendarBlock
+    /// Its project or practice, to name it in "Open …".
+    var goal: CalendarGoal?
     /// Its day, in days from today.
     let day: Int
     let actions: CalendarActions
@@ -1354,7 +1356,7 @@ struct BlockMenu: View {
             }
             if let openGoal = actions.openGoal {
                 MenuSeparator()
-                MenuItem(icon: .target, title: "Open goal") { run { openGoal(block.goalId) } }
+                MenuItem(icon: .target, title: "Open \(goal?.kind.noun ?? "goal")") { run { openGoal(block.goalId) } }
             }
             MenuSeparator()
             MenuItem(icon: .delete, title: "Remove", isDestructive: true) { run { actions.remove(block.id) } }
@@ -1602,10 +1604,11 @@ struct BlockCardView: View {
             .clipShape(.rect(cornerRadius: compact ? 6 : 8))
             .overlay(RoundedRectangle(cornerRadius: compact ? 6 : 8).strokeBorder(GoalPalette.color(color).opacity(0.22)))
         }
-        .opacity(block.isPending ? 0.6 : 1)
-        .help(compact ? "\(title)\n\(time)" : "\(title) · \(time)")
+        // A practice's block that didn't happen stays where it was, faded, so the week still reads true.
+        .opacity(block.isPending ? 0.6 : block.missed ? 0.4 : 1)
+        .help(block.missed ? "\(title) · didn’t happen" : compact ? "\(title)\n\(time)" : "\(title) · \(time)")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(block.kindLabel): \(title), \(time)")
+        .accessibilityLabel("\(block.kindLabel): \(title), \(time)\(block.missed ? ", didn’t happen" : "")")
     }
 
     /// In the week: the title clamped to what fits, and the time once there's room.

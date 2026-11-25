@@ -408,6 +408,29 @@ enum Fixtures {
         ]
     }
 
+    /// The calendar's goals with a practice among them: Workouts, three times a week, at least 30 min, one done and
+    /// two planned this week.
+    static var practiceCalendarGoals: [CalendarGoal] {
+        calendar.goals + [
+            CalendarGoal(id: "w", title: "Workouts", icon: "Dumbbell01Icon", color: "green", kind: .practice, perWeek: 3, minMinutes: 30,
+                         week: .init(start: "2026-11-16", done: 1, planned: 2)),
+            CalendarGoal(id: "t", title: "Tagalog", icon: "LanguageSkillIcon", color: "amber", kind: .practice, perWeek: 4),
+        ]
+    }
+
+    /// Workouts' blocks: one this evening, still to come; this morning's, counted; and yesterday's, which didn't happen.
+    static var practicePanelBlocks: [CalendarBlock] {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0, days: Int = 0) -> Date {
+            day.addingTimeInterval(Double(days * 86_400 + hour * 3600 + minute * 60))
+        }
+        return [
+            CalendarBlock(id: "w1", goalId: "w", title: nil, startsAt: at(18), endsAt: at(18, 45)),
+            CalendarBlock(id: "w2", goalId: "w", title: "Home workout", startsAt: at(7, 30), endsAt: at(8, 15)),
+            CalendarBlock(id: "w3", goalId: "w", title: nil, startsAt: at(9, days: -1), endsAt: at(9, 30, days: -1), missed: true),
+        ]
+    }
+
     /// What "Suggest a focus" might come back with for an untitled block.
     static let focusSuggestion = FocusSuggestion(
         aim: "Settle the week view's layout so part 4 can start.",

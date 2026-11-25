@@ -35,6 +35,8 @@ struct CalendarBlock: Identifiable, Hashable, Sendable {
     var isPending = false
     /// For a block imported from an event in the person's Google calendars: where it came from.
     var source: EventSource?
+    /// For a practice's block: the person said it didn't happen, so it doesn't count.
+    var missed = false
 
     var isIntention: Bool { fromSuggestion != nil || taskId != nil }
 
@@ -141,6 +143,18 @@ struct CalendarGoal: Identifiable, Hashable, Sendable {
     let title: String
     let icon: String
     let color: String
+    /// A project, or a practice kept up a number of times a week.
+    var kind: GoalKind = .project
+    /// For a practice: how many sessions a week it's meant to have.
+    var perWeek: Int? = nil
+    /// For a practice: blocks shorter than this many minutes don't count.
+    var minMinutes: Int? = nil
+    /// For a practice: this week so far.
+    var week: Practice.Week? = nil
+    /// For a practice: paused today.
+    var paused = false
+
+    var isPractice: Bool { kind == .practice }
 }
 
 /// An open task, for the day strip and the task panel.
