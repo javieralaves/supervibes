@@ -1,7 +1,7 @@
 import SwiftUI
 
 /*
- * The app's left rail: the main sections, and the account menu at the bottom. It sits on the
+ * The app's left rail: the Superfocus mark, the main sections, and the account menu at the bottom. It sits on the
  * shell colour, beside the app's window.
  */
 
@@ -45,6 +45,13 @@ struct Rail: View {
 
     var body: some View {
         VStack(spacing: 6) {
+            // The app's mark tops the rail, 12 further from Life than the items are from each other. At 22 its
+            // solid square reads about as large as the 20pt icons' strokes under it.
+            SuperfocusLogo(size: 22)
+                .frame(width: 40, height: 40)
+                .contentShape(.rect)
+                .help("Superfocus")
+                .padding(.bottom, 12)
             ForEach(RailItem.all) { item in
                 RailButton(item: item, isActive: item == active) { onSelect(item) }
             }
