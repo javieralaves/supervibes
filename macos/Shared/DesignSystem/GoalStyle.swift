@@ -66,6 +66,13 @@ struct GoalIconImage: View {
 }
 
 /// A goal's icon on a tile tinted with its colour.
+extension GoalBadge {
+    /// A goal's badge, round for a practice.
+    init(goal: Goal, size: Size = .sm) {
+        self.init(icon: goal.icon, color: goal.color, size: size, round: goal.isPractice)
+    }
+}
+
 struct GoalBadge: View {
     enum Size {
         /// 18, rounded 5, icon 11: a goal a read drew on, beside the read's other marks.
@@ -91,12 +98,14 @@ struct GoalBadge: View {
     let icon: String
     let color: String
     var size: Size = .sm
+    /// A practice's badge is round, a project's square, so the two read apart wherever they meet.
+    var round = false
 
     var body: some View {
         GoalIconImage(name: icon, size: size.icon)
             .foregroundStyle(GoalPalette.color(color))
             .frame(width: size.tile, height: size.tile)
-            .background(GoalPalette.tintBackground(color), in: .rect(cornerRadius: size.radius))
+            .background(GoalPalette.tintBackground(color), in: .rect(cornerRadius: round ? size.tile / 2 : size.radius))
             .animation(.easeOut(duration: 0.15), value: color)
     }
 }

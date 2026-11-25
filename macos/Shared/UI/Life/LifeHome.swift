@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Life, the home page: a greeting, the goals as cards (each with its week: this week's objective, and its tasks
-/// against its session time), then the areas those goals sit in. A goal's card says its area and when it last moved;
-/// an area's card, its status and the goals moving it. The pencil beside Areas edits them in place: icons, names,
-/// removing one, adding one.
+/// Life, the home page: a greeting, then projects (goals with a finish line) as cards, each with its week (this week's
+/// objective, and its tasks against its session time); then practices (kept up a number of times a week), each with
+/// its rhythm and this week's sessions; then the areas they sit in. A card says its area; a project's, when it last
+/// moved too. An area's card, its status and what's moving it. The pencil beside Areas edits them in place: icons,
+/// names, removing one, adding one.
 struct LifeHome: View {
     let firstName: String
     let goals: [Goal]
@@ -59,11 +60,15 @@ struct LifeHome: View {
                 .tracking(-0.035 * 48)
                 .foregroundStyle(Theme.foreground)
 
-                goalsSection
-                    .padding(.top, 48)
-                    // While areas are edited, the goals step back.
-                    .opacity(isEditingAreas ? 0.4 : 1)
-                    .allowsHitTesting(!isEditingAreas)
+                Group {
+                    projectsSection.padding(.top, 48)
+                    if !(projects.isEmpty && practices.isEmpty) {
+                        practicesSection.padding(.top, 48)
+                    }
+                }
+                // While areas are edited, projects and practices step back.
+                .opacity(isEditingAreas ? 0.4 : 1)
+                .allowsHitTesting(!isEditingAreas)
 
                 if !areas.isEmpty || areaActions != nil {
                     areasSection.padding(.top, 48)
@@ -82,47 +87,77 @@ struct LifeHome: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    // MARK: Goals
+    // MARK: Projects and practices
 
-    private var goalsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Goals").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-                Spacer()
-                if !goals.isEmpty {
-                    Text(countLine).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
-                }
+    private var projects: [Goal] { goals.filter { !$0.isPractice } }
+    private var practices: [Goal] { goals.filter(\.isPractice) }
+
+    private func sectionHeader(_ title: String, caption: String, count: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title).appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
+            Text(caption).font(.app(13)).foregroundStyle(Theme.muted)
+            Spacer()
+            if let count {
+                Text(count).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
             }
-            .padding(.bottom, 16)
+        }
+        .padding(.bottom, 16)
+    }
+
+    private var projectsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("Projects", caption: "Things you’re finishing", count: projects.isEmpty ? nil : countLine)
 
             if let error {
                 Banner(text: error, tone: .error).padding(.bottom, 16)
             }
 
-            if goals.isEmpty {
+            if projects.isEmpty && practices.isEmpty {
                 EmptyGoals(onNew: onNew)
             } else {
-                let cells: [Cell] = goals.map { .goal($0) } + (goals.count < max ? [.new] : [])
+                let cells: [Cell] = projects.map { .goal($0) } + (projects.count < max ? [.new(.project)] : [])
                 CardGrid(count: cells.count, columns: columns) { cell(cells[$0]) }
             }
         }
     }
 
-    /// "5 h 15 min of 35 h planned this week · 7 of 12": the week across goals with session time,
+    private var practicesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("Practices", caption: "Things you keep up", count: practices.isEmpty ? nil : practiceCountLine)
+            let cells: [Cell] = practices.map { .goal($0) } + (practices.count < max ? [.new(.practice)] : [])
+            CardGrid(count: cells.count, columns: columns) { cell(cells[$0]) }
+        }
+    }
+
+    /// "4 of 5 kept up this week · 5 of 12": practices that have had all their sessions this week, beside the count.
+    private var practiceCountLine: String {
+        let count = "\(practices.count) of \(max)"
+        let active = practices.compactMap(\.practice).filter { $0.paused == nil }
+        guard !active.isEmpty else { return count }
+        let kept = active.filter { $0.left == 0 }.count
+        return "\(kept) of \(active.count) kept up this week · \(count)"
+    }
+
+    /// "5 h 15 min of 35 h planned this week · 7 of 12": the week across projects with session time,
     /// beside the count; just the count when none has any.
     private var countLine: String {
-        let count = "\(goals.count) of \(max)"
-        let withTime = goals.compactMap { weeks[$0.id] }.filter { $0.sessionMinutes > 0 }
+        let count = "\(projects.count) of \(max)"
+        let withTime = projects.compactMap { weeks[$0.id] }.filter { $0.sessionMinutes > 0 }
         guard !withTime.isEmpty else { return count }
         let planned = withTime.reduce(0) { $0 + $1.plannedMinutes }
         let sessions = withTime.reduce(0) { $0 + $1.sessionMinutes }
         return "\(BoardDuration.text(planned)) of \(BoardDuration.text(sessions)) planned this week · \(count)"
     }
 
-    private enum Cell { case goal(Goal), new }
+    private enum Cell { case goal(Goal), new(GoalKind) }
 
     @ViewBuilder private func cell(_ cell: Cell) -> some View {
         switch cell {
+        case .goal(let goal) where goal.isPractice:
+            PracticeCard(goal: goal, area: areas.first { $0.id == goal.areaId }) { onOpen(goal) }
+                .contextPanel(owner: PracticeCard.menuOwner(goal), isEnabled: !goal.isPending) {
+                    GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
+                }
         case .goal(let goal):
             GoalCard(
                 goal: goal,
@@ -134,8 +169,8 @@ struct LifeHome: View {
                 .contextPanel(owner: GoalCard.menuOwner(goal), isEnabled: !goal.isPending) {
                     GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
                 }
-        case .new:
-            NewGoalButton { onNew(GoalInput()) }
+        case .new(let kind):
+            NewGoalButton(kind: kind) { onNew(GoalInput(kind: kind)) }
         }
     }
 
@@ -356,7 +391,7 @@ private struct NewAreaCard: View {
             AreaNameField(name: $name, placeholder: "Name this area", focused: $nameFocused, onCommit: onCommit)
                 .padding(.top, 12)
             Spacer(minLength: 20)
-            Text("Place goals in it from its page").appText(.xs).foregroundStyle(Theme.muted)
+            Text("Add projects and practices from its page").appText(.xs).foregroundStyle(Theme.muted)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -397,16 +432,28 @@ private struct AreaNameField: View {
     }
 }
 
-/// An area's goals as their badges, with how many.
+/// An area's projects then practices as their badges (a practice's round), with how many of each.
 private struct AreaGoalsLine: View {
     let goals: [Goal]
 
+    private var ordered: [Goal] { goals.filter { !$0.isPractice } + goals.filter(\.isPractice) }
+
+    private var count: String {
+        let projects = goals.filter { !$0.isPractice }.count
+        let practices = goals.count - projects
+        let parts = [
+            projects > 0 ? "\(projects) \(projects == 1 ? "project" : "projects")" : nil,
+            practices > 0 ? "\(practices) \(practices == 1 ? "practice" : "practices")" : nil,
+        ].compactMap { $0 }
+        return parts.isEmpty ? "Nothing in it yet" : parts.joined(separator: " · ")
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(goals) { goal in
-                GoalBadge(icon: goal.icon, color: goal.color, size: .mini)
+            ForEach(ordered) { goal in
+                GoalBadge(goal: goal, size: .mini)
             }
-            Text(goals.isEmpty ? "No goals" : goals.count == 1 ? "1 goal" : "\(goals.count) goals")
+            Text(count)
                 .appText(.xs)
                 .foregroundStyle(Theme.muted)
                 .padding(.leading, goals.isEmpty ? 0 : 2)
@@ -487,18 +534,19 @@ struct GoalCardMenu: View {
     var body: some View {
         MenuPanel(width: 200) {
             MenuItem(icon: .view, title: "Open") { run(onOpen) }
-            if let plan = actions.plan {
+            // A practice has no tasks to plan and no read to update: it's counted.
+            if let plan = actions.plan, !goal.isPractice {
                 MenuItem(icon: .calendarSmall, title: "Plan tasks") { run { plan(goal) } }
             }
-            if let updateStatus = actions.updateStatus {
+            if let updateStatus = actions.updateStatus, !goal.isPractice {
                 MenuItem(icon: .refresh, title: "Update status") { run { updateStatus(goal) } }
             }
             if let edit = actions.edit {
                 MenuSeparator()
-                MenuItem(icon: .edit, title: "Edit goal") { run { edit(goal) } }
+                MenuItem(icon: .edit, title: "Edit \(goal.kind.noun)") { run { edit(goal) } }
             }
             if let delete = actions.delete {
-                MenuItem(icon: .delete, title: "Delete goal", isDestructive: true) { run { delete(goal) } }
+                MenuItem(icon: .delete, title: "Delete \(goal.kind.noun)", isDestructive: true) { run { delete(goal) } }
             }
         }
     }
@@ -704,6 +752,7 @@ private struct WeekTimeLine: View {
 
 /// `min-h-[84px] rounded-2xl border border-dashed border-foreground/15 text-sm font-medium text-muted`
 private struct NewGoalButton: View {
+    var kind: GoalKind = .project
     let action: () -> Void
     @State private var isHovered = false
 
@@ -711,7 +760,7 @@ private struct NewGoalButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Icon.add.image(size: 18)
-                Text("New goal").appText(.sm, .medium)
+                Text(kind == .practice ? "New practice" : "New project").appText(.sm, .medium)
             }
             .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -728,19 +777,19 @@ private struct NewGoalButton: View {
     }
 }
 
-/// For someone with no goals yet: a prompt, two suggestions, and New goal.
+/// For someone with nothing yet: a prompt, a project and a practice to start from, and a way to start either.
 private struct EmptyGoals: View {
     let onNew: (GoalInput) -> Void
 
     private static let suggestions = [
         GoalInput(title: "Turn Supervibes into a world-class experience", icon: "SparklesIcon", color: "violet"),
-        GoalInput(title: "Create political program as side project", icon: "Megaphone01Icon", color: "coral"),
+        GoalInput(kind: .practice, title: "Work out", icon: "Dumbbell01Icon", color: "green", perWeek: 3),
     ]
 
     var body: some View {
         Card(padding: 32) {
             Text("What are you working toward?").appText(.xl, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-            Text("Add a handful of goals, each with its own icon and color. Start from scratch or pick one below.")
+            Text("Add a handful of projects, things you’re finishing, and practices, things you keep up a few times a week. Start from scratch or pick one below.")
                 .appText(.sm).foregroundStyle(Theme.muted)
                 .frame(maxWidth: 448, alignment: .leading)
                 .padding(.top, 6)
@@ -750,8 +799,11 @@ private struct EmptyGoals: View {
                 }
             }
             .padding(.top, 24)
-            PrimaryButton(title: "New goal", icon: .add) { onNew(GoalInput()) }
-                .padding(.top, 24)
+            HStack(spacing: 8) {
+                PrimaryButton(title: "New project", icon: .add) { onNew(GoalInput()) }
+                GhostButton(title: "New practice") { onNew(GoalInput(kind: .practice)) }
+            }
+            .padding(.top, 24)
         }
     }
 
@@ -763,8 +815,11 @@ private struct EmptyGoals: View {
         var body: some View {
             Button(action: action) {
                 HStack(spacing: 12) {
-                    GoalBadge(icon: input.icon, color: input.color)
+                    GoalBadge(icon: input.icon, color: input.color, round: input.kind == .practice)
                     Text(input.title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                    if input.kind == .practice {
+                        RhythmLabel(perWeek: input.perWeek).appText(.xs).foregroundStyle(Theme.muted)
+                    }
                     Spacer()
                     Icon.add.image(size: 16).foregroundStyle(Theme.muted)
                 }

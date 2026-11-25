@@ -528,6 +528,117 @@ enum Fixtures {
                             clock: .twelveHour, objectives: [])
     }
 
+    // MARK: - Practices
+
+    /// Four practices on Wednesday, Nov 18 (their week started Monday the 16th): Workouts at risk with one done and
+    /// two planned, Walk on track, Tagalog off track, and Superfocus on track.
+    static var practices: [Goal] {
+        func practice(_ id: String, _ title: String, _ icon: String, _ color: String, area: String, perWeek: Int, min: Int? = nil,
+                      done: Int, planned: Int, status: GoalStatus, counted: Int, weeks: Int = 4) -> Goal {
+            Goal(id: id, title: title, icon: icon, color: color, trajectory: [], areaId: area, kind: .practice,
+                 practice: Practice(perWeek: perWeek, minMinutes: min,
+                                    week: .init(start: "2026-11-16", done: done, planned: planned),
+                                    status: .init(status: status, done: counted, expected: perWeek * weeks, weeks: weeks,
+                                                  reason: "\(counted) of the last \(perWeek * weeks)")))
+        }
+        return [
+            practice("p1", "Workouts", "Dumbbell01Icon", "green", area: "health", perWeek: 3, min: 30, done: 1, planned: 2, status: .atRisk, counted: 8),
+            practice("p2", "Walk", "RunningShoesIcon", "violet", area: "health", perWeek: 5, done: 2, planned: 0, status: .onTrack, counted: 18),
+            practice("p3", "Tagalog", "LanguageSkillIcon", "amber", area: "people", perWeek: 4, min: 20, done: 0, planned: 1, status: .offTrack, counted: 1),
+            practice("p4", "Superfocus and the community", "Briefcase01Icon", "indigo", area: "work", perWeek: 4, done: 2, planned: 1, status: .onTrack, counted: 15),
+        ]
+    }
+
+    /// Life with practices: the three goals with an end as projects, then the practices.
+    static var lifeWithPractices: [Goal] {
+        lifeGoals.filter { ["1", "2", "3"].contains($0.id) } + practices
+    }
+
+    /// The areas, holding projects and practices: Health and People now have a status from their practices.
+    static var practiceAreas: [Area] {
+        var list = areas
+        list[0].goalIds = ["1", "p4"]
+        list[2].goalIds = ["p3"]
+        list[2].status = .offTrack
+        list[3].goalIds = ["p1", "p2"]
+        list[3].status = .atRisk
+        return list
+    }
+
+    /// Workouts' last 8 full weeks: 3, 3, 2, 3, then 3, 1, 2, 2 (the four its status counts: 8 of 12).
+    private static var workoutWeeks: [Practice.Week] {
+        zip(["2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02", "2026-11-09"],
+            [3, 3, 2, 3, 3, 1, 2, 2]).map { Practice.Week(start: $0, done: $1, planned: 0) }
+    }
+
+    private static func block(_ id: String, _ day: Int, _ hour: Int, _ minutes: Int, _ state: PracticeSession.State, title: String? = nil) -> PracticeSession {
+        let start = madrid(day, hour)
+        return PracticeSession(id: id, source: .block, day: String(format: "2026-11-%02d", day), state: state, title: title,
+                               startsAt: start, endsAt: start.addingTimeInterval(Double(minutes) * 60))
+    }
+
+    /// Last week's sessions: two blocks and a run logged on Saturday, and a short one that didn't count.
+    private static var lastWeekSessions: [PracticeSession] {
+        [
+            block("s1", 11, 8, 45, .done, title: "Home workout"),
+            block("s2", 12, 18, 20, .short),
+            PracticeSession(id: "s3", source: .day, day: "2026-11-14", state: .done),
+        ]
+    }
+
+    /// Workouts' page on Wednesday: Monday's done, Tuesday's didn't happen, today's 6 PM and Friday's 7:30 AM planned.
+    static var practiceDetail: GoalDetail {
+        var goal = practices[0]
+        goal.description = "Three home workouts a week, without having to think about it."
+        return GoalDetail(
+            goal: goal,
+            today: "2026-11-18",
+            read: nil,
+            status: nil,
+            readsInTrajectory: 0,
+            readPending: false,
+            readError: nil,
+            canRead: false,
+            week: .init(start: "2026-11-16", objective: nil, lastWeek: nil),
+            area: AreaRef(id: "health", name: "Health", icon: "HeartCheckIcon"),
+            practice: PracticeDetail(
+                weeks: workoutWeeks,
+                sessions: lastWeekSessions + [
+                    block("s4", 16, 9, 30, .done, title: "Home workout"),
+                    block("s5", 17, 9, 30, .missed),
+                    block("s6", 18, 18, 45, .planned),
+                    block("s7", 20, 7, 30, .planned),
+                ]
+            )
+        )
+    }
+
+    /// Workouts with no days set: Monday's logged, and two to go any day.
+    static var unplannedPracticeDetail: GoalDetail {
+        var detail = practiceDetail
+        detail.goal.practice?.week = .init(start: "2026-11-16", done: 1, planned: 0)
+        detail.practice?.sessions = lastWeekSessions + [PracticeSession(id: "s8", source: .day, day: "2026-11-16", state: .done)]
+        return detail
+    }
+
+    /// Workouts paused this morning, until Monday, Nov 30.
+    static var pausedPracticeDetail: GoalDetail {
+        var detail = practiceDetail
+        detail.goal.practice?.status = nil
+        detail.goal.practice?.paused = .init(startsOn: "2026-11-18", resumesOn: "2026-11-30")
+        detail.goal.practice?.week = .init(start: "2026-11-16", done: 1, planned: 0, paused: true)
+        detail.practice?.sessions = lastWeekSessions + [block("s4", 16, 9, 30, .done, title: "Home workout")]
+        return detail
+    }
+
+    /// Health's page: no projects, and its two practices.
+    static var practiceAreaDetail: AreaDetail {
+        let area = practiceAreas[3]
+        return AreaDetail(area: area, today: "2026-11-18",
+                          trajectory: (0..<28).map { AreaTrajectoryDay(day: CalendarDay.addDays("2026-10-22", $0), status: $0 < 7 ? .onTrack : .atRisk, carried: false) },
+                          goals: practices.filter { area.goalIds.contains($0.id) }, weeks: [:])
+    }
+
     // MARK: - Calendar import
 
     /// A time on a day of the reference week (Wednesday Nov 18 is today), in Madrid.

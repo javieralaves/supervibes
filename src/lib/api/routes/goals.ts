@@ -59,9 +59,18 @@ const PracticeSchema = z
   .object({
     perWeek: z.int().openapi({ description: "How many sessions a week it's meant to have." }),
     minMinutes: z.int().nullable().openapi({ description: "Blocks shorter than this don't count; null: any length." }),
-    week: PracticeWeekSchema.extend({
-      left: z.int().openapi({ description: "Sessions still to do this week: perWeek less what's counted, never below 0." }),
-    }).openapi("PracticeThisWeek"),
+    // Spelled out rather than extended from PracticeWeek: an extended schema becomes an allOf, which the Mac app's
+    // generated client turns into a wrapper instead of a plain struct.
+    week: z
+      .object({
+        start: z.iso.date().openapi({ description: "The Monday it starts on." }),
+        done: z.int().openapi({ description: "Sessions that counted." }),
+        planned: z.int().openapi({ description: "Sessions still to come: blocks not over yet, and ones meant for a day from today on." }),
+        paused: z.boolean(),
+        beforeStart: z.boolean(),
+        left: z.int().openapi({ description: "Sessions still to do this week: perWeek less what's counted, never below 0." }),
+      })
+      .openapi("PracticeThisWeek"),
     status: z
       .object({
         status: z.enum(["on_track", "at_risk", "off_track"]),

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// New goal or Edit goal, matching src/app/(app)/goals/goal-dialog.tsx: a live badge beside the
-/// title and what done looks like, a target date, then the colour and a searchable grid of icons.
+/// New or Edit, for a project or a practice, matching src/app/(app)/goals/goal-dialog.tsx: a live badge beside the
+/// title and what it's for, then the colour and a searchable grid of icons. A new one starts by choosing Project
+/// (it has a finish line, so a target date) or Practice (kept up a number of times a week, at least so long each).
 struct GoalDialog: View {
     enum Mode { case create, edit }
 
@@ -54,15 +55,20 @@ struct GoalDialog: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(mode == .create ? "New goal" : "Edit goal")
+                Text("\(mode == .create ? "New" : "Edit") \(input.kind.noun)")
                     .appText(.base, .semibold, tracking: -0.01).foregroundStyle(Theme.foreground)
                 Spacer()
                 CloseButton(action: onCancel)
             }
             .padding(.top, 20)
 
+            // Which kind, first, while it's new; editing never changes it.
+            if mode == .create {
+                KindSwitch(kind: $input.kind).padding(.top, 16)
+            }
+
             HStack(alignment: .top, spacing: 16) {
-                GoalBadge(icon: input.icon, color: input.color, size: .lg)
+                GoalBadge(icon: input.icon, color: input.color, size: .lg, round: input.kind == .practice)
                 VStack(alignment: .leading, spacing: 6) {
                     TextField("", text: titleBinding, axis: .vertical)
                         .textFieldStyle(.plain)
@@ -70,7 +76,7 @@ struct GoalDialog: View {
                         .tracking(-0.02 * 20)
                         .foregroundStyle(Theme.foreground)
                         .lineLimit(1...4)
-                        .placeholder("What are you working toward?", when: input.title.isEmpty, font: .app(20, .semibold))
+                        .placeholder(input.kind == .practice ? "What do you keep up?" : "What are you finishing?", when: input.title.isEmpty, font: .app(20, .semibold))
                         .accessibilityLabel("Title")
                         .focused($titleFocused)
                         .onSubmit(submit)
@@ -80,15 +86,30 @@ struct GoalDialog: View {
                         .font(.app(14))
                         .foregroundStyle(Theme.foreground(0.8))
                         .lineLimit(1...6)
-                        .placeholder("What does done look like?", when: input.description.isEmpty, font: .app(14))
+                        .placeholder(input.kind == .practice ? "What’s it for?" : "What does done look like?", when: input.description.isEmpty, font: .app(14))
                         .accessibilityLabel("Description")
-                    HStack(spacing: 8) {
-                        if !areas.isEmpty {
-                            AreaField(areaId: $input.areaId, areas: areas)
+                    if input.kind == .practice {
+                        // How often, how long, and its area; a practice has no target date.
+                        HStack(spacing: 8) {
+                            PerWeekField(perWeek: $input.perWeek)
+                            MinimumField(minutes: $input.minMinutes)
                         }
-                        TargetDateField(date: $input.targetDate, today: today, isPicking: $isPickingDate)
+                        .padding(.top, 6)
+                        HStack(spacing: 8) {
+                            if !areas.isEmpty {
+                                AreaField(areaId: $input.areaId, areas: areas)
+                            }
+                            RecapsToggle(isOn: $input.autoRecaps)
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            if !areas.isEmpty {
+                                AreaField(areaId: $input.areaId, areas: areas)
+                            }
+                            TargetDateField(date: $input.targetDate, today: today, isPicking: $isPickingDate)
+                        }
+                        .padding(.top, 6)
                     }
-                    .padding(.top, 6)
                 }
             }
             .padding(.top, 16)
@@ -169,7 +190,7 @@ struct GoalDialog: View {
             }
             if confirmingDelete, let onDelete {
                 HStack(spacing: 12) {
-                    Text("Delete this goal for good?").appText(.sm).foregroundStyle(Theme.foreground)
+                    Text("Delete this \(input.kind.noun) for good?").appText(.sm).foregroundStyle(Theme.foreground)
                     Spacer()
                     GhostButton(title: "Keep") { confirmingDelete = false }
                     DangerButton(title: "Delete", action: onDelete)
@@ -181,7 +202,7 @@ struct GoalDialog: View {
                     }
                     Spacer()
                     GhostButton(title: "Cancel", action: onCancel)
-                    PrimaryButton(title: mode == .create ? "Add goal" : "Save", action: submit)
+                    PrimaryButton(title: mode == .edit ? "Save" : input.kind == .practice ? "Start practice" : "Add project", action: submit)
                         .keyboardShortcut(.return, modifiers: .command)
                 }
             }
@@ -219,6 +240,155 @@ struct GoalDialog: View {
             return
         }
         onSave(input)
+    }
+}
+
+/// Project or Practice, each with what it's for: the first choice in a new one.
+private struct KindSwitch: View {
+    @Binding var kind: GoalKind
+
+    var body: some View {
+        HStack(spacing: 4) {
+            option(.project, title: "Project", subtitle: "Has a finish line")
+            option(.practice, title: "Practice", subtitle: "Something you keep up")
+        }
+        .padding(4)
+        .background(Theme.foreground(0.05), in: .rect(cornerRadius: 12))
+    }
+
+    private func option(_ value: GoalKind, title: String, subtitle: String) -> some View {
+        let isSelected = kind == value
+        return Button { kind = value } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).appText(.sm, .semibold).foregroundStyle(isSelected ? Theme.foreground : Theme.muted)
+                Text(subtitle).appText(.xs).foregroundStyle(Theme.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8).fill(Theme.card)
+                        .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? Theme.cardBorder : .clear))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// How often: "− 3 times a week +", in a pill.
+private struct PerWeekField: View {
+    @Binding var perWeek: Int
+
+    var body: some View {
+        HStack(spacing: 2) {
+            step(.minus, label: "Fewer", enabled: perWeek > 1) { perWeek -= 1 }
+            HStack(spacing: 6) {
+                Icon.repeats.image(size: 14).foregroundStyle(Theme.muted)
+                Text(Practice.rhythm(perWeek)).foregroundStyle(Theme.foreground).monospacedDigit()
+            }
+            .padding(.horizontal, 4)
+            step(.add, label: "More", enabled: perWeek < GoalInput.maxPerWeek) { perWeek += 1 }
+        }
+        .appText(.xs, .medium)
+        .padding(.horizontal, 4)
+        .frame(height: 32)
+        .overlay(Capsule().strokeBorder(Theme.cardBorder))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("How often")
+        .accessibilityValue(Practice.rhythm(perWeek))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: perWeek = min(perWeek + 1, GoalInput.maxPerWeek)
+            case .decrement: perWeek = max(perWeek - 1, 1)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func step(_ icon: Icon, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            icon.image(size: 12)
+                .foregroundStyle(enabled ? Theme.foreground : Theme.muted.opacity(0.5))
+                .frame(width: 24, height: 24)
+                .background(Theme.foreground(0.05), in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The shortest session that counts: "Any length", or "At least 30 min", picked from a short list.
+private struct MinimumField: View {
+    @Binding var minutes: Int?
+    @State private var isPicking = false
+    @State private var isHovered = false
+
+    var body: some View {
+        Button { isPicking = true } label: {
+            HStack(spacing: 6) {
+                Icon.clock.image(size: 14)
+                Text(minutes.map { "At least \(TaskItem.minutesLabel($0))" } ?? "Any length")
+                    .foregroundStyle(minutes == nil ? Theme.muted : Theme.foreground)
+                Icon.chevronDown.image(size: 12)
+            }
+            .appText(.xs, .medium)
+            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .overlay(Capsule().strokeBorder(isHovered || isPicking ? Theme.foreground(0.2) : Theme.cardBorder))
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("Shortest session that counts")
+        .popover(isPresented: $isPicking, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                AreaMenuAction(icon: .clock, title: "Any length", isChecked: minutes == nil) {
+                    minutes = nil
+                    isPicking = false
+                }
+                MenuSeparator()
+                ForEach(GoalInput.minimums, id: \.self) { option in
+                    AreaMenuAction(icon: .clock, title: "At least \(TaskItem.minutesLabel(option))", isChecked: minutes == option) {
+                        minutes = option
+                        isPicking = false
+                    }
+                }
+            }
+            .padding(6)
+            .frame(width: 200)
+        }
+    }
+}
+
+/// Whether its sessions get a recap drafted on their own: on unless turned off.
+private struct RecapsToggle: View {
+    @Binding var isOn: Bool
+    @State private var isHovered = false
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 6) {
+                (isOn ? Icon.checkCircle : Icon.circle).image(size: 14)
+                Text("Draft recaps after sessions")
+            }
+            .appText(.xs, .medium)
+            .foregroundStyle(isOn ? Theme.foreground : (isHovered ? Theme.foreground : Theme.muted))
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .overlay(Capsule().strokeBorder(isHovered ? Theme.foreground(0.2) : Theme.cardBorder))
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 

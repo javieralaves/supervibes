@@ -134,20 +134,13 @@ final class AreaPageModel {
     func createGoal(_ input: GoalInput) {
         error = nil
         Task {
-            let body = Components.Schemas.NewGoal(
-                title: input.title,
-                description: input.description.isEmpty ? nil : input.description,
-                targetDate: input.targetDate,
-                icon: .init(rawValue: input.icon) ?? .target02Icon,
-                color: .init(rawValue: input.color) ?? .violet,
-                areaId: id
-            )
+            let body = Components.Schemas.NewGoal(new: input, areaId: id)
             do {
                 switch try await client.createGoal(body: .json(body)) {
                 case .created:
                     await refresh()
                 case .badRequest(let bad):
-                    error = (try? bad.body.json.error.message) ?? "Couldn’t add that goal."
+                    error = (try? bad.body.json.error.message) ?? "Couldn’t add that \(input.kind.noun)."
                 case .unauthorized:
                     await auth.sessionEnded()
                 case .undocumented(let status, _):

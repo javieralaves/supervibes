@@ -198,16 +198,10 @@ private struct LifeScreen: View {
     private func confirmDelete(_ goal: Goal) {
         guard let overlays else { return }
         overlays.showDialog {
-            ConfirmDialog(
-                title: "Delete this goal?",
-                message: "Its sources and progress read will be removed too. Your connected apps aren’t affected.",
-                confirmTitle: "Delete goal",
-                onCancel: { overlays.dismiss() },
-                onConfirm: {
-                    overlays.dismiss()
-                    model.delete(goal)
-                }
-            )
+            deleteGoalDialog(goal.kind, onCancel: { overlays.dismiss() }) {
+                overlays.dismiss()
+                model.delete(goal)
+            }
         }
     }
 
@@ -226,6 +220,19 @@ private struct LifeScreen: View {
             )
         }
     }
+}
+
+/// Asks before deleting a project or a practice, saying what goes with it.
+@MainActor private func deleteGoalDialog(_ kind: GoalKind, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) -> ConfirmDialog {
+    ConfirmDialog(
+        title: "Delete this \(kind.noun)?",
+        message: kind == .practice
+            ? "Its sessions go too: its blocks on the calendar and the ones you logged. Your connected apps aren’t affected."
+            : "Its sources and progress read will be removed too. Your connected apps aren’t affected.",
+        confirmTitle: "Delete \(kind.noun)",
+        onCancel: onCancel,
+        onConfirm: onConfirm
+    )
 }
 
 /// An area's own page with its data, in the app's window.
@@ -273,7 +280,7 @@ private struct AreaScreen: View {
                             remove: { Task { if await model.remove() { shell.open(.life) } } },
                             takeOut: { model.takeOut($0) },
                             moveIn: { model.moveIn($0) },
-                            newGoal: { newGoal(today: detail.today) }
+                            newGoal: { newGoal($0, today: detail.today) }
                         ),
                         reading: model.reading,
                         readError: model.readError,
@@ -285,12 +292,12 @@ private struct AreaScreen: View {
         .task { await model.refresh() }
     }
 
-    /// A new goal, started in this area.
-    private func newGoal(today: String) {
+    /// A new project or practice, started in this area.
+    private func newGoal(_ kind: GoalKind, today: String) {
         guard let overlays else { return }
         overlays.showDialog {
             GoalDialog(
-                input: GoalInput(),
+                input: GoalInput(kind: kind),
                 today: today,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
@@ -337,7 +344,42 @@ private struct GoalScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                if let detail = model.detail {
+                if let detail = model.detail, detail.goal.isPractice {
+                    PracticePage(
+                        detail: detail,
+                        headerError: model.headerError,
+                        practiceError: model.practiceError,
+                        onBack: { shell.open(.life) },
+                        onOpenArea: { shell.openArea($0) },
+                        areas: model.areas,
+                        onSetArea: { areaId in Task { await model.setArea(areaId) } },
+                        onNewArea: newArea,
+                        onLogOne: model.logSession,
+                        onPause: model.pause(until:),
+                        onResume: model.resume,
+                        onEdit: { edit(detail.goal) },
+                        onDelete: confirmDelete
+                    ) {
+                        // Its sources feed its sessions' recaps; its activity holds them and any notes.
+                        SourcesSection(
+                            sources: detail.sources,
+                            options: detail.connectionOptions,
+                            goal: detail.goal,
+                            actions: SourceActions(
+                                save: { await model.saveSource($0, $1, $2) },
+                                delete: { model.deleteSource($0) },
+                                openConnections: { shell.open(.connections) }
+                            )
+                        )
+                        NotesSection(
+                            notes: detail.notes,
+                            author: detail.author,
+                            clock: detail.clock ?? .device,
+                            error: model.noteError,
+                            actions: model.noteActions
+                        )
+                    }
+                } else if let detail = model.detail {
                     GoalPage(
                         detail: detail,
                         requestingRead: model.requestingRead,
@@ -445,16 +487,10 @@ private struct GoalScreen: View {
     private func confirmDelete() {
         guard let overlays else { return }
         overlays.showDialog {
-            ConfirmDialog(
-                title: "Delete this goal?",
-                message: "Its sources and progress read will be removed too. Your connected apps aren’t affected.",
-                confirmTitle: "Delete goal",
-                onCancel: { overlays.dismiss() },
-                onConfirm: {
-                    overlays.dismiss()
-                    delete()
-                }
-            )
+            deleteGoalDialog(model.detail?.goal.kind ?? .project, onCancel: { overlays.dismiss() }) {
+                overlays.dismiss()
+                delete()
+            }
         }
     }
 

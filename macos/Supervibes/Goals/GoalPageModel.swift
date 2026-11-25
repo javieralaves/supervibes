@@ -122,13 +122,7 @@ final class GoalPageModel {
     func save(_ input: GoalInput) {
         headerError = nil
         Task {
-            let body = Components.Schemas.GoalInput(
-                title: input.title,
-                description: input.description.isEmpty ? nil : input.description,
-                targetDate: input.targetDate,
-                icon: .init(rawValue: input.icon) ?? .target02Icon,
-                color: .init(rawValue: input.color) ?? .violet
-            )
+            let body = Components.Schemas.GoalInput(edited: input, isPractice: detail?.goal.isPractice ?? false)
             do {
                 switch try await client.updateGoal(path: .init(id: id), body: .json(body)) {
                 case .ok(let ok):
@@ -146,6 +140,78 @@ final class GoalPageModel {
                 }
             } catch {
                 headerError = "Couldn’t save. Check your connection."
+            }
+        }
+    }
+
+    // MARK: A practice
+
+    /// Why the last change to a practice (logging one, pausing) didn't go through.
+    private(set) var practiceError: String?
+
+    /// Logs a session done today, off the calendar, and reloads for the new count.
+    func logSession() {
+        practiceError = nil
+        Task {
+            do {
+                switch try await client.addPracticeSession(path: .init(id: id), body: .json(.init(done: true))) {
+                case .created:
+                    await refresh()
+                case .badRequest(let bad):
+                    practiceError = (try? bad.body.json.error.message) ?? "Couldn’t log that."
+                case .notFound:
+                    load = .gone
+                case .unauthorized:
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    practiceError = "Couldn’t log that (the server answered \(status))."
+                }
+            } catch {
+                practiceError = "Couldn’t log that. Check your connection."
+            }
+        }
+    }
+
+    /// Pauses the practice from today until `resumesOn` ("YYYY-MM-DD"), or until it's resumed when nil.
+    func pause(until resumesOn: String?) {
+        practiceError = nil
+        Task {
+            do {
+                switch try await client.pausePractice(path: .init(id: id), body: .json(.init(resumesOn: resumesOn ?? ""))) {
+                case .noContent:
+                    await refresh()
+                case .badRequest(let bad):
+                    practiceError = (try? bad.body.json.error.message) ?? "Couldn’t pause it."
+                case .notFound:
+                    load = .gone
+                case .unauthorized:
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    practiceError = "Couldn’t pause it (the server answered \(status))."
+                }
+            } catch {
+                practiceError = "Couldn’t pause it. Check your connection."
+            }
+        }
+    }
+
+    /// Picks a paused practice up again today.
+    func resume() {
+        practiceError = nil
+        Task {
+            do {
+                switch try await client.resumePractice(path: .init(id: id)) {
+                case .noContent:
+                    await refresh()
+                case .notFound:
+                    load = .gone
+                case .unauthorized:
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    practiceError = "Couldn’t resume it (the server answered \(status))."
+                }
+            } catch {
+                practiceError = "Couldn’t resume it. Check your connection."
             }
         }
     }
@@ -505,7 +571,20 @@ extension GoalDetail {
                     ConnectionOption(id: option.id, provider: $0, label: option.label, relationHint: option.relationHint)
                 }
             },
-            area: body.area.map { AreaRef(id: $0.id, name: $0.name, icon: $0.icon) }
+            area: body.area.map { AreaRef(id: $0.id, name: $0.name, icon: $0.icon) },
+            practice: body.practice.map { practice in
+                PracticeDetail(
+                    weeks: practice.weeks.map(Practice.Week.init(api:)),
+                    sessions: practice.sessions.compactMap { session in
+                        guard let source = PracticeSession.Source(rawValue: session.source.rawValue),
+                              let state = PracticeSession.State(rawValue: session.state.rawValue) else { return nil }
+                        return PracticeSession(
+                            id: session.id, source: source, day: session.day, state: state,
+                            title: session.title, startsAt: session.startsAt, endsAt: session.endsAt
+                        )
+                    }
+                )
+            }
         )
     }
 }

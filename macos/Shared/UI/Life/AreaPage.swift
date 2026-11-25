@@ -2,7 +2,8 @@ import SwiftUI
 
 /// An area's own page, from its card on Life or a goal's page: one column, top to bottom. The way back to Life, the
 /// area's tile and name, its read, where you are and where you're going in your own words (a prompt for each until
-/// said), then the goals moving it, each opening its own page, with ways to start or move one in.
+/// said), then how you get there: its projects, then its practices, each opening its own page, with ways to start or
+/// move one in.
 ///
 /// The pencil edits it in place: its icon, name and words become fields, each goal can be taken out of it, another
 /// goal moved in, and the area removed. Done saves.
@@ -153,16 +154,29 @@ struct AreaPage: View {
         }
     }
 
-    // MARK: Goals
+    // MARK: Projects and practices
 
+    /// How you get there: projects, then practices, always in that order so every area reads the same.
     private var goals: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel("Goals")
-            if detail.goals.isEmpty, actions == nil || isEditing {
-                Text("No goals in this area yet.").appText(.sm).foregroundStyle(Theme.muted).padding(.top, 12)
-            } else if !detail.goals.isEmpty {
+        VStack(alignment: .leading, spacing: 32) {
+            section(.project, detail.goals.filter { !$0.isPractice })
+            section(.practice, detail.goals.filter(\.isPractice))
+            if isEditing, let actions {
+                MoveGoalHere(title: "Move a project or practice into \(area.name)", goals: otherGoals, onPick: actions.moveIn)
+            }
+        }
+    }
+
+    private func section(_ kind: GoalKind, _ goals: [Goal]) -> some View {
+        let noun = kind == .practice ? "practices" : "projects"
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(kind == .practice ? "Practices" : "Projects")
+            if goals.isEmpty {
+                Text(kind == .practice ? "None yet: nothing kept up here on a rhythm." : "None right now: nothing here with a finish line.")
+                    .appText(.sm).foregroundStyle(Theme.muted).padding(.top, 8)
+            } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(detail.goals.enumerated()), id: \.element.id) { index, goal in
+                    ForEach(Array(goals.enumerated()), id: \.element.id) { index, goal in
                         if index > 0 { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
                         GoalRow(
                             goal: goal,
@@ -177,15 +191,12 @@ struct AreaPage: View {
                 .padding(.top, 12)
             }
 
-            if let actions {
+            if let actions, !isEditing {
                 HStack(spacing: 12) {
-                    if isEditing {
-                        MoveGoalHere(title: "Move a goal into \(area.name)", goals: otherGoals, onPick: actions.moveIn)
-                    } else if detail.goals.isEmpty {
-                        DashedButton(icon: .add, title: "New goal in this area", action: actions.newGoal)
-                        MoveGoalHere(title: "Move a goal here", goals: otherGoals, onPick: actions.moveIn)
-                    } else {
-                        DashedButton(icon: .add, title: "New goal in \(area.name)", action: actions.newGoal)
+                    DashedButton(icon: .add, title: "New \(kind.noun) in \(area.name)") { actions.newGoal(kind) }
+                    // In an empty area, a way to bring one in beside each.
+                    if detail.goals.isEmpty {
+                        MoveGoalHere(title: "Move one of your \(noun) here", goals: otherGoals.filter { $0.kind == kind }, onPick: actions.moveIn)
                     }
                 }
                 .padding(.top, 12)
@@ -250,7 +261,8 @@ struct AreaPageActions {
     var remove: () -> Void
     var takeOut: (Goal) -> Void
     var moveIn: (Goal) -> Void
-    var newGoal: () -> Void
+    /// Starts a project or a practice in the area.
+    var newGoal: (GoalKind) -> Void
 }
 
 /// "← Life": `text-sm font-medium text-muted hover:text-foreground`, as on a goal's page.
@@ -377,7 +389,7 @@ private struct MoveGoalHere: View {
             overlays?.showMenu(anchor: anchor, alignLeading: true) {
                 MenuPanel(width: 320) {
                     if goals.isEmpty {
-                        Text("Every goal is in this area already.")
+                        Text("Every project and practice is in this area already.")
                             .appText(.sm).foregroundStyle(Theme.muted)
                             .padding(10)
                     }
@@ -403,7 +415,7 @@ private struct GoalMenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                GoalBadge(icon: goal.icon, color: goal.color, size: .mini)
+                GoalBadge(goal: goal, size: .mini)
                 Text(goal.title).appText(.sm, .medium).foregroundStyle(Theme.foreground).lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -441,8 +453,9 @@ private struct RemoveAreaLink: View {
     }
 }
 
-/// A goal in the area: its badge, title and this week's objective, its status, and a way into its page. While
-/// editing, an × in place of the status takes it out of the area, and the row itself doesn't open the goal.
+/// A project or practice in the area: its badge, title and this week's objective (a practice: its rhythm and this
+/// week's pips), its status, and a way into its page. While editing, an × in place of the status takes it out of the
+/// area, and the row itself doesn't open it.
 private struct GoalRow: View {
     let goal: Goal
     let week: GoalWeek?
@@ -456,7 +469,9 @@ private struct GoalRow: View {
         } else {
             Button(action: action) {
                 row {
-                    if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
+                    if let practice = goal.practice {
+                        PracticeStatusText(practice: practice)
+                    } else if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
                         StatusText(status: status, basis: basis)
                     } else {
                         Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
@@ -473,14 +488,23 @@ private struct GoalRow: View {
 
     private func row(@ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 12) {
-            GoalBadge(icon: goal.icon, color: goal.color, size: .card)
+            GoalBadge(goal: goal, size: .card)
             VStack(alignment: .leading, spacing: 2) {
                 Text(goal.title)
                     .font(.app(14, .semibold))
                     .tracking(-0.01 * 14)
                     .foregroundStyle(Theme.foreground)
                     .lineLimit(1)
-                if let objective = week?.objective, !objective.isEmpty {
+                if let practice = goal.practice {
+                    HStack(spacing: 8) {
+                        RhythmLabel(perWeek: practice.perWeek, iconSize: 11)
+                        Text("·")
+                        PracticePips(pips: practice.pips, color: goal.color, size: 7)
+                        Text("\(practice.week.done) of \(practice.perWeek) this week").monospacedDigit()
+                    }
+                    .font(.app(12.5))
+                    .foregroundStyle(Theme.muted)
+                } else if let objective = week?.objective, !objective.isEmpty {
                     HStack(spacing: 6) {
                         Icon.flag.image(size: 11)
                         Text(objective).font(.app(12.5)).lineLimit(1)
@@ -496,7 +520,7 @@ private struct GoalRow: View {
     }
 }
 
-@MainActor private let previewActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: {})
+@MainActor private let previewActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in })
 
 #Preview("Madrid") {
     AreaPage(detail: Fixtures.areaDetail, actions: previewActions, onRead: {}, now: Fixtures.referenceNow)
@@ -508,6 +532,12 @@ private struct GoalRow: View {
     AreaPage(detail: Fixtures.areaDetail, actions: previewActions, startsEditing: true)
         .background(Theme.background)
         .frame(width: 900, height: 940)
+}
+
+#Preview("Health, with practices") {
+    AreaPage(detail: Fixtures.practiceAreaDetail, actions: previewActions, now: Fixtures.referenceNow)
+        .background(Theme.background)
+        .frame(width: 900, height: 1000)
 }
 
 #Preview("A new area") {
