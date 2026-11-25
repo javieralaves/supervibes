@@ -3,8 +3,15 @@ import * as z from "zod";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 
-/** Soft cap so goals stay "a handful". */
+/** A goal is a project (it has a finish line) or a practice (kept up a number of times a week). */
+export const GOAL_KINDS = ["project", "practice"] as const;
+
+/** Soft cap so goals stay "a handful": this many projects, and as many practices. */
 export const MAX_GOALS = 12;
+/** A practice is meant to happen at most this many times a week. */
+export const MAX_PER_WEEK = 14;
+/** A practice's minimum session length can't be more than this many minutes. */
+export const MAX_MIN_MINUTES = 480;
 export const MAX_GOAL_TITLE = 120;
 export const MAX_GOAL_DESCRIPTION = 1000;
 
@@ -32,3 +39,23 @@ export const goalInputSchema = z.object({
 });
 
 export type GoalInput = z.infer<typeof goalInputSchema>;
+
+/**
+ * A practice's own fields, on top of the goal's. Left out keeps what it has when editing; a minimum of 0 clears it
+ * (the Mac app's client can't send an explicit null).
+ */
+export const practiceFieldsSchema = z.object({
+  perWeek: z
+    .int()
+    .min(1, "Pick at least once a week.")
+    .max(MAX_PER_WEEK, `Keep it to ${MAX_PER_WEEK} times a week or fewer.`)
+    .optional(),
+  minMinutes: z
+    .int()
+    .min(0)
+    .max(MAX_MIN_MINUTES, `Keep the minimum under ${MAX_MIN_MINUTES / 60} hours.`)
+    .optional(),
+  autoRecaps: z.boolean().optional(),
+});
+
+export type PracticeFields = z.infer<typeof practiceFieldsSchema>;

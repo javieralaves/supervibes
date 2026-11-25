@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs 'src/**/*.test.ts'",
     "api:spec": "node scripts/api-spec.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

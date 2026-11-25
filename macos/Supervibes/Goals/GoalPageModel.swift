@@ -102,6 +102,10 @@ final class GoalPageModel {
                     pollWhileReading()
                 case .notFound:
                     load = .gone
+                case .badRequest(let response):
+                    // A practice: its status is counted, never read.
+                    requestingRead = false
+                    readError = (try? response.body.json.error.message) ?? "Couldn’t start a read."
                 case .unauthorized:
                     await auth.sessionEnded()
                 case .undocumented(let status, _):

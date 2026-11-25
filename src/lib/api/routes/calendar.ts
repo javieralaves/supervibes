@@ -9,6 +9,7 @@ import type { BlockAgenda } from "@/lib/block-schema";
 import type { BlockRecap } from "@/lib/recap-schema";
 import { CALENDAR_DAYS_AHEAD, CALENDAR_DAYS_BACK, listBlocksAroundNow, type BlockDTO } from "@/lib/blocks";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
+import { GOAL_KINDS } from "@/lib/goal-schema";
 import { listGoals } from "@/lib/goals";
 import { draftRecapsAfterResponse, listAutoRecapCandidates } from "@/lib/recap";
 import { getSettings, getTimeZone } from "@/lib/settings";
@@ -95,6 +96,7 @@ export const CalendarBlockSchema = z
     source: BlockSourceSchema.nullable().openapi({
       description: "For a block imported from an event in the person's own calendars: where it came from. Null otherwise.",
     }),
+    missed: z.boolean().openapi({ description: "For a practice's block: the person said it didn't happen, so it doesn't count." }),
   })
   .openapi("CalendarBlock");
 
@@ -119,6 +121,8 @@ const CalendarGoalSchema = z
     title: z.string(),
     icon: z.string(),
     color: z.string(),
+    kind: z.enum(GOAL_KINDS).openapi({ description: "A project, or a practice kept up a number of times a week." }),
+    perWeek: z.int().nullable().openapi({ description: "For a practice: how many sessions a week it's meant to have." }),
   })
   .openapi("CalendarGoal");
 
@@ -188,6 +192,7 @@ export function asCalendarBlock(block: BlockDTO, drafting: Set<string>): z.infer
       block.sourceKey && block.sourceCalendar && block.sourceSnapshot
         ? { key: block.sourceKey, calendar: block.sourceCalendar, snapshot: block.sourceSnapshot }
         : null,
+    missed: block.missed,
   };
 }
 
@@ -222,6 +227,8 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
         title: goal.title,
         icon: goal.icon,
         color: isGoalColor(goal.color) ? goal.color : DEFAULT_GOAL_COLOR,
+        kind: goal.kind,
+        perWeek: goal.perWeek,
       })),
       tasks: tasks.map(({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn }) => ({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn })),
       settings,

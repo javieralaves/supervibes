@@ -99,6 +99,10 @@
           },
           "source": {
             "$ref": "#/components/schemas/BlockSource"
+          },
+          "missed": {
+            "type": "boolean",
+            "description": "For a practice's block: the person said it didn't happen, so it doesn't count."
           }
         },
         "required": [
@@ -119,7 +123,8 @@
           "agenda",
           "recap",
           "recapPost",
-          "source"
+          "source",
+          "missed"
         ]
       },
       "BlockAgenda": {
@@ -680,13 +685,28 @@
           },
           "color": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice"
+            ],
+            "description": "A project, or a practice kept up a number of times a week."
+          },
+          "perWeek": {
+            "type": "integer",
+            "nullable": true,
+            "description": "For a practice: how many sessions a week it's meant to have."
           }
         },
         "required": [
           "id",
           "title",
           "icon",
-          "color"
+          "color",
+          "kind",
+          "perWeek"
         ]
       },
       "CalendarTask": {
@@ -934,6 +954,21 @@
               "$ref": "#/components/schemas/TrajectoryDay"
             },
             "description": "The last 28 days, oldest first."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice"
+            ],
+            "description": "A project (it has a finish line), or a practice kept up a number of times a week."
+          },
+          "autoRecaps": {
+            "type": "boolean",
+            "description": "Its sessions get a recap drafted on their own once they're over."
+          },
+          "practice": {
+            "$ref": "#/components/schemas/Practice"
           }
         },
         "required": [
@@ -945,7 +980,10 @@
           "color",
           "areaId",
           "updatedAt",
-          "trajectory"
+          "trajectory",
+          "kind",
+          "autoRecaps",
+          "practice"
         ]
       },
       "TrajectoryDay": {
@@ -991,6 +1029,143 @@
           "basis",
           "reason",
           "carried"
+        ]
+      },
+      "Practice": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "perWeek": {
+            "type": "integer",
+            "description": "How many sessions a week it's meant to have."
+          },
+          "minMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Blocks shorter than this don't count; null: any length."
+          },
+          "week": {
+            "$ref": "#/components/schemas/PracticeThisWeek"
+          },
+          "status": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "on_track",
+                  "at_risk",
+                  "off_track"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "description": "Sessions in the weeks it looked at, each week counted up to perWeek."
+              },
+              "expected": {
+                "type": "integer",
+                "description": "What was meant in those weeks: perWeek for each."
+              },
+              "weeks": {
+                "type": "integer",
+                "description": "How many full weeks it looked at: up to 4, not paused, since it was made."
+              },
+              "reason": {
+                "type": "string",
+                "description": "In a few words, e.g. \"8 of the last 12\"."
+              }
+            },
+            "required": [
+              "status",
+              "done",
+              "expected",
+              "weeks",
+              "reason"
+            ],
+            "description": "Counted from the last 4 full weeks; null with none yet, or while it's paused."
+          },
+          "paused": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "startsOn": {
+                "type": "string",
+                "format": "date"
+              },
+              "resumesOn": {
+                "type": "string",
+                "nullable": true,
+                "format": "date",
+                "description": "The day it picks up again; null until it's resumed."
+              }
+            },
+            "required": [
+              "startsOn",
+              "resumesOn"
+            ],
+            "description": "The pause it's in today, if any."
+          }
+        },
+        "required": [
+          "perWeek",
+          "minMinutes",
+          "week",
+          "status",
+          "paused"
+        ],
+        "description": "For a practice: its rhythm, this week and its status. Null for a project."
+      },
+      "PracticeThisWeek": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PracticeWeek"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "left": {
+                "type": "integer",
+                "description": "Sessions still to do this week: perWeek less what's counted, never below 0."
+              }
+            },
+            "required": [
+              "left"
+            ]
+          }
+        ]
+      },
+      "PracticeWeek": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "description": "The Monday it starts on."
+          },
+          "done": {
+            "type": "integer",
+            "description": "Sessions that counted."
+          },
+          "planned": {
+            "type": "integer",
+            "description": "Sessions still to come: blocks not over yet, and ones meant for a day from today on."
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Paused at any point, so it's left out of the status."
+          },
+          "beforeStart": {
+            "type": "boolean",
+            "description": "It started before the practice was made, so it's left out of the status."
+          }
+        },
+        "required": [
+          "start",
+          "done",
+          "planned",
+          "paused",
+          "beforeStart"
         ]
       },
       "GoalWeek": {
@@ -1131,6 +1306,26 @@
             "nullable": true,
             "format": "uuid",
             "description": "An area of the person's to start the goal in; left out or null: none."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice"
+            ],
+            "description": "Left out: a project. A practice needs perWeek and has no target date."
+          },
+          "perWeek": {
+            "type": "integer",
+            "description": "For a practice: sessions a week, 1 to 14."
+          },
+          "minMinutes": {
+            "type": "integer",
+            "description": "For a practice: the shortest block that counts, up to 480 minutes."
+          },
+          "autoRecaps": {
+            "type": "boolean",
+            "description": "Draft its sessions' recaps on their own."
           }
         },
         "required": [
@@ -1225,6 +1420,31 @@
             },
             "description": "Open tasks in their order (checked-off ones move to the activity)."
           },
+          "practice": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "weeks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PracticeWeek"
+                },
+                "description": "The last 8 full weeks, oldest first."
+              },
+              "sessions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PracticeSession"
+                },
+                "description": "Every session from the first of those weeks to the end of next week, earliest first."
+              }
+            },
+            "required": [
+              "weeks",
+              "sessions"
+            ],
+            "description": "For a practice: its last weeks and its sessions. Null for a project."
+          },
           "suggestions": {
             "type": "array",
             "items": {
@@ -1292,6 +1512,7 @@
           "canRead",
           "week",
           "tasks",
+          "practice",
           "suggestions",
           "clock",
           "notes",
@@ -1500,6 +1721,62 @@
           "plannedWeek",
           "dueOn",
           "scheduledAt"
+        ]
+      },
+      "PracticeSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The block's id, or the off-calendar session's."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "block",
+              "day"
+            ],
+            "description": "A block on the calendar, or one off it (planned for its day, or done)."
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "done",
+              "planned",
+              "missed",
+              "short",
+              "lapsed"
+            ],
+            "description": "done counts; planned is still to come; missed: a block that didn't happen; short: a block under the minimum; lapsed: a day that went by without being ticked off."
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "A block's own title; null for the practice's."
+          },
+          "startsAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "day",
+          "state",
+          "title",
+          "startsAt",
+          "endsAt"
         ]
       },
       "Suggestion": {
@@ -1776,6 +2053,18 @@
               "pink",
               "slate"
             ]
+          },
+          "perWeek": {
+            "type": "integer",
+            "description": "For a practice: sessions a week, 1 to 14. Left out keeps it."
+          },
+          "minMinutes": {
+            "type": "integer",
+            "description": "For a practice: the shortest block that counts, up to 480 minutes; 0 clears it. Left out keeps it."
+          },
+          "autoRecaps": {
+            "type": "boolean",
+            "description": "Draft its sessions' recaps on their own. Left out keeps it."
           }
         },
         "required": [
@@ -2747,6 +3036,84 @@
           "day",
           "status",
           "carried"
+        ]
+      },
+      "OffCalendarSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "The day it's for, in the person's own calendar."
+          },
+          "doneAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When it was done; null while it's only planned for its day."
+          }
+        },
+        "required": [
+          "id",
+          "day",
+          "doneAt"
+        ]
+      },
+      "NewPracticeSession": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "Left out: today, in the person's calendar."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "True logs one done; false plans one for the day, with no time."
+          }
+        },
+        "required": [
+          "done"
+        ]
+      },
+      "PracticeSessionPatch": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "Move it to another day. Left out keeps it."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Tick it off, or back. Left out keeps it."
+          }
+        }
+      },
+      "PracticePause": {
+        "type": "object",
+        "properties": {
+          "resumesOn": {
+            "type": "string",
+            "description": "The day it picks up again (YYYY-MM-DD, after today), or an empty string to pause until it's resumed."
+          }
+        },
+        "required": [
+          "resumesOn"
+        ]
+      },
+      "BlockMissed": {
+        "type": "object",
+        "properties": {
+          "missed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "missed"
         ]
       }
     },
@@ -4473,6 +4840,16 @@
           "202": {
             "description": "Started; poll the goal until readPending is false"
           },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Not signed in, or the session ended.",
             "content": {
@@ -6181,6 +6558,398 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/sessions": {
+      "post": {
+        "operationId": "addPracticeSession",
+        "summary": "Log a practice's session, or plan one for a day with no time",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPracticeSession"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffCalendarSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/sessions/{sessionId}": {
+      "patch": {
+        "operationId": "updatePracticeSession",
+        "summary": "Tick off a session planned for a day, or move it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeSessionPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffCalendarSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePracticeSession",
+        "summary": "Remove a session that isn't on the calendar",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{id}/pause": {
+      "put": {
+        "operationId": "pausePractice",
+        "summary": "Pause a practice from today: its weeks stay out of its status and its area's",
+        "description": "Pausing one that's already paused changes when it picks up again.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticePause"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Paused"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "resumePractice",
+        "summary": "Pick a paused practice up again today",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resumed"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/blocks/{blockId}/missed": {
+      "put": {
+        "operationId": "setBlockMissed",
+        "summary": "Say a practice's block didn't happen, so it doesn't count; or that it did after all",
+        "description": "Only for a practice's block, once it's over.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "blockId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockMissed"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
           },
           "400": {
             "description": "The request didn't make sense.",

@@ -3,8 +3,9 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { goalStatuses } from "@/db/schema";
+import { goals, goalStatuses } from "@/db/schema";
 import type { AiTrigger } from "@/lib/ai-usage";
+import { listPracticeTrajectories } from "@/lib/practice";
 import {
   buildTrajectory,
   TRAJECTORY_DAYS,
@@ -58,16 +59,27 @@ export async function recordStatus(
 
 /**
  * Each goal's trajectory over the last few weeks, day by day in the person's own
- * calendar (see buildTrajectory), with how many reads it rests on.
+ * calendar (see buildTrajectory), with how many reads it rests on. A practice's is
+ * counted from its sessions instead (src/lib/practice.ts), and rests on no reads.
  */
 export async function listTrajectories(
   userId: string,
-  goalIds: string[],
+  ids: string[],
   timeZone: string | null,
   days = TRAJECTORY_DAYS,
 ): Promise<Map<string, { days: TrajectoryDay[]; reads: number }>> {
   const out = new Map<string, { days: TrajectoryDay[]; reads: number }>();
+  if (ids.length === 0) return out;
+
+  const practices = await db
+    .select({ id: goals.id, perWeek: goals.perWeek, minMinutes: goals.minMinutes, createdAt: goals.createdAt })
+    .from(goals)
+    .where(and(eq(goals.userId, userId), inArray(goals.id, ids), eq(goals.kind, "practice")));
+  const counted = await listPracticeTrajectories(userId, practices, timeZone, days);
+  for (const [id, trajectory] of counted) out.set(id, { days: trajectory, reads: 0 });
+  const goalIds = ids.filter((id) => !counted.has(id));
   if (goalIds.length === 0) return out;
+
   const today = todayIn(timeZone);
   // A day early, so the window's first day in any time zone is covered; days outside it are dropped.
   const since = new Date(`${addDays(today, -days)}T00:00:00Z`);

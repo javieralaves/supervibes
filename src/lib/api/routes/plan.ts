@@ -84,7 +84,7 @@ export const plan = new OpenAPIHono<ApiEnv>().openapi(planRoute, async (c) => {
   const weekStart = weekStartOf(today);
   const weekBegins = startOfDayIn(weekStart, zone);
   const twoWeeksEnd = startOfDayIn(addDays(weekStart, 14), zone);
-  const [list, open, done, schedules, blocks, objectives, settings] = await Promise.all([
+  const [all, open, done, schedules, blocks, objectives, settings] = await Promise.all([
     listGoals(userId),
     listOpenTasks(userId),
     listTasksDoneSince(userId, weekBegins),
@@ -93,6 +93,8 @@ export const plan = new OpenAPIHono<ApiEnv>().openapi(planRoute, async (c) => {
     listObjectivesBetween(userId, weekStart, weekStart),
     getSettings(userId),
   ]);
+  // Practices have no tasks to plan; their blocks stay in `blocks`, as time that's taken.
+  const list = all.filter((goal) => goal.kind === "project");
   const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
   return c.json(
     {

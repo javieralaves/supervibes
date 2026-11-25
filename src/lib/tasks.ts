@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, max, min, sql 
 
 import { db } from "@/db";
 import { calendarBlocks, goals, goalTasks } from "@/db/schema";
+import { NO_TASKS, PracticeError } from "@/lib/goals";
 import { createTaskDonePost, deleteTaskDonePosts } from "@/lib/posts";
 import { getTimeZone } from "@/lib/settings";
 import { todayIn, weekStartOf } from "@/lib/target-date";
@@ -158,10 +159,11 @@ export async function createTask(
   extra: { minutes?: number; description?: string | null } & PlacementPatch = {},
 ): Promise<TaskDTO | null> {
   const [goal] = await db
-    .select({ id: goals.id })
+    .select({ id: goals.id, kind: goals.kind })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) return null;
+  if (goal.kind === "practice") throw new PracticeError(NO_TASKS);
   const placed = touchesPlacement(extra)
     ? await applyPlacement(userId, { plannedFor: null, plannedWeek: null }, extra)
     : { plannedFor: null, plannedWeek: null };

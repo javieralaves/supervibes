@@ -14,10 +14,12 @@ import { getReadStatus, requestRead } from "@/lib/background-read";
 import { GOAL_COLOR_KEYS } from "@/lib/goal-colors";
 import { goalWeekLoads, sessionBlocks } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
-import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
+import { GOAL_KINDS, goalInputSchema, MAX_GOALS, MAX_MIN_MINUTES, MAX_PER_WEEK, practiceFieldsSchema } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
 import { getArea, ownsAreas, setGoalArea } from "@/lib/areas";
-import { createGoal, deleteGoal, GoalLimitError, listGoals, listGoalUpdatedAt, updateGoal, type GoalDTO } from "@/lib/goals";
+import { createGoal, deleteGoal, GoalLimitError, listGoals, listGoalUpdatedAt, PracticeError, updateGoal, type GoalDTO } from "@/lib/goals";
+import { getPracticeDetail, listPracticeStates, type PracticeSessionView } from "@/lib/practice";
+import { statusReason, type PracticeState } from "@/lib/practice-count";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
 import { getSettings, getTimeZone } from "@/lib/settings";
@@ -43,6 +45,43 @@ export const TrajectoryDaySchema = z
 /** A goal's session time on the calendar, clipped to the weeks it's sent for. */
 export const ProtectedBlockSchema = z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock");
 
+const PracticeWeekSchema = z
+  .object({
+    start: z.iso.date().openapi({ description: "The Monday it starts on." }),
+    done: z.int().openapi({ description: "Sessions that counted." }),
+    planned: z.int().openapi({ description: "Sessions still to come: blocks not over yet, and ones meant for a day from today on." }),
+    paused: z.boolean().openapi({ description: "Paused at any point, so it's left out of the status." }),
+    beforeStart: z.boolean().openapi({ description: "It started before the practice was made, so it's left out of the status." }),
+  })
+  .openapi("PracticeWeek");
+
+const PracticeSchema = z
+  .object({
+    perWeek: z.int().openapi({ description: "How many sessions a week it's meant to have." }),
+    minMinutes: z.int().nullable().openapi({ description: "Blocks shorter than this don't count; null: any length." }),
+    week: PracticeWeekSchema.extend({
+      left: z.int().openapi({ description: "Sessions still to do this week: perWeek less what's counted, never below 0." }),
+    }).openapi("PracticeThisWeek"),
+    status: z
+      .object({
+        status: z.enum(["on_track", "at_risk", "off_track"]),
+        done: z.int().openapi({ description: "Sessions in the weeks it looked at, each week counted up to perWeek." }),
+        expected: z.int().openapi({ description: "What was meant in those weeks: perWeek for each." }),
+        weeks: z.int().openapi({ description: "How many full weeks it looked at: up to 4, not paused, since it was made." }),
+        reason: z.string().openapi({ description: "In a few words, e.g. \"8 of the last 12\"." }),
+      })
+      .nullable()
+      .openapi({ description: "Counted from the last 4 full weeks; null with none yet, or while it's paused." }),
+    paused: z
+      .object({
+        startsOn: z.iso.date(),
+        resumesOn: z.iso.date().nullable().openapi({ description: "The day it picks up again; null until it's resumed." }),
+      })
+      .nullable()
+      .openapi({ description: "The pause it's in today, if any." }),
+  })
+  .openapi("Practice");
+
 export const GoalSchema = z
   .object({
     id: z.string(),
@@ -56,6 +95,9 @@ export const GoalSchema = z
       description: "When the goal last moved: its latest progress read or note, or when it was made if it has neither.",
     }),
     trajectory: z.array(TrajectoryDaySchema).openapi({ description: "The last 28 days, oldest first." }),
+    kind: z.enum(GOAL_KINDS).openapi({ description: "A project (it has a finish line), or a practice kept up a number of times a week." }),
+    autoRecaps: z.boolean().openapi({ description: "Its sessions get a recap drafted on their own once they're over." }),
+    practice: PracticeSchema.nullable().openapi({ description: "For a practice: its rhythm, this week and its status. Null for a project." }),
   })
   .openapi("Goal");
 
@@ -94,6 +136,11 @@ const GoalInputSchema = z
     targetDate: z.string().nullable().optional().openapi({ description: "YYYY-MM-DD; left out or null: none." }),
     icon: z.enum(GOAL_ICON_NAMES),
     color: z.enum(GOAL_COLOR_KEYS),
+    perWeek: z.int().optional().openapi({ description: `For a practice: sessions a week, 1 to ${MAX_PER_WEEK}. Left out keeps it.` }),
+    minMinutes: z.int().optional().openapi({
+      description: `For a practice: the shortest block that counts, up to ${MAX_MIN_MINUTES} minutes; 0 clears it. Left out keeps it.`,
+    }),
+    autoRecaps: z.boolean().optional().openapi({ description: "Draft its sessions' recaps on their own. Left out keeps it." }),
   })
   .openapi("GoalInput");
 
@@ -107,6 +154,12 @@ const NewGoalSchema = z
     icon: z.enum(GOAL_ICON_NAMES),
     color: z.enum(GOAL_COLOR_KEYS),
     areaId: z.uuid().nullable().optional().openapi({ description: "An area of the person's to start the goal in; left out or null: none." }),
+    kind: z.enum(GOAL_KINDS).optional().openapi({ description: "Left out: a project. A practice needs perWeek and has no target date." }),
+    perWeek: z.int().optional().openapi({ description: `For a practice: sessions a week, 1 to ${MAX_PER_WEEK}.` }),
+    minMinutes: z.int().optional().openapi({
+      description: `For a practice: the shortest block that counts, up to ${MAX_MIN_MINUTES} minutes.`,
+    }),
+    autoRecaps: z.boolean().optional().openapi({ description: "Draft its sessions' recaps on their own." }),
   })
   .openapi("NewGoal");
 
@@ -209,6 +262,30 @@ const GoalDetailSchema = z
       done: z.array(TaskSchema).openapi({ description: "Tasks checked off this week, most recently first." }),
     }),
     tasks: z.array(TaskSchema).openapi({ description: "Open tasks in their order (checked-off ones move to the activity)." }),
+    practice: z
+      .object({
+        weeks: z.array(PracticeWeekSchema).openapi({ description: "The last 8 full weeks, oldest first." }),
+        sessions: z
+          .array(
+            z
+              .object({
+                id: z.string().openapi({ description: "The block's id, or the off-calendar session's." }),
+                source: z.enum(["block", "day"]).openapi({ description: "A block on the calendar, or one off it (planned for its day, or done)." }),
+                day: z.iso.date(),
+                state: z.enum(["done", "planned", "missed", "short", "lapsed"]).openapi({
+                  description:
+                    "done counts; planned is still to come; missed: a block that didn't happen; short: a block under the minimum; lapsed: a day that went by without being ticked off.",
+                }),
+                title: z.string().nullable().openapi({ description: "A block's own title; null for the practice's." }),
+                startsAt: z.iso.datetime().nullable(),
+                endsAt: z.iso.datetime().nullable(),
+              })
+              .openapi("PracticeSession"),
+          )
+          .openapi({ description: "Every session from the first of those weeks to the end of next week, earliest first." }),
+      })
+      .nullable()
+      .openapi({ description: "For a practice: its last weeks and its sessions. Null for a project." }),
     suggestions: z.array(SuggestionSchema).openapi({ description: "The latest read's suggestions still to handle." }),
     clock: z.enum(CLOCKS).nullable().openapi({ description: "The person's clock; null follows the device." }),
     notes: z.array(NoteSchema).openapi({ description: "The activity, newest first." }),
@@ -282,7 +359,12 @@ const readRoute = createRoute({
   summary: "Update status: start a progress read in the background",
   security: [{ bearerAuth: [] }],
   request: { params: goalParam },
-  responses: { 202: { description: "Started; poll the goal until readPending is false" }, 401: errorResponses[401], 404: notFound },
+  responses: {
+    202: { description: "Started; poll the goal until readPending is false" },
+    400: errorResponses[400],
+    401: errorResponses[401],
+    404: notFound,
+  },
 });
 
 const weekRoute = createRoute({
@@ -311,7 +393,30 @@ const areaRoute = createRoute({
   responses: { 204: { description: "Saved" }, ...errorResponses, 404: notFound },
 });
 
-export const asGoal = (goal: GoalDTO, trajectory: z.infer<typeof TrajectoryDaySchema>[], updatedAt: Date | undefined) => ({
+const asPractice = (goal: GoalDTO, state: PracticeState | undefined): z.infer<typeof PracticeSchema> | null => {
+  if (goal.kind !== "practice" || !state) return null;
+  const { start, done, planned, paused, beforeStart, left } = state.week;
+  return {
+    perWeek: goal.perWeek ?? 1,
+    minMinutes: goal.minMinutes,
+    week: { start, done, planned, paused, beforeStart, left },
+    status: state.status && { ...state.status, reason: statusReason(state.status) },
+    paused: state.paused,
+  };
+};
+
+export const asSession = (session: PracticeSessionView) => ({
+  ...session,
+  startsAt: session.startsAt?.toISOString() ?? null,
+  endsAt: session.endsAt?.toISOString() ?? null,
+});
+
+export const asGoal = (
+  goal: GoalDTO,
+  trajectory: z.infer<typeof TrajectoryDaySchema>[],
+  updatedAt: Date | undefined,
+  practice?: PracticeState,
+) => ({
   id: goal.id,
   title: goal.title,
   description: goal.description,
@@ -321,6 +426,9 @@ export const asGoal = (goal: GoalDTO, trajectory: z.infer<typeof TrajectoryDaySc
   areaId: goal.areaId,
   updatedAt: (updatedAt ?? new Date()).toISOString(),
   trajectory,
+  kind: goal.kind,
+  autoRecaps: goal.autoRecaps,
+  practice: asPractice(goal, practice),
 });
 
 /**
@@ -334,18 +442,25 @@ export async function loadGoals(userId: string, timeZone: string | null, only?: 
   const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
   const list = (await listGoals(userId)).filter((goal) => !only || only(goal));
   const ids = list.map((goal) => goal.id);
-  const [trajectories, updated, tasks, blocks, objectives] = await Promise.all([
+  const [trajectories, updated, tasks, blocks, objectives, practices] = await Promise.all([
     listTrajectories(userId, ids, timeZone),
     listGoalUpdatedAt(userId, ids),
     listOpenTasks(userId),
     listBlocks(userId, weekBounds.start, weekBounds.end),
     listObjectivesBetween(userId, weekStart, weekStart),
+    listPracticeStates(
+      userId,
+      list.filter((goal) => goal.kind === "practice"),
+      timeZone,
+    ),
   ]);
   const loads = goalWeekLoads(ids, tasks, blocks, weekBounds, today, new Date());
   const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
   return {
     today,
-    goals: list.map((goal) => asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today), updated.get(goal.id))),
+    goals: list.map((goal) =>
+      asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today), updated.get(goal.id), practices.get(goal.id)),
+    ),
     week: {
       start: weekStart,
       goals: ids.map((goalId) => ({
@@ -371,17 +486,25 @@ export const goals = new OpenAPIHono<ApiEnv>()
     if (!parsed.success) {
       return c.json(apiError("invalid_request", parsed.error.issues[0]?.message ?? "Check the form."), 400);
     }
+    const practiceFields = practiceFieldsSchema.safeParse(body);
+    if (!practiceFields.success) {
+      return c.json(apiError("invalid_request", practiceFields.error.issues[0]?.message ?? "Check the form."), 400);
+    }
+    const isPractice = body.kind === "practice";
+    const perWeek = practiceFields.data.perWeek;
+    if (isPractice && perWeek === undefined) return c.json(apiError("invalid_request", "Say how many times a week."), 400);
     const areaId = body.areaId ?? null;
     if (areaId && !(await ownsAreas(c.var.user.id, [areaId]))) {
       return c.json(apiError("invalid_request", AREA_GONE), 400);
     }
     try {
-      const goal = await createGoal(c.var.user.id, parsed.data, areaId);
-      return c.json(asGoal(goal, buildTrajectory([], null, todayIn(await getTimeZone(c.var.user.id))), new Date()), 201);
+      const userId = c.var.user.id;
+      const goal = await createGoal(userId, parsed.data, areaId, isPractice ? { ...practiceFields.data, perWeek: perWeek! } : null);
+      const timeZone = await getTimeZone(userId);
+      const practice = isPractice ? (await listPracticeStates(userId, [goal], timeZone)).get(goal.id) : undefined;
+      return c.json(asGoal(goal, buildTrajectory([], null, todayIn(timeZone)), new Date(), practice), 201);
     } catch (error) {
-      if (error instanceof GoalLimitError) {
-        return c.json(apiError("goal_limit", `You can have up to ${MAX_GOALS} goals.`), 400);
-      }
+      if (error instanceof GoalLimitError) return c.json(apiError("goal_limit", error.message), 400);
       throw error;
     }
     })
@@ -400,7 +523,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
     // This week and next, for the planning board's capacity.
     const twoWeeksEnd = startOfDayIn(addDays(weekStart, 14), zone);
-    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks, updated] = await Promise.all([
+    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks, updated, practice] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
       getReadStatus(userId, id),
@@ -414,6 +537,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listConnections(userId),
       listBlocks(userId, weekBounds.start, twoWeeksEnd),
       listGoalUpdatedAt(userId, [id]),
+      goal.kind === "practice" ? getPracticeDetail(userId, goal, timeZone) : null,
     ]);
     const area = goal.areaId ? await getArea(userId, goal.areaId) : null;
     const trajectory = trajectories.get(id);
@@ -431,7 +555,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
 
     return c.json(
       {
-        goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today), updated.get(id)),
+        goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today), updated.get(id), practice?.state),
         area: area && { id: area.id, name: area.name, icon: area.icon },
         today,
         read: read && {
@@ -454,6 +578,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
           done: tasks.filter((task) => task.doneAt && task.doneAt >= weekBounds.start).map((task) => asTask(task)),
         },
         tasks: tasks.filter((task) => !task.doneAt).map((task) => asTask(task, schedules.get(task.id) ?? null)),
+        practice: practice && { weeks: practice.state.weeks, sessions: practice.sessions.map(asSession) },
         suggestions: read?.suggestions ?? [],
         clock: settings.clock,
         notes: posts.map(asNote),
@@ -472,18 +597,25 @@ export const goals = new OpenAPIHono<ApiEnv>()
     );
   })
   .openapi(updateRoute, async (c) => {
-    const parsed = goalInputSchema.safeParse(c.req.valid("json"));
+    const body = c.req.valid("json");
+    const parsed = goalInputSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(apiError("invalid_request", parsed.error.issues[0]?.message ?? "Check the form."), 400);
     }
+    const practiceFields = practiceFieldsSchema.safeParse(body);
+    if (!practiceFields.success) {
+      return c.json(apiError("invalid_request", practiceFields.error.issues[0]?.message ?? "Check the form."), 400);
+    }
     const userId = c.var.user.id;
-    const goal = await updateGoal(userId, c.req.valid("param").id, parsed.data);
+    const goal = await updateGoal(userId, c.req.valid("param").id, parsed.data, practiceFields.data);
     if (!goal) return c.json(apiError("not_found", GOAL_GONE), 404);
-    const [trajectories, updated] = await Promise.all([
-      listTrajectories(userId, [goal.id], await getTimeZone(userId)),
+    const timeZone = await getTimeZone(userId);
+    const [trajectories, updated, practices] = await Promise.all([
+      listTrajectories(userId, [goal.id], timeZone),
       listGoalUpdatedAt(userId, [goal.id]),
+      goal.kind === "practice" ? listPracticeStates(userId, [goal], timeZone) : null,
     ]);
-    return c.json(asGoal(goal, trajectories.get(goal.id)?.days ?? [], updated.get(goal.id)), 200);
+    return c.json(asGoal(goal, trajectories.get(goal.id)?.days ?? [], updated.get(goal.id), practices?.get(goal.id)), 200);
   })
   .openapi(deleteRoute, async (c) => {
     const deleted = await deleteGoal(c.var.user.id, c.req.valid("param").id);
@@ -493,7 +625,9 @@ export const goals = new OpenAPIHono<ApiEnv>()
   .openapi(readRoute, async (c) => {
     const userId = c.var.user.id;
     const { id } = c.req.valid("param");
-    if (!(await getGoal(userId, id))) return c.json(apiError("not_found", GOAL_GONE), 404);
+    const goal = await getGoal(userId, id);
+    if (!goal) return c.json(apiError("not_found", GOAL_GONE), 404);
+    if (goal.kind === "practice") return c.json(apiError("practice", "A practice’s status is counted from its sessions, not read."), 400);
     // As the web's "Update status": the read runs after this responds.
     await requestRead(userId, id, { trigger: "manual", settle: false });
     return c.body(null, 202);
@@ -514,8 +648,13 @@ export const goals = new OpenAPIHono<ApiEnv>()
     if (!objective.success) {
       return c.json(apiError("invalid_request", objective.error.issues[0]?.message ?? "Check the objective."), 400);
     }
-    if (!(await setWeekObjective(c.var.user.id, id, week.data, objective.data))) {
-      return c.json(apiError("not_found", GOAL_GONE), 404);
+    try {
+      if (!(await setWeekObjective(c.var.user.id, id, week.data, objective.data))) {
+        return c.json(apiError("not_found", GOAL_GONE), 404);
+      }
+    } catch (error) {
+      if (error instanceof PracticeError) return c.json(apiError("practice", error.message), 400);
+      throw error;
     }
     return c.body(null, 204);
   });

@@ -37,9 +37,12 @@ export async function requestRead(
   goalId: string,
   { trigger, settle = true }: { trigger: Extract<AiTrigger, "manual" | "note" | "recap">; settle?: boolean },
 ) {
+  const mine = and(eq(goals.id, goalId), eq(goals.userId, userId));
+  // A practice is counted, never read: a note or a recap on one asks for nothing.
+  const [goal] = await db.select({ kind: goals.kind }).from(goals).where(mine);
+  if (!goal || goal.kind === "practice") return;
   // Made here, not with now() in SQL, so it compares exactly once stored (milliseconds both ways).
   const stamp = new Date();
-  const mine = and(eq(goals.id, goalId), eq(goals.userId, userId));
   await db.update(goals).set({ readRequestedAt: stamp, readError: null }).where(mine);
 
   after(async () => {
@@ -86,8 +89,8 @@ export async function getReadStatus(
 export const DAILY_SKIP_MS = 22 * 60 * 60_000;
 
 /**
- * Goals the daily cron should read: those with an enabled source, minus any read
- * in the last 22 hours and any with a read already underway.
+ * Goals the daily cron should read: projects with an enabled source, minus any read
+ * in the last 22 hours and any with a read already underway. Practices are never read.
  */
 export async function listGoalsDueForDailyRead(): Promise<{
   due: { goalId: string; userId: string }[];
@@ -104,7 +107,7 @@ export async function listGoalsDueForDailyRead(): Promise<{
     .from(goalSources)
     .innerJoin(goals, eq(goals.id, goalSources.goalId))
     .leftJoin(goalReads, eq(goalReads.goalId, goalSources.goalId))
-    .where(eq(goalSources.enabled, true));
+    .where(and(eq(goalSources.enabled, true), eq(goals.kind, "project")));
 
   const now = Date.now();
   const due: { goalId: string; userId: string }[] = [];
