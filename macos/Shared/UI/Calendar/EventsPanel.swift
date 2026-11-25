@@ -352,7 +352,8 @@ private struct EventRow: View {
     }
 }
 
-/// The goal an import goes to, as a small menu: its colour, its title, a chevron.
+/// What an import goes to, as a small menu: its colour, its title, a chevron. Projects and practices are listed apart;
+/// an event for a practice counts toward it once it's over, like any of its blocks.
 private struct GoalChip: View {
     let goal: CalendarGoal?
     let goals: [CalendarGoal]
@@ -360,21 +361,25 @@ private struct GoalChip: View {
 
     var body: some View {
         Menu {
-            ForEach(goals) { option in
-                Button {
-                    onPick(option.id)
-                } label: {
-                    if option.id == goal?.id {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
+            ForEach(GoalSections(goals).sections, id: \.title) { section in
+                Section(section.title) {
+                    ForEach(section.goals) { option in
+                        Button {
+                            onPick(option.id)
+                        } label: {
+                            if option.id == goal?.id {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
+                        }
                     }
                 }
             }
         } label: {
             HStack(spacing: 6) {
                 Circle().fill(goal.map { GoalPalette.color($0.color) } ?? Theme.muted).frame(width: 8, height: 8)
-                Text(goal?.title ?? "No goals yet").lineLimit(1)
+                Text(goal?.title ?? "No projects or practices yet").lineLimit(1)
                 Spacer(minLength: 4)
                 Icon.chevronDown.image(size: 12).foregroundStyle(Theme.muted)
             }
@@ -390,7 +395,7 @@ private struct GoalChip: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .disabled(goals.isEmpty)
-        .help("The goal it goes to")
+        .help(goal?.isPractice == true ? "The practice it counts toward" : "The project it goes to")
     }
 }
 

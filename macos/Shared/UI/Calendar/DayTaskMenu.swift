@@ -87,7 +87,7 @@ struct DayTaskMenu: View {
             }
             if let openGoal = actions.openGoal {
                 MenuSeparator()
-                MenuItem(icon: .target, title: "Open goal") { run { openGoal(goal.id) } }
+                MenuItem(icon: .target, title: "Open project") { run { openGoal(goal.id) } }
             }
             MenuSeparator()
             MenuItem(icon: .delete, title: "Delete", isDestructive: true) { run { actions.deleteTask(task.id) } }

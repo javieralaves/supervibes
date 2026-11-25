@@ -98,7 +98,7 @@ struct CalendarEventsCard: View {
             Divider().overlay(Theme.cardBorder).padding(.vertical, 20)
 
             VStack(spacing: 16) {
-                RowHeader(title: "Goal", detail: "Where an event goes when you import it. You can pick another on the event.") {
+                RowHeader(title: "Goes to", detail: "The project or practice an event goes to when you import it. You can pick another on the event.") {
                     goalMenu
                 }
                 RowHeader(title: "Block", detail: "A session to work in, or reserved time kept for itself.") {
@@ -130,8 +130,12 @@ struct CalendarEventsCard: View {
                     onChange(new)
                 }
             )) {
-                ForEach(goals) { goal in
-                    Text(goal.title).tag(goal.id)
+                ForEach(GoalSections(goals).sections, id: \.title) { section in
+                    Section(section.title) {
+                        ForEach(section.goals) { goal in
+                            Text(goal.title).tag(goal.id)
+                        }
+                    }
                 }
             }
             .pickerStyle(.inline)
@@ -139,10 +143,10 @@ struct CalendarEventsCard: View {
         } label: {
             MenuField {
                 if let goal {
-                    GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
+                    GoalBadge(icon: goal.icon, color: goal.color, size: .xs, round: goal.isPractice)
                     Text(goal.title).lineLimit(1)
                 } else {
-                    Text("No goals yet").foregroundStyle(Theme.muted)
+                    Text("No projects or practices yet").foregroundStyle(Theme.muted)
                 }
             }
         }

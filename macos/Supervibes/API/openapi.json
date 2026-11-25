@@ -698,6 +698,40 @@
             "type": "integer",
             "nullable": true,
             "description": "For a practice: how many sessions a week it's meant to have."
+          },
+          "minMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "description": "For a practice: blocks shorter than this don't count; null: any length."
+          },
+          "week": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "The Monday this week starts on."
+              },
+              "done": {
+                "type": "integer",
+                "description": "Sessions that counted so far."
+              },
+              "planned": {
+                "type": "integer",
+                "description": "Sessions still to come this week."
+              }
+            },
+            "required": [
+              "start",
+              "done",
+              "planned"
+            ],
+            "description": "For a practice: this week so far. Null for a project."
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "For a practice: paused today."
           }
         },
         "required": [
@@ -706,7 +740,10 @@
           "icon",
           "color",
           "kind",
-          "perWeek"
+          "perWeek",
+          "minMinutes",
+          "week",
+          "paused"
         ]
       },
       "CalendarTask": {

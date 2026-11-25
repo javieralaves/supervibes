@@ -594,7 +594,7 @@ struct WeekView: View {
         .frame(width: columnWidth - 4, height: height)
         .contextPanel(owner: block.id, isEnabled: actions != nil && !block.isPending) {
             if let actions {
-                BlockMenu(block: block, day: day, actions: actions, editTitle: "Open", onEdit: { onOpenBlock(block.id) })
+                BlockMenu(block: block, goal: data.goal(block.goalId), day: day, actions: actions, editTitle: "Open", onEdit: { onOpenBlock(block.id) })
             }
         }
         .offset(x: x(of: day) + 2, y: grid.y(start) + 1)
