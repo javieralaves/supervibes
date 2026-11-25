@@ -349,7 +349,8 @@ private struct DailyChart: View {
 
     /// The features in the key: the ones every account has, and area reads once there are some.
     private var legend: [UsageCall.Feature] {
-        let used = Set(days.flatMap { $0.parts.map(\.feature) })
+        // Every day lists every feature, so only the ones with calls count as used.
+        let used = Set(days.flatMap { $0.parts.filter { $0.calls > 0 }.map(\.feature) })
         return UsageCall.Feature.allCases.filter { $0 != .areaRead || used.contains($0) }
     }
 
