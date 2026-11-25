@@ -53,6 +53,33 @@ final class DayGoalsTests: XCTestCase {
         XCTAssertEqual(superfocus.pastTime, ["sf-actions", "sf-community", "sf-reality", "sf-renewals", "sf-focus"])
     }
 
+    func testDraggingATaskUpRedrawsWhatFits() {
+        // January renewals, held second: it fits now, and Actions in other apps (an hour) no longer does.
+        let superfocus = row("superfocus")
+        let order = superfocus.items(moving: "sf-renewals", to: 1)
+        XCTAssertEqual(order.map(\.task.id), ["sf-spark", "sf-renewals", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-focus"])
+        XCTAssertEqual(superfocus.pastTime(in: order), ["sf-actions", "sf-community", "sf-reality", "sf-focus"])
+    }
+
+    func testDroppingATaskReordersItsGoal() {
+        let data = Fixtures.dayByGoal
+        let moved = data.goalOrder(moving: "sf-renewals", toStripIndex: 1, day: 0, now: now, calendar: madrid)
+        XCTAssertEqual(moved?.goalId, "superfocus")
+        XCTAssertEqual(moved?.ids, ["sf-spark", "sf-renewals", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-focus"])
+        // To the end, after the last on the strip.
+        XCTAssertEqual(data.goalOrder(moving: "sf-spark", toStripIndex: 6, day: 0, now: now, calendar: madrid)?.ids.last, "sf-spark")
+        // Back where it was: nothing to save.
+        XCTAssertNil(data.goalOrder(moving: "sf-design", toStripIndex: 1, day: 0, now: now, calendar: madrid))
+    }
+
+    func testReorderingKeepsTheGoalsTasksOffTheStripInPlace() {
+        // A task of the goal not on today's strip stays where it was among the goal's tasks.
+        var data = Fixtures.dayByGoal
+        data.tasks.insert(CalendarTask(id: "sf-later", goalId: "superfocus", title: "Plan the next cohort", minutes: 60), at: 1)
+        let moved = data.goalOrder(moving: "sf-focus", toStripIndex: 0, day: 0, now: now, calendar: madrid)
+        XCTAssertEqual(moved?.ids, ["sf-focus", "sf-spark", "sf-later", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-renewals"])
+    }
+
     func testADayGoneByDimsNothing() {
         let yesterday = madrid.date(byAdding: .day, value: 1, to: now)!
         let rows = Fixtures.dayByGoal.goalRows(day: -1, now: yesterday, calendar: madrid)

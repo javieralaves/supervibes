@@ -578,6 +578,20 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// January renewals held second in Superfocus's list: lifted into its new place, and the dimming
+    /// moved so Actions in other apps no longer fits.
+    func testDayStripReordering() {
+        let holding = Placing(taskId: "sf-renewals", goalId: "superfocus", title: "January renewals for the first founding members",
+                              minutes: 30, moved: true, listIndex: 1)
+        assertAppearances(
+            GoalStrip(rows: Fixtures.dayByGoal.goalRows(day: 0, now: now), today: "2026-11-18", dayName: "Today",
+                      open: .constant(["superfocus"]), holding: holding)
+                .frame(width: 768)
+                .background(Theme.card),
+            width: 768
+        )
+    }
+
     /// Superfocus open on the strip: its two sessions ringed lightly, its reserved meetings and Build's session not.
     func testDayTimelineGoalSessionsRinged() {
         let top = DayGrid.standard.y(12 * 60 + 30)

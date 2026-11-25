@@ -246,7 +246,8 @@ struct DayView: View {
             if let placing = drag.placing, placing.moved {
                 DragChip(title: placing.title, color: data.goal(placing.goalId)?.color ?? "slate")
                     .offset(x: placing.location.x + 14, y: placing.location.y + 10)
-                    .opacity(placing.start == nil ? 1 : 0)
+                    // Over the timeline the preview takes over; in its own list, the task itself is lifted.
+                    .opacity(placing.start == nil && placing.listIndex == nil ? 1 : 0)
             }
         }
         .pointerStyle(drag.placing?.moved == true ? .grabActive : nil)
@@ -254,9 +255,12 @@ struct DayView: View {
         .environment(\.eventPreview, showsEventsPanel ? eventPreview : changePreview)
         .environment(\.changedBlocks, Set(importChanges.keys))
         .onChange(of: offset, initial: true) {
-            // Let go on the timeline: a time on the shown day; on the strip: the day itself.
+            // Let go in its own goal's list: a new place in the goal's order; on the timeline: a time on
+            // the shown day; elsewhere on the strip: the day itself.
             drag.onDrop = { [offset, actions] placing in
-                if placing.onStrip {
+                if let index = placing.listIndex {
+                    actions?.reorder(placing.taskId, offset, index)
+                } else if placing.onStrip {
                     actions?.plan(placing.taskId, offset)
                 } else if let start = placing.start {
                     actions?.place(placing.taskId, offset, start, placing.minutes)
@@ -831,6 +835,8 @@ struct CalendarActions {
     var place: (_ taskId: String, _ day: Int, _ start: Int, _ minutes: Int) -> Void
     /// Plan a task for `day` without a time, or take it off its day (nil).
     var plan: (_ taskId: String, _ day: Int?) -> Void
+    /// Move a task to `index` among its goal's other tasks on `day`'s strip, changing the goal's order.
+    var reorder: (_ taskId: String, _ day: Int, _ index: Int) -> Void = { _, _, _ in }
     /// The goal a new block starts with.
     var defaultGoalId: () -> String?
     /// A block's menu offers its goal's page.

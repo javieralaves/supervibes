@@ -558,6 +558,26 @@ final class CalendarModel {
         }
     }
 
+    /// Move a task to `index` among its goal's other tasks on `day`'s strip. The goal's order changes
+    /// everywhere, the board included.
+    func reorder(_ taskId: String, day: Int, to index: Int) {
+        guard let (goalId, ids) = data.goalOrder(moving: taskId, toStripIndex: index, day: day, now: Date()) else { return }
+        let before = data.tasks
+        // The goal's tasks take the same places among everyone's, in their new order.
+        let byId = Dictionary(uniqueKeysWithValues: data.tasks.map { ($0.id, $0) })
+        var next = ids.compactMap { byId[$0] }.makeIterator()
+        data.tasks = data.tasks.map { $0.goalId == goalId ? (next.next() ?? $0) : $0 }
+        write(undo: { [weak self] in self?.data.tasks = before }) { client in
+            switch try await client.reorderTasks(path: .init(id: goalId), body: .json(.init(ids: ids))) {
+            case .noContent: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t reorder these tasks.")
+            case .notFound: return .failed("That goal doesn’t exist anymore.")
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t reorder (the server answered \(status)).")
+            }
+        }
+    }
+
     /// Mark an intention's task done, or reopen it.
     func toggleDone(_ blockId: String) {
         guard let before = block(blockId), before.taskId != nil else { return }
