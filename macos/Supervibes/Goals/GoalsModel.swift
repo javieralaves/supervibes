@@ -90,18 +90,16 @@ final class GoalsModel {
             color: input.color,
             trajectory: [],
             areaId: input.areaId,
-            isPending: true
+            isPending: true,
+            kind: input.kind,
+            autoRecaps: input.autoRecaps,
+            practice: input.kind == .practice
+                ? Practice(perWeek: input.perWeek, minMinutes: input.minMinutes, week: .init(start: CalendarDay.weekStart(today), done: 0, planned: 0))
+                : nil
         ))
 
         Task {
-            let body = Components.Schemas.NewGoal(
-                title: input.title,
-                description: input.description.isEmpty ? nil : input.description,
-                targetDate: input.targetDate,
-                icon: .init(rawValue: input.icon) ?? .target02Icon,
-                color: .init(rawValue: input.color) ?? .violet,
-                areaId: input.areaId
-            )
+            let body = Components.Schemas.NewGoal(new: input, areaId: input.areaId)
             do {
                 switch try await client.createGoal(body: .json(body)) {
                 case .created(let created):
@@ -110,7 +108,7 @@ final class GoalsModel {
                     Log.app.info("Goal created")
                     if saved.areaId != nil { await refreshAreas() }
                 case .badRequest(let bad):
-                    fail(pendingID, (try? bad.body.json.error.message) ?? "Couldn’t add that goal.")
+                    fail(pendingID, (try? bad.body.json.error.message) ?? "Couldn’t add that \(input.kind.noun).")
                 case .unauthorized:
                     goals.removeAll { $0.id == pendingID }
                     await auth.sessionEnded()
@@ -135,16 +133,16 @@ final class GoalsModel {
             edited.targetDate = input.targetDate
             edited.icon = input.icon
             edited.color = input.color
+            edited.autoRecaps = input.autoRecaps
+            if edited.isPractice {
+                edited.targetDate = nil
+                edited.practice?.perWeek = input.perWeek
+                edited.practice?.minMinutes = input.minMinutes
+            }
             return edited
         }
         Task {
-            let body = Components.Schemas.GoalInput(
-                title: input.title,
-                description: input.description.isEmpty ? nil : input.description,
-                targetDate: input.targetDate,
-                icon: .init(rawValue: input.icon) ?? .target02Icon,
-                color: .init(rawValue: input.color) ?? .violet
-            )
+            let body = Components.Schemas.GoalInput(edited: input, isPractice: goal.isPractice)
             do {
                 switch try await client.updateGoal(path: .init(id: goal.id), body: .json(body)) {
                 case .ok(let ok):
@@ -294,6 +292,64 @@ extension GoalWeek {
     }
 }
 
+extension Components.Schemas.NewGoal {
+    /// A new project or practice as the API takes it: a practice sends its rhythm and no target date.
+    init(new input: GoalInput, areaId: String?) {
+        let isPractice = input.kind == .practice
+        self.init(
+            title: input.title,
+            description: input.description.isEmpty ? nil : input.description,
+            targetDate: isPractice ? nil : input.targetDate,
+            icon: .init(rawValue: input.icon) ?? .target02Icon,
+            color: .init(rawValue: input.color) ?? .violet,
+            areaId: areaId,
+            kind: .init(rawValue: input.kind.rawValue),
+            perWeek: isPractice ? input.perWeek : nil,
+            minMinutes: isPractice ? input.minMinutes : nil,
+            autoRecaps: input.autoRecaps
+        )
+    }
+}
+
+extension Components.Schemas.GoalInput {
+    /// The edit as the API takes it: a practice sends its own fields (0 clears its minimum), a project its target date.
+    init(edited input: GoalInput, isPractice: Bool) {
+        self.init(
+            title: input.title,
+            description: input.description.isEmpty ? nil : input.description,
+            targetDate: isPractice ? nil : input.targetDate,
+            icon: .init(rawValue: input.icon) ?? .target02Icon,
+            color: .init(rawValue: input.color) ?? .violet,
+            perWeek: isPractice ? input.perWeek : nil,
+            minMinutes: isPractice ? (input.minMinutes ?? 0) : nil,
+            autoRecaps: input.autoRecaps
+        )
+    }
+}
+
+extension Practice {
+    init(api practice: Components.Schemas.Practice) {
+        let week = practice.week
+        self.init(
+            perWeek: practice.perWeek,
+            minMinutes: practice.minMinutes,
+            week: Week(start: week.start, done: week.done, planned: week.planned, paused: week.paused, beforeStart: week.beforeStart),
+            status: practice.status.flatMap { status in
+                GoalStatus(rawValue: status.status.rawValue).map {
+                    Status(status: $0, done: status.done, expected: status.expected, weeks: status.weeks, reason: status.reason)
+                }
+            },
+            paused: practice.paused.map { Pause(startsOn: $0.startsOn, resumesOn: $0.resumesOn) }
+        )
+    }
+}
+
+extension Practice.Week {
+    init(api week: Components.Schemas.PracticeWeek) {
+        self.init(start: week.start, done: week.done, planned: week.planned, paused: week.paused, beforeStart: week.beforeStart)
+    }
+}
+
 extension Goal {
     init(api goal: Components.Schemas.Goal) {
         self.init(
@@ -313,7 +369,10 @@ extension Goal {
                 )
             },
             areaId: goal.areaId,
-            updatedAt: goal.updatedAt
+            updatedAt: goal.updatedAt,
+            kind: GoalKind(rawValue: goal.kind.rawValue) ?? .project,
+            autoRecaps: goal.autoRecaps,
+            practice: goal.practice.map(Practice.init(api:))
         )
     }
 }

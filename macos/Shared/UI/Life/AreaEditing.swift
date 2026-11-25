@@ -245,7 +245,7 @@ struct AreaRemoveButton: View {
 func removeAreaDialog(_ name: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) -> ConfirmDialog {
     ConfirmDialog(
         title: "Remove \(name)?",
-        message: "Its goals and time stay, just without an area. What you wrote about it is removed.",
+        message: "Its projects, practices and time stay, just without an area. What you wrote about it is removed.",
         confirmTitle: "Remove",
         onCancel: onCancel,
         onConfirm: onConfirm

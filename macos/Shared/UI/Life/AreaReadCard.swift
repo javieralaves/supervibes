@@ -71,7 +71,7 @@ struct AreaReadCard: View {
         pill.padding(.bottom, 12)
         Text("Ready for a first read")
             .appText(.xl, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-        Text("Supervibes will read where its goals stand and your time on the calendar, and tell you here, in a few lines, how \(area.name) is going.")
+        Text("Supervibes will read where its projects and practices stand and your time on the calendar, and tell you here, in a few lines, how \(area.name) is going.")
             .font(.app(15.2))
             .lineSpacing(15.2 * 0.625 - 15.2 * 0.2)
             .foregroundStyle(Theme.muted)
@@ -92,7 +92,7 @@ struct AreaReadCard: View {
         NeutralPill(title: "No read yet").padding(.bottom, 12)
         Text("Nothing to read in this area yet")
             .appText(.xl, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-        Text("\(area.now == nil ? "Say where it stands and give it a goal." : "Give it a goal.") Supervibes will read its goals and your time on the calendar, and tell you here, in a few lines, how it’s going.")
+        Text("\(area.now == nil ? "Say where it stands and give it a project or a practice." : "Give it a project or a practice.") Supervibes will read them and your time on the calendar, and tell you here, in a few lines, how it’s going.")
             .font(.app(15.2))
             .lineSpacing(15.2 * 0.625 - 15.2 * 0.2)
             .foregroundStyle(Theme.muted)
@@ -118,7 +118,7 @@ struct AreaReadCard: View {
     /// The area's status, its goals' worst; "No status yet" until one of them has one.
     @ViewBuilder private var pill: some View {
         if let status = area.status {
-            StatusPill(status: status, basis: .target, help: "The most pressing of its goals’ statuses")
+            StatusPill(status: status, basis: .target, help: "The most pressing of its projects’ and practices’ statuses")
         } else {
             NeutralPill(title: "No status yet")
         }
@@ -130,7 +130,7 @@ struct AreaReadCard: View {
             HStack {
                 Text("Last 4 weeks")
                 Spacer()
-                if !started { Text("Starts with its goals’ first reads") }
+                if !started { Text("Starts with its first statuses") }
             }
             .font(.app(11)).foregroundStyle(Theme.muted)
             TrajectoryDays(
@@ -144,7 +144,7 @@ struct AreaReadCard: View {
 
     @ViewBuilder private var note: some View {
         if reading {
-            Text("Reading its goals. This takes a few seconds.").appText(.xs).foregroundStyle(Theme.muted)
+            Text("Reading its projects and practices. This takes a few seconds.").appText(.xs).foregroundStyle(Theme.muted)
         } else if let error {
             Text(error).appText(.xs).foregroundStyle(Theme.danger)
         }
@@ -214,7 +214,7 @@ private struct ReadButton: View {
         .buttonStyle(.plain)
         .inactive(reading)
         .onHover { isHovered = $0 }
-        .help("Read its goals and your calendar again")
+        .help("Read its projects, practices and your calendar again")
     }
 }
 

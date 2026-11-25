@@ -92,7 +92,7 @@ extension GoalPage where Sections == EmptyView {
 }
 
 /// "← Life": `text-sm font-medium text-muted hover:text-foreground`
-private struct BackLink: View {
+struct BackLink: View {
     let action: () -> Void
     @State private var isHovered = false
 
@@ -207,7 +207,7 @@ private struct GoalHeader: View {
 }
 
 /// "+ Add to an area", dashed, after a goal's target date while it has no area: opens the areas, then New area….
-private struct AddToAreaChip: View {
+struct AddToAreaChip: View {
     let areas: [Area]
     let onPick: (String?) -> Void
     let onNewArea: (() -> Void)?
@@ -249,7 +249,7 @@ private struct AddToAreaChip: View {
 }
 
 /// A goal's area under its title: its icon and name on a light wash, opening the area's page.
-private struct AreaChip: View {
+struct AreaChip: View {
     let area: AreaRef
     let action: () -> Void
     @State private var isHovered = false

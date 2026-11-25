@@ -9,7 +9,7 @@ import XCTest
 final class SurfaceSnapshotTests: XCTestCase {
     private let now = Fixtures.referenceNow
     private let areaActions = AreaEditActions(create: { _ in true }, update: { _, _ in }, remove: { _ in })
-    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: {})
+    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in })
 
     func testMenuBarDuringBlock() {
         assertAppearances(

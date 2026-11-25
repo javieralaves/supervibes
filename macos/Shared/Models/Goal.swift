@@ -19,9 +19,88 @@ struct Goal: Identifiable, Hashable, Sendable {
     var updatedAt: Date? = nil
     /// Saving; shown faded until the server has it.
     var isPending = false
+    /// A project (it has a finish line) or a practice (kept up a number of times a week).
+    var kind: GoalKind = .project
+    /// Its sessions get a recap drafted on their own once they're over.
+    var autoRecaps = true
+    /// For a practice: its rhythm, this week and its counted status. Nil for a project.
+    var practice: Practice? = nil
 
     /// Its latest status: the last day's, which carries the most recent read.
     var latest: TrajectoryDay? { trajectory.last }
+
+    var isPractice: Bool { kind == .practice }
+}
+
+/// What a goal is: the app calls a goal with a finish line a project, and one kept up on a weekly rhythm a practice.
+enum GoalKind: String, Hashable, Sendable {
+    case project, practice
+
+    var noun: String { self == .practice ? "practice" : "project" }
+}
+
+/// A practice's rhythm and where it stands (src/lib/practice-count.ts): counted from its sessions, never read.
+struct Practice: Hashable, Sendable {
+    struct Week: Hashable, Sendable {
+        /// The Monday it starts on.
+        let start: String
+        /// Sessions that counted.
+        var done: Int
+        /// Still to come: blocks not over yet, and ones meant for a day from today on.
+        var planned: Int
+        /// Paused at some point, so it's left out of the status.
+        var paused = false
+        /// It started before the practice was made, so it's left out too.
+        var beforeStart = false
+    }
+
+    struct Status: Hashable, Sendable {
+        let status: GoalStatus
+        /// Sessions in the weeks it looked at, each week counted up to perWeek.
+        let done: Int
+        /// What was meant in those weeks.
+        let expected: Int
+        /// How many full weeks it looked at, up to 4.
+        let weeks: Int
+        /// "8 of the last 12".
+        let reason: String
+    }
+
+    struct Pause: Hashable, Sendable {
+        let startsOn: String
+        /// The day it picks up again; nil until it's resumed.
+        let resumesOn: String?
+    }
+
+    var perWeek: Int
+    /// Blocks shorter than this many minutes don't count; nil: any length.
+    var minMinutes: Int?
+    /// This week so far.
+    var week: Week
+    /// Counted from the last 4 full weeks; nil with none yet, or while it's paused.
+    var status: Status?
+    /// The pause it's in today, if any.
+    var paused: Pause?
+
+    /// Sessions still to do this week: never below 0.
+    var left: Int { max(0, perWeek - week.done) }
+
+    /// This week as pips: filled for each done, ringed for each planned, empty for the rest, at least perWeek of them.
+    var pips: [Pip] {
+        let count = max(perWeek, week.done + week.planned)
+        return (0..<count).map { $0 < week.done ? .done : $0 < week.done + week.planned ? .planned : .empty }
+    }
+
+    /// "3 times a week", "Once a week", "Twice a week".
+    static func rhythm(_ perWeek: Int) -> String {
+        switch perWeek {
+        case 1: "Once a week"
+        case 2: "Twice a week"
+        default: "\(perWeek) times a week"
+        }
+    }
+
+    enum Pip: Hashable, Sendable { case done, planned, empty }
 }
 
 /// A goal's week, as its card on Goals home shows it (GoalWeek in src/lib/api/routes/goals.ts):
@@ -80,17 +159,23 @@ extension GoalInput {
     /// A goal as it is, for its edit dialog.
     init(editing goal: Goal) {
         self.init(
+            kind: goal.kind,
             title: goal.title,
             description: goal.description ?? "",
             targetDate: goal.targetDate,
             icon: GoalPalette.iconName(goal.icon),
             color: GoalPalette.colorInfo(goal.color).key,
-            areaId: goal.areaId
+            areaId: goal.areaId,
+            perWeek: goal.practice?.perWeek ?? 3,
+            minMinutes: goal.practice?.minMinutes,
+            autoRecaps: goal.autoRecaps
         )
     }
 }
 
 struct GoalInput: Hashable, Sendable {
+    /// What it is. Set when it's made; editing never changes it.
+    var kind: GoalKind = .project
     var title = ""
     var description = ""
     /// "YYYY-MM-DD", or nil.
@@ -99,14 +184,24 @@ struct GoalInput: Hashable, Sendable {
     var color = GoalPalette.defaultColor
     /// The area it sits in, if any. Set separately from the rest when editing (PUT /goals/{id}/area).
     var areaId: String?
+    /// For a practice: how many times a week.
+    var perWeek = 3
+    /// For a practice: the shortest block that counts, in minutes; nil for any length.
+    var minMinutes: Int?
+    /// Draft its sessions' recaps on their own.
+    var autoRecaps = true
 
     static let maxTitle = 120
+    static let maxPerWeek = 14
+    /// The minimums a practice can ask of a session, in minutes.
+    static let minimums = [10, 15, 20, 30, 45, 60, 90]
     static let maxDescription = 1000
 
     /// The web dialog's checks, so the same messages show before anything is sent.
     var problem: String? {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty { return "Give your goal a name." }
+        if title.isEmpty { return kind == .practice ? "Give your practice a name." : "Give your project a name." }
+        if kind == .practice, !(1...Self.maxPerWeek).contains(perWeek) { return "Pick between once and \(Self.maxPerWeek) times a week." }
         if title.count > Self.maxTitle { return "Keep it under \(Self.maxTitle) characters." }
         if description.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxDescription {
             return "Keep the description under \(Self.maxDescription) characters."
@@ -240,6 +335,43 @@ struct GoalDetail: Hashable, Sendable {
     var connectionOptions: [ConnectionOption] = []
     /// The area it sits in, to show under its title and link to; nil when none.
     var area: AreaRef? = nil
+    /// For a practice: its last weeks and its sessions. Nil for a project.
+    var practice: PracticeDetail? = nil
+}
+
+/// A practice's page beyond its card: its last full weeks and every session from the first of them on.
+struct PracticeDetail: Hashable, Sendable {
+    /// The last 8 full weeks, oldest first.
+    var weeks: [Practice.Week]
+    /// Earliest first, to the end of next week.
+    var sessions: [PracticeSession]
+}
+
+/// One session of a practice: a block on the calendar, or one off it (planned for its day, or done).
+struct PracticeSession: Identifiable, Hashable, Sendable {
+    enum Source: String, Hashable, Sendable { case block, day }
+    enum State: String, Hashable, Sendable {
+        /// Counted.
+        case done
+        /// Still to come.
+        case planned
+        /// A block the person said didn't happen.
+        case missed
+        /// A block under the practice's minimum.
+        case short
+        /// A day that went by without being ticked off.
+        case lapsed
+    }
+
+    let id: String
+    let source: Source
+    /// "YYYY-MM-DD".
+    let day: String
+    var state: State
+    /// A block's own title; nil for the practice's.
+    var title: String?
+    var startsAt: Date?
+    var endsAt: Date?
 }
 
 extension CalendarDay {
