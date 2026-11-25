@@ -1,0 +1,17 @@
+CREATE TABLE "areas" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" text NOT NULL,
+	"name" text NOT NULL,
+	"icon" text NOT NULL,
+	"now" text,
+	"want" text,
+	"position" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "goals" ADD COLUMN "area_id" uuid;--> statement-breakpoint
+ALTER TABLE "areas" ADD CONSTRAINT "areas_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "areas_user_id_position_idx" ON "areas" USING btree ("user_id","position");--> statement-breakpoint
+ALTER TABLE "goals" ADD CONSTRAINT "goals_area_id_areas_id_fk" FOREIGN KEY ("area_id") REFERENCES "public"."areas"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "goals_area_id_idx" ON "goals" USING btree ("area_id");
