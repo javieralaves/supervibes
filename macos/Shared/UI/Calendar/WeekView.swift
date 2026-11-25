@@ -331,7 +331,10 @@ struct WeekView: View {
                 Color.clear.frame(width: WeekGrid.gutter)
                 ZStack(alignment: .topLeading) {
                     ForEach(days, id: \.self) { day in
+                        // A day lined up with the gutter leaves its line to the gutter's, below;
+                        // drawn twice, the translucent border would read darker than the rest.
                         Rectangle().fill(Theme.cardBorder).frame(width: 1).offset(x: x(of: day))
+                            .opacity(abs(x(of: day)) < 0.5 ? 0 : 1)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -488,7 +491,10 @@ struct WeekView: View {
                 Color.clear.contentShape(.rect).gesture(drawGesture(day))
             }
         }
-        .overlay(alignment: .leading) { Rectangle().fill(Theme.cardBorder).frame(width: 1) }
+        // The day lined up with the gutter leaves its line to the gutter's (see the grid).
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Theme.cardBorder).frame(width: 1).opacity(abs(x(of: day)) < 0.5 ? 0 : 1)
+        }
     }
 
     // MARK: Drawing
