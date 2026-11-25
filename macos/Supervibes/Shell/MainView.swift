@@ -274,7 +274,10 @@ private struct AreaScreen: View {
                             takeOut: { model.takeOut($0) },
                             moveIn: { model.moveIn($0) },
                             newGoal: { newGoal(today: detail.today) }
-                        )
+                        ),
+                        reading: model.reading,
+                        readError: model.readError,
+                        onRead: { Task { await model.read() } }
                     )
                 }
             }

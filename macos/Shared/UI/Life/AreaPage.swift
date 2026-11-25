@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// An area's own page, from its card on Life or a goal's page: one column, top to bottom. The way back to Life, the
-/// area's tile and name, where you are and where you're going in your own words (a prompt for each until said),
-/// then the goals moving it, each opening its own page, with ways to start or move one in.
+/// area's tile and name, its read, where you are and where you're going in your own words (a prompt for each until
+/// said), then the goals moving it, each opening its own page, with ways to start or move one in.
 ///
 /// The pencil edits it in place: its icon, name and words become fields, each goal can be taken out of it, another
 /// goal moved in, and the area removed. Done saves.
@@ -18,6 +18,14 @@ struct AreaPage: View {
     var actions: AreaPageActions?
     /// Opens being edited (snapshots).
     var startsEditing = false
+    /// Its read is being written.
+    var reading = false
+    /// Why the last read didn't come back.
+    var readError: String?
+    /// Writes its read; nil leaves the read as it is.
+    var onRead: (() -> Void)?
+    /// The clock the read's age is told against.
+    var now = Date()
 
     enum Field: Hashable { case name, now, want }
 
@@ -81,6 +89,12 @@ struct AreaPage: View {
 
                 if let error {
                     Banner(text: error, tone: .error).padding(.top, 20)
+                }
+
+                // The read is Supervibes' to write, so it's out of the way while you edit.
+                if !isEditing {
+                    AreaReadCard(detail: detail, reading: reading, error: readError, now: now, onRead: onRead)
+                        .padding(.top, 32)
                 }
 
                 words(.now, label: "Where you are", text: area.now, prompt: "Where does this area stand today?")
@@ -485,9 +499,9 @@ private struct GoalRow: View {
 @MainActor private let previewActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: {})
 
 #Preview("Madrid") {
-    AreaPage(detail: Fixtures.areaDetail, actions: previewActions)
+    AreaPage(detail: Fixtures.areaDetail, actions: previewActions, onRead: {}, now: Fixtures.referenceNow)
         .background(Theme.background)
-        .frame(width: 900, height: 820)
+        .frame(width: 900, height: 1140)
 }
 
 #Preview("Editing Madrid") {
@@ -497,7 +511,7 @@ private struct GoalRow: View {
 }
 
 #Preview("A new area") {
-    AreaPage(detail: Fixtures.newAreaDetail, actions: previewActions)
+    AreaPage(detail: Fixtures.newAreaDetail, actions: previewActions, onRead: {}, now: Fixtures.referenceNow)
         .background(Theme.background)
-        .frame(width: 900, height: 720)
+        .frame(width: 900, height: 1040)
 }

@@ -42,6 +42,20 @@ struct AreaDetail: Hashable, Sendable {
     var goals: [Goal]
     /// Each of its goals' week, by goal id.
     var weeks: [String: GoalWeek]
+    /// Its latest read; nil until the person asks for one.
+    var read: AreaRead? = nil
+}
+
+/// An area's read (src/lib/area-read.ts): a few lines on how it's going, from its goals' reads and the calendar.
+/// Words only: the area's status stays its goals' worst.
+struct AreaRead: Hashable, Sendable {
+    let headline: String
+    let summary: String
+    /// The goals whose reads it drew on.
+    let goalIds: [String]
+    /// It drew on the person's time on the calendar.
+    let usedCalendar: Bool
+    let createdAt: Date
 }
 
 /// An area's status in words. Areas have no basis of their own, so they read as a goal with a target would:

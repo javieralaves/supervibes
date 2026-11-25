@@ -18,6 +18,10 @@ final class AreaPageModel {
     private(set) var otherGoals: [Goal] = []
     /// Why the last change didn't go through.
     private(set) var error: String?
+    /// The area's read is being written.
+    private(set) var reading = false
+    /// Why the last read didn't come back.
+    private(set) var readError: String?
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -51,6 +55,34 @@ final class AreaPageModel {
         } catch {
             Log.app.error("Area: \(error.localizedDescription, privacy: .public)")
             if detail == nil { load = .failed("Couldn’t load this area. Check your connection and try again.") }
+        }
+    }
+
+    // MARK: Read
+
+    /// Writes the area's read from its goals' reads and the calendar; it takes a few seconds and replaces the last.
+    func read() async {
+        guard !reading else { return }
+        reading = true
+        readError = nil
+        defer { reading = false }
+        do {
+            switch try await client.readArea(path: .init(id: id)) {
+            case .ok(let ok):
+                detail?.read = AreaRead(api: try ok.body.json)
+            case .badRequest(let bad):
+                readError = (try? bad.body.json.error.message) ?? "Couldn’t read this area. Try again."
+            case .notFound:
+                detail = nil
+                load = .gone
+            case .unauthorized:
+                await auth.sessionEnded()
+            case .undocumented(let status, _):
+                readError = "Couldn’t read this area (the server answered \(status))."
+            }
+        } catch {
+            Log.app.error("Area read: \(error.localizedDescription, privacy: .public)")
+            readError = "Couldn’t read this area. Check your connection and try again."
         }
     }
 
@@ -177,7 +209,14 @@ extension AreaDetail {
                 AreaTrajectoryDay(day: $0.day, status: $0.status.flatMap { GoalStatus(rawValue: $0.rawValue) }, carried: $0.carried)
             },
             goals: body.goals.map(Goal.init(api:)),
-            weeks: Dictionary(body.week.goals.map { ($0.goalId, GoalWeek(api: $0)) }, uniquingKeysWith: { first, _ in first })
+            weeks: Dictionary(body.week.goals.map { ($0.goalId, GoalWeek(api: $0)) }, uniquingKeysWith: { first, _ in first }),
+            read: body.read.map(AreaRead.init(api:))
         )
+    }
+}
+
+extension AreaRead {
+    init(api read: Components.Schemas.AreaRead) {
+        self.init(headline: read.headline, summary: read.summary, goalIds: read.goalIds, usedCalendar: read.usedCalendar, createdAt: read.createdAt)
     }
 }

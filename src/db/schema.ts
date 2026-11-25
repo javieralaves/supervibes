@@ -56,6 +56,34 @@ export const areas = pgTable(
 
 export type Area = typeof areas.$inferSelect;
 
+/**
+ * An area's read: a few lines on how that part of life is going, written by Claude from its goals' latest reads and
+ * statuses, the person's own words about it, and their time on the calendar. Only made when the person asks; each
+ * replaces the last. It has no status of its own: an area's status is its goals' worst.
+ */
+export const areaReads = pgTable(
+  "area_reads",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    areaId: uuid()
+      .notNull()
+      .references(() => areas.id, { onDelete: "cascade" }),
+    headline: text().notNull(),
+    summary: text().notNull(),
+    /** The goals whose reads it drew on, in the area's order. */
+    goalIds: jsonb().$type<string[]>().notNull().default([]),
+    /** Whether it drew on the person's time on the calendar. */
+    usedCalendar: boolean().notNull().default(false),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("area_reads_area_idx").on(t.areaId)],
+);
+
+export type AreaRead = typeof areaReads.$inferSelect;
+
 export const goals = pgTable(
   "goals",
   {
@@ -433,7 +461,7 @@ export const aiCalls = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** The goal it was about, while that goal exists. */
     goalId: uuid().references(() => goals.id, { onDelete: "set null" }),
-    /** "progress_read" | "recap" | "agenda". */
+    /** "progress_read" | "area_read" | "recap" | "agenda". */
     feature: text().notNull(),
     /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto". */
     trigger: text().notNull(),

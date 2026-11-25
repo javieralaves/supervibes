@@ -287,11 +287,31 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    /// Madrid's page: its words, and its two goals with their objectives and statuses.
+    /// Madrid's page: its read, its words, and its two goals with their objectives and statuses.
     func testAreaPage() {
         assertAppearances(
-            AreaPage(detail: Fixtures.areaDetail, actions: areaPageActions).background(Theme.background),
-            width: 900, height: 880
+            AreaPage(detail: Fixtures.areaDetail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 1220
+        )
+    }
+
+    /// Madrid's read card while it's being written again: the read dimmed, the button turning.
+    func testAreaReadCardReading() {
+        assertAppearances(
+            AreaReadCard(detail: Fixtures.areaDetail, reading: true, now: Fixtures.referenceNow, onRead: {})
+                .padding(32).frame(maxHeight: .infinity, alignment: .top).background(Theme.background),
+            width: 704, height: 400
+        )
+    }
+
+    /// Madrid before its first read: its status, a button for the read, and a read that didn't come back.
+    func testAreaReadCardFirstRead() {
+        assertAppearances(
+            AreaReadCard(detail: Fixtures.unreadAreaDetail, error: "The read didn’t come back. Try again.",
+                         now: Fixtures.referenceNow, onRead: {})
+                .padding(32).frame(maxHeight: .infinity, alignment: .top).background(Theme.background),
+            width: 704, height: 340
         )
     }
 
@@ -306,11 +326,12 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    /// An area just made: prompts for its words, and two ways to give it goals.
+    /// An area just made: its read in its empty form, prompts for its words, and two ways to give it goals.
     func testAreaPageNew() {
         assertAppearances(
-            AreaPage(detail: Fixtures.newAreaDetail, actions: areaPageActions).background(Theme.background),
-            width: 900, height: 720
+            AreaPage(detail: Fixtures.newAreaDetail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 1040
         )
     }
 

@@ -174,8 +174,21 @@ enum Fixtures {
         ]
     }
 
-    /// Madrid's page: its two goals, and its last weeks as the worse of theirs each day.
+    /// Madrid's page: its two goals, its last weeks as the worse of theirs each day, and its read from this morning.
     static var areaDetail: AreaDetail {
+        var detail = unreadAreaDetail
+        detail.read = AreaRead(
+            headline: "The playbook is live, but nobody has a home yet",
+            summary: "The playbook went up on the 18th, and only refinement is left before it’s due Monday. The rent app is the gap: Jacob finds it useful, but there are no visits yet and Idealista access is unresolved. Madrid got 4 h of your last 7 days, for an area you’re growing.",
+            goalIds: detail.area.goalIds,
+            usedCalendar: true,
+            createdAt: referenceNow.addingTimeInterval(-7 * 3600)
+        )
+        return detail
+    }
+
+    /// Madrid before its first read.
+    static var unreadAreaDetail: AreaDetail {
         let area = areas[1]
         let goals = lifeGoals.filter { area.goalIds.contains($0.id) }
         let rank: [GoalStatus: Int] = [.unclear: 0, .onTrack: 1, .atRisk: 2, .offTrack: 3]
