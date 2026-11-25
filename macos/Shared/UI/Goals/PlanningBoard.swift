@@ -114,6 +114,8 @@ struct PlanningBoard: View {
     @State private var draft: TaskDraft?
     @State private var expanded: Set<String>
     @State private var headerHeight: CGFloat = 0
+    /// All goals: the column heads' row, measured so an open row can run to the window's bottom.
+    @State private var columnHeadsHeight: CGFloat = 0
     @State private var titleAnchor = CGRect.zero
     /// The card being dragged, from its drag's start to its end.
     @State private var dragging: String?
@@ -159,11 +161,11 @@ struct PlanningBoard: View {
     private static let top: CGFloat = 40
     private static let headerGap: CGFloat = 28
     private static let bottom: CGFloat = 8
-    /// All goals: the goals' column, and the narrowest a column gets before the row scrolls.
+    /// All goals: the goals' column, the gaps between rows and cells, and the least an open row's
+    /// lanes are tall.
     private static let labelWidth: CGFloat = 232
     private static let rowGap: CGFloat = 8
-    private static let minCellWidth: CGFloat = 188
-    private static let openRowHeight: CGFloat = 360
+    private static let minOpenRowHeight: CGFloat = 360
 
     var body: some View {
         let columns = BoardColumn.all(today: today)
@@ -178,8 +180,13 @@ struct PlanningBoard: View {
                         let laneHeight = max(240, geo.size.height - Self.top - headerHeight - Self.headerGap - Self.bottom)
                         lanes(goal, columns: columns, height: laneHeight)
                     } else {
-                        let cell = max(Self.minCellWidth, (geo.size.width - 2 * Self.margin - Self.labelWidth - CGFloat(columns.count) * Self.rowGap) / CGFloat(columns.count))
-                        allGoals(columns: columns, cellWidth: cell)
+                        // An open row's lanes run to the bottom of the window too; the goals below
+                        // it scroll into view.
+                        let openHeight = max(
+                            Self.minOpenRowHeight,
+                            geo.size.height - Self.top - headerHeight - Self.headerGap - columnHeadsHeight - Self.rowGap - Self.bottom
+                        )
+                        allGoals(columns: columns, openHeight: openHeight)
                     }
                 }
                 .padding(.top, Self.top)
@@ -289,9 +296,10 @@ struct PlanningBoard: View {
 
     // MARK: All goals
 
-    /// The columns' headings, each weighing every goal together, then a row per goal: collapsed to
-    /// its rings, or open to its cards.
-    private func allGoals(columns: [BoardColumn], cellWidth: CGFloat) -> some View {
+    /// The columns' headings, each saying its tasks and time across every goal, then a row per
+    /// goal: folded to a line per cell, or open to its cards. Columns are as wide as a goal's own
+    /// board's lanes, and the row runs off the right edge and scrolls.
+    private func allGoals(columns: [BoardColumn], openHeight: CGFloat) -> some View {
         ScrollView(.horizontal) {
             VStack(alignment: .leading, spacing: Self.rowGap) {
                 HStack(alignment: .bottom, spacing: Self.rowGap) {
@@ -299,12 +307,13 @@ struct PlanningBoard: View {
                         .padding(.horizontal, 10)
                         .frame(width: Self.labelWidth, alignment: .leading)
                     ForEach(columns, id: \.self) { column in
-                        ColumnHead(title: title(column), subtitle: subtitle(column), total: total(column), unplanned: column == .unplanned ? unplannedTotal : nil)
-                            .frame(width: cellWidth, alignment: .leading)
+                        ColumnHead(title: title(column), subtitle: subtitle(column), tasks: totalTasks(column), time: totalTime(column))
+                            .frame(width: Self.columnWidth, alignment: .leading)
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { columnHeadsHeight = $0 }
                 ForEach(data.goals) { goal in
-                    row(goal, columns: columns, cellWidth: cellWidth)
+                    row(goal, columns: columns, openHeight: openHeight)
                 }
             }
             .padding(.horizontal, Self.margin)
@@ -312,7 +321,7 @@ struct PlanningBoard: View {
         .scrollIndicators(.hidden)
     }
 
-    private func row(_ goal: BoardGoal, columns: [BoardColumn], cellWidth: CGFloat) -> some View {
+    private func row(_ goal: BoardGoal, columns: [BoardColumn], openHeight: CGFloat) -> some View {
         let isOpen = expanded.contains(goal.id)
         let open = Dictionary(grouping: goal.tasks) { BoardColumn.of($0, today: today) }
         let done = Dictionary(grouping: goal.done) { BoardColumn.ofDone($0, today: today) }
@@ -322,10 +331,11 @@ struct PlanningBoard: View {
             ForEach(columns, id: \.self) { column in
                 if isOpen {
                     self.column(column, of: goal, open: open[column] ?? [], done: showsCompleted ? done[column] ?? [] : [], compact: true)
-                        .frame(width: cellWidth, height: Self.openRowHeight)
+                        .frame(width: Self.columnWidth, height: openHeight)
                 } else {
-                    CellSummary(open: meant(for: column, of: goal, open: open), capacity: capacity(column, of: goal), color: goal.color) { toggleRow(goal.id) }
-                        .frame(width: cellWidth)
+                    let meant = meant(for: column, of: goal, open: open)
+                    CellSummary(tasks: meant.count, time: time(column, of: goal, meant: meant), color: goal.color) { toggleRow(goal.id) }
+                        .frame(width: Self.columnWidth)
                 }
             }
         }
@@ -345,15 +355,37 @@ struct PlanningBoard: View {
         if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
     }
 
-    /// A column's ring across every goal.
-    private func total(_ column: BoardColumn) -> Capacity? {
-        let each = data.goals.compactMap { capacity(column, of: $0) }
-        guard !each.isEmpty else { return nil }
-        return Capacity(planned: each.reduce(0) { $0 + $1.planned }, protected: each.reduce(0) { $0 + $1.protected })
+    /// What a folded cell says of its time: planned against protected, Unplanned's total, planned
+    /// with no time, or nothing.
+    private func time(_ column: BoardColumn, of goal: BoardGoal, meant: [TaskItem]) -> PlanTime {
+        guard let capacity = capacity(column, of: goal) else {
+            return meant.isEmpty ? .none : .total(meant.reduce(0) { $0 + $1.minutes })
+        }
+        if capacity.protected > 0 { return .weighed(planned: capacity.planned, protected: capacity.protected) }
+        return meant.isEmpty ? .none : .noTime(planned: capacity.planned)
     }
 
-    private var unplannedTotal: Int {
-        data.goals.reduce(0) { sum, goal in sum + goal.tasks.filter { BoardColumn.of($0, today: today) == .unplanned }.reduce(0) { $0 + $1.minutes } }
+    /// The open tasks every goal has in a column, as its folded cells count them.
+    private func totalTasks(_ column: BoardColumn) -> Int {
+        data.goals.reduce(0) { sum, goal in
+            sum + meant(for: column, of: goal, open: Dictionary(grouping: goal.tasks) { BoardColumn.of($0, today: today) }).count
+        }
+    }
+
+    /// A column's time across every goal: Unplanned's total, or planned against protected.
+    private func totalTime(_ column: BoardColumn) -> PlanTime {
+        guard column != .unplanned else {
+            let minutes = data.goals.reduce(0) { sum, goal in
+                sum + goal.tasks.filter { BoardColumn.of($0, today: today) == .unplanned }.reduce(0) { $0 + $1.minutes }
+            }
+            return totalTasks(column) == 0 ? .none : .total(minutes)
+        }
+        let each = data.goals.compactMap { capacity(column, of: $0) }
+        guard !each.isEmpty else { return .none }
+        let planned = each.reduce(0) { $0 + $1.planned }
+        let protected = each.reduce(0) { $0 + $1.protected }
+        if protected > 0 { return .weighed(planned: planned, protected: protected) }
+        return planned > 0 || totalTasks(column) > 0 ? .noTime(planned: planned) : .none
     }
 
     // MARK: Columns
@@ -646,12 +678,12 @@ private struct ScopeMenuRow<Label: View>: View {
     }
 }
 
-/// A column's head on All goals: its title, and its ring across every goal (Unplanned, its total).
+/// A column's head on All goals: its title and date, then its tasks and its time across every goal.
 private struct ColumnHead: View {
     let title: String
     let subtitle: String?
-    let total: Capacity?
-    let unplanned: Int?
+    let tasks: Int
+    let time: PlanTime
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -659,35 +691,75 @@ private struct ColumnHead: View {
                 Text(title).appText(.sm, .medium).foregroundStyle(Theme.foreground)
                 if let subtitle { Text(subtitle).appText(.xs).foregroundStyle(Theme.muted).lineLimit(1) }
             }
-            HStack(spacing: 6) {
-                if let total {
-                    CapacityRing(planned: total.planned, protected: total.protected, color: "slate", size: 12)
-                    LoadText(planned: total.planned, protected: total.protected)
-                } else if let unplanned {
-                    Text("\(BoardDuration.text(unplanned)) across goals").foregroundStyle(Theme.muted)
-                }
-            }
-            .appText(.xs)
-            .monospacedDigit()
+            PlanFigures(tasks: tasks, time: time, color: "slate")
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 2)
     }
 }
 
-/// "2 h 15 min / 8 h 30 min", the planned figure amber when over; "4 h free" with nothing planned.
-private struct LoadText: View {
-    let planned: Int
-    let protected: Int
+/// What a cell or a column head says about its time.
+enum PlanTime: Equatable {
+    /// Time protected: planned against it.
+    case weighed(planned: Int, protected: Int)
+    /// Unplanned's total.
+    case total(Int)
+    /// Planned, with no time protected for it.
+    case noTime(planned: Int)
+    /// Nothing to say: "—".
+    case none
+
+    /// Over what's protected.
+    var isOver: Bool {
+        if case .weighed(let planned, let protected) = self { return planned > protected }
+        return false
+    }
+}
+
+/// Tasks and time as icons with their figures, on one muted line: the checklist and the open tasks
+/// (left out for none), then the clock and what's free, Just fits, Unplanned's total or "X, no
+/// time". Over, the clock becomes the ring, and by how much is in amber.
+private struct PlanFigures: View {
+    let tasks: Int
+    let time: PlanTime
+    /// The ring's colour key; only an over ring shows, and that's amber.
+    let color: String
 
     var body: some View {
-        if protected == 0 {
-            Text(planned > 0 ? "\(BoardDuration.text(planned)), no time" : "No time").foregroundStyle(Theme.muted)
-        } else if planned == 0 {
-            Text("\(BoardDuration.text(protected)) free").foregroundStyle(Theme.muted)
-        } else {
-            Text("\(Text(BoardDuration.text(planned)).foregroundStyle(planned > protected ? Theme.amber : Theme.foreground)) / \(BoardDuration.text(protected))")
-                .foregroundStyle(Theme.muted)
+        HStack(spacing: 10) {
+            if time == .none {
+                Text("—").foregroundStyle(Theme.muted.opacity(0.4))
+            } else {
+                if tasks > 0 { figure(.checklist, "\(tasks)") }
+                switch time {
+                case .weighed(let planned, let protected) where planned > protected:
+                    HStack(spacing: 4) {
+                        CapacityRing(planned: planned, protected: protected, color: color, size: 12)
+                        Text("\(BoardDuration.text(planned - protected)) over")
+                    }
+                    .appText(.xs, .medium)
+                    .foregroundStyle(Theme.amber)
+                case .weighed(let planned, let protected):
+                    figure(.clock, planned == protected ? "Just fits" : "\(BoardDuration.text(protected - planned)) free")
+                case .total(let minutes):
+                    figure(.clock, BoardDuration.text(minutes))
+                case .noTime(let planned):
+                    figure(.clock, planned > 0 ? "\(BoardDuration.text(planned)), no time" : "No time")
+                case .none:
+                    EmptyView()
+                }
+            }
+        }
+        .appText(.xs)
+        .monospacedDigit()
+        .lineLimit(1)
+        .foregroundStyle(Theme.muted)
+    }
+
+    private func figure(_ icon: Icon, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            icon.image(size: 12)
+            Text(text)
         }
     }
 }
@@ -726,48 +798,36 @@ private struct GoalRowLabel: View {
     }
 }
 
-/// A folded row's cell: its ring and load, and how many tasks; clicking opens the row.
+/// A folded row's cell: its open tasks and its time on one quiet line, tinted amber when it's over;
+/// clicking opens the row.
 private struct CellSummary: View {
-    let open: [TaskItem]
-    /// Nil for Unplanned, which shows its count and total.
-    let capacity: Capacity?
+    let tasks: Int
+    let time: PlanTime
     let color: String
     let action: () -> Void
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                content
-            }
-            .appText(.xs)
-            .monospacedDigit()
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-            .background(isHovered ? Theme.foreground(0.07) : laneFill, in: .rect(cornerRadius: 12))
-            .contentShape(.rect(cornerRadius: 12))
+            PlanFigures(tasks: tasks, time: time, color: color)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                .background(fill, in: .rect(cornerRadius: 12))
+                .contentShape(.rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
     }
 
-    private var count: String { open.count == 1 ? "1 task" : "\(open.count) tasks" }
-
-    @ViewBuilder private var content: some View {
-        if let capacity, capacity.protected > 0 || !open.isEmpty {
-            HStack(spacing: 6) {
-                CapacityRing(planned: capacity.planned, protected: capacity.protected, color: color, size: 14)
-                LoadText(planned: capacity.planned, protected: capacity.protected)
-            }
-            Text(open.isEmpty ? "Nothing planned" : count).foregroundStyle(Theme.muted)
-        } else if capacity == nil, !open.isEmpty {
-            Text("\(count) · \(BoardDuration.text(open.reduce(0) { $0 + $1.minutes }))").foregroundStyle(Theme.muted)
-        } else {
-            Text("—").foregroundStyle(Theme.muted.opacity(0.6))
-        }
+    private var fill: Color {
+        if time.isOver { return isHovered ? overWashHovered : overWash }
+        return isHovered ? Theme.foreground(0.07) : laneFill
     }
 }
+
+/// What's over, on All goals: amber-500 at 8% (amber-400 at 10% in dark), and a step stronger hovered.
+private let overWash = Color.adaptive(light: .rgb(0xf59e0b, alpha: 0.08), dark: .rgb(0xfbbf24, alpha: 0.10))
+private let overWashHovered = Color.adaptive(light: .rgb(0xf59e0b, alpha: 0.14), dark: .rgb(0xfbbf24, alpha: 0.16))
 
 /// "← Back", to the goal's page.
 private struct BoardBackLink: View {
