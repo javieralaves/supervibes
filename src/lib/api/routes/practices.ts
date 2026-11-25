@@ -7,6 +7,7 @@ import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import {
   addPracticeSession,
   deletePracticeSession,
+  FutureSessionError,
   MissedError,
   pausePractice,
   resumePractice,
@@ -160,9 +161,14 @@ export const practices = new OpenAPIHono<ApiEnv>()
     if (patch.done && patch.day !== undefined && patch.day > today) {
       return c.json(apiError("invalid_request", "It can’t be done on a day that hasn’t come yet."), 400);
     }
-    const row = await updatePracticeSession(userId, id, sessionId, patch);
-    if (!row) return c.json(apiError("not_found", SESSION_GONE), 404);
-    return c.json(asSession(row), 200);
+    try {
+      const row = await updatePracticeSession(userId, id, sessionId, patch, today);
+      if (!row) return c.json(apiError("not_found", SESSION_GONE), 404);
+      return c.json(asSession(row), 200);
+    } catch (error) {
+      if (error instanceof FutureSessionError) return c.json(apiError("invalid_request", error.message), 400);
+      throw error;
+    }
   })
   .openapi(deleteRoute, async (c) => {
     const { id, sessionId } = c.req.valid("param");

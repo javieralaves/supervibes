@@ -38,6 +38,15 @@ final class PracticeTests: XCTestCase {
         )
     }
 
+    /// No days set, with its actions: Give one a day and Give one a time under the week.
+    func testPracticePageUnplannedWithActions() {
+        assertAppearances(
+            PracticePage(detail: Fixtures.unplannedPracticeDetail, onPlanDay: { _ in }, onOpenCalendar: {}, onTickSession: { _ in }) { EmptyView() }
+                .background(Theme.background),
+            width: 900, height: 760
+        )
+    }
+
     /// Paused until Nov 30: Resume now in place of Log one, the week dimmed, no status.
     func testPracticePagePaused() {
         assertAppearances(

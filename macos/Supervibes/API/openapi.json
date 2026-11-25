@@ -658,6 +658,13 @@
                 "objective"
               ]
             }
+          },
+          "practiceSessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarPracticeSession"
+            },
+            "description": "Practices' sessions off the calendar over the same days as the blocks: meant for a day with no time, or done."
           }
         },
         "required": [
@@ -668,7 +675,8 @@
           "goals",
           "tasks",
           "settings",
-          "objectives"
+          "objectives",
+          "practiceSessions"
         ]
       },
       "CalendarGoal": {
@@ -791,6 +799,31 @@
           "plannedFor",
           "plannedWeek",
           "dueOn"
+        ]
+      },
+      "CalendarPracticeSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Done (logged, or ticked off); otherwise planned for its day with no time."
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "day",
+          "done"
         ]
       },
       "Connections": {

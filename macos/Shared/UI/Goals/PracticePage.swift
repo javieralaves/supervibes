@@ -18,6 +18,12 @@ struct PracticePage<Sections: View>: View {
     /// Pauses it until a day ("YYYY-MM-DD"), or until it's resumed with nil.
     var onPause: (String?) -> Void = { _ in }
     var onResume: () -> Void = {}
+    /// Plans a session for a day ("YYYY-MM-DD"), with no time; nil leaves it out.
+    var onPlanDay: ((String) -> Void)?
+    /// Opens the calendar, to give one a time by drawing a block for it.
+    var onOpenCalendar: (() -> Void)?
+    /// Ticks off a session planned for its day, by id.
+    var onTickSession: ((String) -> Void)?
     var onEdit: () -> Void = {}
     var onDelete: () -> Void = {}
     @ViewBuilder var sections: Sections
@@ -41,7 +47,10 @@ struct PracticePage<Sections: View>: View {
                         onEdit: onEdit,
                         onDelete: onDelete
                     )
-                    PracticeWeekSection(detail: detail, practice: practice).padding(.top, 32)
+                    PracticeWeekSection(
+                        detail: detail, practice: practice, onPlanDay: onPlanDay, onOpenCalendar: onOpenCalendar, onTickSession: onTickSession
+                    )
+                    .padding(.top, 32)
                     HoldingCard(detail: detail, practice: practice).padding(.top, 40)
                     SessionsList(detail: detail).padding(.top, 56)
                 }
@@ -191,6 +200,9 @@ private struct LogOneButton: View {
 private struct PracticeWeekSection: View {
     let detail: GoalDetail
     let practice: Practice
+    var onPlanDay: ((String) -> Void)?
+    var onOpenCalendar: (() -> Void)?
+    var onTickSession: ((String) -> Void)?
 
     private var days: [String] { (0..<7).map { CalendarDay.addDays(practice.week.start, $0) } }
 
@@ -210,7 +222,7 @@ private struct PracticeWeekSection: View {
 
             HStack(spacing: 8) {
                 ForEach(days, id: \.self) { day in
-                    DayCell(day: day, today: detail.today, sessions: sessions(on: day), color: detail.goal.color)
+                    DayCell(day: day, today: detail.today, sessions: sessions(on: day), color: detail.goal.color, onTick: onTickSession)
                 }
             }
             .padding(16)
@@ -222,8 +234,25 @@ private struct PracticeWeekSection: View {
             if let aside {
                 Text(aside).appText(.sm).foregroundStyle(Theme.muted).padding(.top, 8)
             }
+
+            // With some still to plan: a day for one (no time), or a time on the calendar. Neither is needed.
+            if practice.paused == nil, practice.left > practice.week.planned, onPlanDay != nil || onOpenCalendar != nil {
+                HStack(spacing: 8) {
+                    if let onPlanDay {
+                        PlanDayButton(days: daysLeft, today: detail.today, onPick: onPlanDay)
+                    }
+                    if let onOpenCalendar {
+                        SmallActionButton(icon: .clock, title: "Give one a time", action: onOpenCalendar)
+                            .help("Draw a block for it on the calendar")
+                    }
+                }
+                .padding(.top, 12)
+            }
         }
     }
+
+    /// The days left this week, today first.
+    private var daysLeft: [String] { days.filter { $0 >= detail.today } }
 
     private func sessions(on day: String) -> [PracticeSession] {
         (detail.practice?.sessions ?? []).filter { $0.day == day }
@@ -250,17 +279,78 @@ private struct PracticeWeekSection: View {
     }
 }
 
-/// One day of the week: its date, and its sessions as a single mark.
+/// "Plan one for a day": the days left this week, in a menu.
+private struct PlanDayButton: View {
+    let days: [String]
+    let today: String
+    let onPick: (String) -> Void
+    @State private var anchor = CGRect.zero
+    @Environment(\.overlays) private var overlays
+
+    var body: some View {
+        SmallActionButton(icon: .calendarSmall, title: "Give one a day") {
+            overlays?.showMenu(anchor: anchor, alignLeading: true) {
+                MenuPanel(width: 200) {
+                    MenuLabel("Plan one for")
+                    ForEach(days, id: \.self) { day in
+                        MenuItem(icon: .calendarSmall, title: CalendarDay.relativeLabel(day, today: today)) {
+                            overlays?.dismiss()
+                            onPick(day)
+                        }
+                    }
+                }
+            }
+        }
+        .modifier(AnchorReader(frame: $anchor))
+        .help("Plan one for a day, with no time")
+    }
+}
+
+/// A small bordered button with an icon: the page's quieter actions.
+private struct SmallActionButton: View {
+    let icon: Icon
+    let title: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                icon.image(size: 14)
+                Text(title).appText(.sm, .medium)
+            }
+            .foregroundStyle(Theme.foreground)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(isHovered ? Theme.wash : Theme.card, in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// One day of the week: its date, and its sessions as a single mark. A session planned for the day with no time can
+/// be ticked off from here once the day has come.
 private struct DayCell: View {
     let day: String
     let today: String
     let sessions: [PracticeSession]
     let color: String
+    var onTick: ((String) -> Void)?
 
     private var isToday: Bool { day == today }
     private var done: [PracticeSession] { sessions.filter { $0.state == .done } }
     private var planned: [PracticeSession] { sessions.filter { $0.state == .planned } }
     private var missed: [PracticeSession] { sessions.filter { $0.state == .missed || $0.state == .short || $0.state == .lapsed } }
+
+    /// The day's session to tick off here: planned for it with no time, once it has come.
+    private var tickable: PracticeSession? {
+        guard onTick != nil, day <= today else { return nil }
+        // One whose day went by unticked can still be ticked off: it happened, it just wasn't said.
+        return sessions.first { $0.source == .day && ($0.state == .planned || $0.state == .lapsed) }
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -268,7 +358,7 @@ private struct DayCell: View {
                 .appText(.xs, isToday ? .semibold : .regular)
                 .monospacedDigit()
                 .foregroundStyle(isToday ? Theme.foreground : Theme.muted)
-            mark
+            cell
                 .frame(maxWidth: .infinity)
                 .frame(height: 58)
                 .overlay {
@@ -284,6 +374,17 @@ private struct DayCell: View {
             $0.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!).weekday(.abbreviated))
         } ?? ""
         return "\(weekday) \(Int(day.suffix(2)) ?? 0)"
+    }
+
+    /// The mark, as a button only when there's a session to tick off: a disabled button would dim the rest.
+    @ViewBuilder private var cell: some View {
+        if let tickable, let onTick {
+            Button { onTick(tickable.id) } label: { mark.contentShape(.rect(cornerRadius: 12)) }
+                .buttonStyle(.plain)
+                .help("Tick it off")
+        } else {
+            mark
+        }
     }
 
     @ViewBuilder private var mark: some View {
@@ -305,7 +406,7 @@ private struct DayCell: View {
         } else if let first = missed.first {
             VStack(spacing: 4) {
                 Circle().strokeBorder(Theme.foreground(0.25), style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 20, height: 20)
-                Text(first.state == .short ? "Too short" : "Didn’t happen").font(.app(10.5)).strikethrough().foregroundStyle(Theme.muted)
+                Text(first.state == .short ? "Too short" : first.state == .lapsed ? "Not ticked off" : "Didn’t happen").font(.app(10.5)).strikethrough().foregroundStyle(Theme.muted)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.foreground(0.04), in: .rect(cornerRadius: 12))

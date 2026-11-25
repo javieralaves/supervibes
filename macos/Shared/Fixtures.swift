@@ -418,6 +418,26 @@ enum Fixtures {
         ]
     }
 
+    /// The calendar with practices kept without blocks: Workouts with one done and one planned for Friday (no time),
+    /// so one left to plan; Walk with one logged today, three left; Tagalog with all four left.
+    static var calendarWithPractices: CalendarData {
+        var data = calendar
+        data.goals += [
+            CalendarGoal(id: "w", title: "Workouts", icon: "Dumbbell01Icon", color: "green", kind: .practice, perWeek: 3, minMinutes: 30,
+                         week: .init(start: "2026-11-16", done: 1, planned: 1)),
+            CalendarGoal(id: "k", title: "Walk", icon: "RunningShoesIcon", color: "violet", kind: .practice, perWeek: 5,
+                         week: .init(start: "2026-11-16", done: 2, planned: 0)),
+            CalendarGoal(id: "t", title: "Tagalog", icon: "LanguageSkillIcon", color: "amber", kind: .practice, perWeek: 4,
+                         week: .init(start: "2026-11-16", done: 0, planned: 0)),
+        ]
+        data.practiceSessions = [
+            CalendarPracticeSession(id: "ps1", goalId: "w", day: "2026-11-20", done: false),
+            CalendarPracticeSession(id: "ps2", goalId: "k", day: "2026-11-18", done: true),
+            CalendarPracticeSession(id: "ps3", goalId: "w", day: "2026-11-18", done: false),
+        ]
+        return data
+    }
+
     /// Workouts' blocks: one this evening, still to come; this morning's, counted; and yesterday's, which didn't happen.
     static var practicePanelBlocks: [CalendarBlock] {
         let day = Calendar.current.startOfDay(for: referenceNow)
