@@ -578,6 +578,39 @@ final class CalendarModel {
         }
     }
 
+    /// Check a task off from its menu on the strip: it leaves the open tasks at once.
+    func markTaskDone(_ taskId: String) {
+        guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+        let before = data.tasks.remove(at: index)
+        write(undo: { [weak self] in self?.data.tasks.insert(before, at: min(index, self?.data.tasks.count ?? 0)) }) { client in
+            switch try await client.setTaskDone(path: .init(taskId: taskId), body: .json(.init(done: true))) {
+            case .ok: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t check that off.")
+            case .notFound: return .failed("That task doesn’t exist anymore.")
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t check that off (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Delete a task from its menu on the strip.
+    func deleteTask(_ taskId: String) {
+        guard let index = data.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+        let before = data.tasks.remove(at: index)
+        write(undo: { [weak self] in self?.data.tasks.insert(before, at: min(index, self?.data.tasks.count ?? 0)) }) { client in
+            switch try await client.deleteTask(path: .init(taskId: taskId)) {
+            case .noContent, .notFound: return .done
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t delete that task (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Change a task's day, week, estimate or due date from its menu on the strip.
+    func changeTask(_ taskId: String, _ patch: TaskPatch) {
+        editTask(taskId, patch)
+    }
+
     /// Mark an intention's task done, or reopen it.
     func toggleDone(_ blockId: String) {
         guard let before = block(blockId), before.taskId != nil else { return }

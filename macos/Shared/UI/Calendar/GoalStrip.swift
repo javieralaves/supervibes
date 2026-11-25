@@ -22,6 +22,8 @@ struct GoalStrip: View {
     @Binding var open: Set<String>
     /// A task held over its list, for previews and snapshot tests (a real drag comes from the Day view).
     var holding: Placing?
+    /// A task's menu on a right-click; without it, there's none.
+    var menu: ((StripItem) -> AnyView)?
     @Environment(\.taskDrag) private var drag
 
     /// Lines the strip's first row up with "Anytime".
@@ -44,7 +46,7 @@ struct GoalStrip: View {
                 }
                 ForEach(rows) { row in
                     GoalStripRow(
-                        row: row, blocks: blocks, today: today, isOpen: open.contains(row.id),
+                        row: row, blocks: blocks, today: today, menu: menu, isOpen: open.contains(row.id),
                         draggingId: placing?.taskId,
                         listIndex: placing?.goalId == row.id ? placing?.listIndex : nil
                     ) {
@@ -75,6 +77,7 @@ private struct GoalStripRow: View {
     let row: DayGoalRow
     let blocks: [String: CalendarBlock]
     let today: String
+    let menu: ((StripItem) -> AnyView)?
     let isOpen: Bool
     /// The task being dragged, if it's one of these.
     let draggingId: String?
@@ -126,7 +129,8 @@ private struct GoalStripRow: View {
                         let held = item.task.id == draggingId
                         GoalStripTask(
                             item: item, block: blocks[item.task.id], color: row.goal.color, today: today,
-                            isPastTime: past.contains(item.task.id), isDragging: held && listIndex == nil, isLifted: held && listIndex != nil
+                            isPastTime: past.contains(item.task.id), isDragging: held && listIndex == nil, isLifted: held && listIndex != nil,
+                            menu: menu.map { menu in { menu(item) } }
                         )
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { frame in
                             drag?.lists[row.id, default: StripList()].rows[item.task.id] = frame
@@ -168,6 +172,9 @@ private struct GoalStripTask: View {
     let isDragging: Bool
     /// Held over its list: drawn raised, in the place it would go.
     var isLifted = false
+    /// Its menu, on a right-click.
+    var menu: (() -> AnyView)?
+    @Environment(\.overlays) private var overlays
 
     private var isPending: Bool { block?.isPending ?? item.task.isPending }
 
@@ -208,11 +215,14 @@ private struct GoalStripTask: View {
                 Icon.grip.image(size: 13).foregroundStyle(Theme.muted).padding(.leading, 6)
             }
         }
+        // Its menu open: washed, as a row is while hovered.
+        .background(overlays?.presented?.owner == item.task.id ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 8))
         .offset(x: isLifted ? 4 : 0)
         .zIndex(isLifted ? 1 : 0)
         .contentShape(.rect)
         .pointerStyle(isPending ? nil : .grabIdle)
         .modifier(TaskDragSource(task: PanelTask(task: item.task, block: block)))
+        .contextPanel(owner: item.task.id, isEnabled: menu != nil && !isPending) { menu?() ?? AnyView(EmptyView()) }
         .help(helpText)
     }
 

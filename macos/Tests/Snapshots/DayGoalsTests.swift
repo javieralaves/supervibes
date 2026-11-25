@@ -66,9 +66,11 @@ final class DayGoalsTests: XCTestCase {
         let data = Fixtures.dayByGoal
         let moved = data.goalOrder(moving: "sf-renewals", toStripIndex: 1, day: 0, now: now, calendar: madrid)
         XCTAssertEqual(moved?.goalId, "superfocus")
-        XCTAssertEqual(moved?.ids, ["sf-spark", "sf-renewals", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-focus"])
-        // To the end, after the last on the strip.
-        XCTAssertEqual(data.goalOrder(moving: "sf-spark", toStripIndex: 6, day: 0, now: now, calendar: madrid)?.ids.last, "sf-spark")
+        // Friday's task isn't on today's strip: it keeps its place, last.
+        XCTAssertEqual(moved?.ids, ["sf-spark", "sf-renewals", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-focus", "sf-friday-task"])
+        // To the end: right after the last on the strip.
+        XCTAssertEqual(data.goalOrder(moving: "sf-spark", toStripIndex: 6, day: 0, now: now, calendar: madrid)?.ids,
+                       ["sf-design", "sf-actions", "sf-community", "sf-reality", "sf-renewals", "sf-focus", "sf-spark", "sf-friday-task"])
         // Back where it was: nothing to save.
         XCTAssertNil(data.goalOrder(moving: "sf-design", toStripIndex: 1, day: 0, now: now, calendar: madrid))
     }
@@ -78,7 +80,46 @@ final class DayGoalsTests: XCTestCase {
         var data = Fixtures.dayByGoal
         data.tasks.insert(CalendarTask(id: "sf-later", goalId: "superfocus", title: "Plan the next cohort", minutes: 60), at: 1)
         let moved = data.goalOrder(moving: "sf-focus", toStripIndex: 0, day: 0, now: now, calendar: madrid)
-        XCTAssertEqual(moved?.ids, ["sf-focus", "sf-spark", "sf-later", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-renewals"])
+        XCTAssertEqual(moved?.ids, ["sf-focus", "sf-spark", "sf-later", "sf-design", "sf-actions", "sf-community", "sf-reality", "sf-renewals", "sf-friday-task"])
+    }
+
+    func testATaskWithinItsTimeOffersItsTurnInTheSessions() {
+        let data = Fixtures.dayByGoal
+        // 1 h for Spark Summit from 1:00, then the design system workflow until 2:30.
+        let design = data.suggestions(for: "sf-design", day: 0, now: now, calendar: madrid)
+        XCTAssertEqual(design?.turn?.start, 14 * 60)
+        XCTAssertEqual(design?.turn?.end, 14 * 60 + 30)
+        XCTAssertEqual(design?.turn?.session, 13 * 60)
+        XCTAssertNil(design?.move)
+        // The first session is full by then: Actions in other apps takes the 3:00 one.
+        let actions = data.suggestions(for: "sf-actions", day: 0, now: now, calendar: madrid)
+        XCTAssertEqual(actions?.turn?.start, 15 * 60)
+        XCTAssertEqual(actions?.turn?.session, 15 * 60)
+        XCTAssertTrue(data.suggestions(for: "sf-spark", day: 0, now: now, calendar: madrid)?.isFirst ?? false)
+    }
+
+    func testATaskPastItsTimeOffersTheFirstDayWithRoomAndFreeTime() {
+        let renewals = Fixtures.dayByGoal.suggestions(for: "sf-renewals", day: 0, now: now, calendar: madrid)
+        XCTAssertEqual(renewals?.isPastTime, true)
+        XCTAssertNil(renewals?.turn)
+        // Thursday has no sessions; Friday has 2 h 30 min free.
+        XCTAssertEqual(renewals?.move?.to, .day("2026-11-20"))
+        XCTAssertEqual(renewals?.move?.roomAfter, 120)
+        // The half hour right before the 1:00 session.
+        let slot = renewals?.protect
+        XCTAssertEqual(slot.map { madrid.component(.hour, from: $0.start) * 60 + madrid.component(.minute, from: $0.start) }, 12 * 60 + 30)
+        XCTAssertEqual(slot?.minutes, 30)
+        // To the top, it pushes Actions in other apps (an hour) past the time.
+        XCTAssertEqual(renewals?.pushesOut, "Actions in other apps")
+    }
+
+    func testOnlyCountedTasksGetSuggestions() {
+        // Only due today: no turn, nowhere to move it from, nothing to protect.
+        let tickets = Fixtures.dayByGoal.suggestions(for: "l-tickets", day: 0, now: now, calendar: madrid)
+        XCTAssertNotNil(tickets)
+        XCTAssertNil(tickets?.turn)
+        XCTAssertNil(tickets?.move)
+        XCTAssertNil(tickets?.protect)
     }
 
     func testADayGoneByDimsNothing() {

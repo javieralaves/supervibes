@@ -426,6 +426,8 @@ enum Fixtures {
             CalendarBlock(id: "vinay", goalId: "superfocus", title: "Chat about Superfocus – Vinay", startsAt: at(16), endsAt: at(16, 30), reserved: true),
             CalendarBlock(id: "richie", goalId: "superfocus", title: "Chat about Superfocus – Richie", startsAt: at(16, 30), endsAt: at(17), reserved: true),
             CalendarBlock(id: "build1", goalId: "build", title: nil, startsAt: at(17), endsAt: at(20, 30)),
+            // Friday: Superfocus has 3 h and 30 min of it planned, so room for what doesn't fit today.
+            CalendarBlock(id: "sf-friday", goalId: "superfocus", title: nil, startsAt: at(13).addingTimeInterval(2 * 86_400), endsAt: at(16).addingTimeInterval(2 * 86_400)),
         ]
         func task(_ id: String, _ goal: String, _ title: String, _ minutes: Int, planned: Bool = true, due: Bool = false) -> CalendarTask {
             CalendarTask(id: id, goalId: goal, title: title, minutes: minutes, plannedFor: planned ? today : nil, dueOn: due ? today : nil)
@@ -449,6 +451,7 @@ enum Fixtures {
             task("b-blocks", "build", "Deleting several selected blocks at once", 15),
             task("sf-focus", "superfocus", "Make focus time editing more forgiving", 30),
             task("l-tickets", "leisure", "Buy tickets for Doomsday", 30, planned: false, due: true),
+            CalendarTask(id: "sf-friday-task", goalId: "superfocus", title: "Draft the community newsletter", minutes: 30, plannedFor: "2026-11-20"),
         ]
         return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
                             clock: .twelveHour, objectives: [])
