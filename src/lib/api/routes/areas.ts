@@ -5,6 +5,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { GoalSchema, GoalWeekSchema, loadGoals } from "@/lib/api/routes/goals";
+import { AreaReadError, getAreaRead, readArea, type AreaReadDTO } from "@/lib/area-read";
 import { areaInputSchema, combineTrajectories, MAX_AREAS, worstStatus } from "@/lib/area-schema";
 import { AreaLimitError, createArea, deleteArea, getArea, listAreas, reorderAreas, updateArea, type AreaDTO } from "@/lib/areas";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
@@ -16,7 +17,7 @@ import { buildTrajectory, STATUSES } from "@/lib/status-schema";
 
 /*
  * Areas: the parts of someone's life their goals sit in. An area's status is its goals' statuses rolled up
- * (src/lib/area-schema.ts), with no read of its own.
+ * (src/lib/area-schema.ts). Its read (src/lib/area-read.ts) is words only, written when the person asks.
  */
 
 const AreaSchema = z
@@ -48,9 +49,20 @@ const AreaTrajectoryDaySchema = z
   })
   .openapi("AreaTrajectoryDay");
 
+const AreaReadSchema = z
+  .object({
+    headline: z.string(),
+    summary: z.string(),
+    goalIds: z.array(z.string()).openapi({ description: "The goals whose reads it drew on." }),
+    usedCalendar: z.boolean().openapi({ description: "It drew on the person's time on the calendar." }),
+    createdAt: z.iso.datetime(),
+  })
+  .openapi("AreaRead");
+
 const AreaDetailSchema = z
   .object({
     area: AreaSchema,
+    read: AreaReadSchema.nullable().openapi({ description: "Its latest read; null until the person asks for one." }),
     today: z.iso.date(),
     trajectory: z.array(AreaTrajectoryDaySchema).openapi({
       description: "The last 28 days, oldest first: each day the worst of its goals' statuses.",
@@ -110,6 +122,20 @@ const createRoute_ = createRoute({
   responses: {
     201: { description: "Created", content: { "application/json": { schema: AreaSchema } } },
     ...errorResponses,
+  },
+});
+
+const readRoute = createRoute({
+  method: "post",
+  path: "/areas/{id}/read",
+  operationId: "readArea",
+  summary: "Write the area's read from its goals' reads and the calendar, replacing the last; takes a few seconds",
+  security: [{ bearerAuth: [] }],
+  request: { params: areaParam },
+  responses: {
+    200: { description: "Read", content: { "application/json": { schema: AreaReadSchema } } },
+    ...errorResponses,
+    404: notFound,
   },
 });
 
@@ -186,6 +212,8 @@ async function asAreas(userId: string, list: AreaDTO[], timeZone: string | null)
   });
 }
 
+const asRead = (read: AreaReadDTO) => ({ ...read, createdAt: read.createdAt.toISOString() });
+
 const invalid = (issues: { message: string }[]) => apiError("invalid_request", issues[0]?.message ?? "Check the form.");
 
 export const areas = new OpenAPIHono<ApiEnv>()
@@ -220,7 +248,10 @@ export const areas = new OpenAPIHono<ApiEnv>()
     const area = await getArea(userId, id);
     if (!area) return c.json(apiError("not_found", AREA_GONE), 404);
     const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
-    const { today, goals, week } = await loadGoals(userId, timeZone, (goal) => goal.areaId === id);
+    const [{ today, goals, week }, read] = await Promise.all([
+      loadGoals(userId, timeZone, (goal) => goal.areaId === id),
+      getAreaRead(userId, id),
+    ]);
     const days = buildTrajectory([], null, today).map((d) => d.day);
     const trajectory = combineTrajectories(
       goals.map((goal) => goal.trajectory),
@@ -236,7 +267,19 @@ export const areas = new OpenAPIHono<ApiEnv>()
       status: trajectory.at(-1)?.status ?? null,
       goalIds: goals.map((goal) => goal.id),
     };
-    return c.json({ area: view, today, trajectory, goals, week }, 200);
+    return c.json({ area: view, read: read && asRead(read), today, trajectory, goals, week }, 200);
+  })
+  .openapi(readRoute, async (c) => {
+    const userId = c.var.user.id;
+    const { id } = c.req.valid("param");
+    if (!(await getArea(userId, id))) return c.json(apiError("not_found", AREA_GONE), 404);
+    try {
+      return c.json(asRead(await readArea(userId, id)), 200);
+    } catch (error) {
+      if (error instanceof AreaReadError) return c.json(apiError("read_failed", error.message), 400);
+      console.error("[area-read] failed", error);
+      return c.json(apiError("read_failed", "Couldn’t read this area. Try again."), 400);
+    }
   })
   .openapi(updateRoute, async (c) => {
     const parsed = areaInputSchema.safeParse(c.req.valid("json"));

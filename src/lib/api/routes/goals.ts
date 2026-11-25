@@ -16,7 +16,7 @@ import { goalWeekLoads, sessionBlocks } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
-import { ownsAreas, setGoalArea } from "@/lib/areas";
+import { getArea, ownsAreas, setGoalArea } from "@/lib/areas";
 import { createGoal, deleteGoal, GoalLimitError, listGoals, listGoalUpdatedAt, updateGoal, type GoalDTO } from "@/lib/goals";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
@@ -113,8 +113,9 @@ const NewGoalSchema = z
 const GoalAreaInputSchema = z
   .object({
     // An empty string, not null, takes the goal out: the Mac app's generated client can't send an explicit null.
-    areaId: z.union([z.uuid(), z.literal("")]).openapi({
-      description: "One of the person's areas, or an empty string to take the goal out of its area.",
+    // A plain string here (checked in the handler), since a union would generate a wrapper type in Swift.
+    areaId: z.string().openapi({
+      description: "One of the person's areas (its id), or an empty string to take the goal out of its area.",
     }),
   })
   .openapi("GoalAreaInput");
@@ -175,9 +176,18 @@ const StatusViewSchema = z
   })
   .openapi("GoalStatusView");
 
+const GoalAreaSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    icon: z.string().openapi({ description: "A Hugeicons name from lib/goal-icons.ts." }),
+  })
+  .openapi("GoalArea");
+
 const GoalDetailSchema = z
   .object({
     goal: GoalSchema,
+    area: GoalAreaSchema.nullable().openapi({ description: "The area the goal sits in, to show and link to; null when none." }),
     today: z.iso.date(),
     read: ReadSchema.nullable(),
     status: StatusViewSchema.nullable(),
@@ -405,6 +415,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listBlocks(userId, weekBounds.start, twoWeeksEnd),
       listGoalUpdatedAt(userId, [id]),
     ]);
+    const area = goal.areaId ? await getArea(userId, goal.areaId) : null;
     const trajectory = trajectories.get(id);
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
     const goalBlocks = blocks.filter((b) => b.goalId === id);
@@ -421,6 +432,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     return c.json(
       {
         goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today), updated.get(id)),
+        area: area && { id: area.id, name: area.name, icon: area.icon },
         today,
         read: read && {
           headline: read.headline,
@@ -487,7 +499,9 @@ export const goals = new OpenAPIHono<ApiEnv>()
     return c.body(null, 202);
   })
   .openapi(areaRoute, async (c) => {
-    const result = await setGoalArea(c.var.user.id, c.req.valid("param").id, c.req.valid("json").areaId || null);
+    const areaId = c.req.valid("json").areaId;
+    if (areaId && !z.uuid().safeParse(areaId).success) return c.json(apiError("invalid_request", AREA_GONE), 400);
+    const result = await setGoalArea(c.var.user.id, c.req.valid("param").id, areaId || null);
     if (result === "goal_not_found") return c.json(apiError("not_found", GOAL_GONE), 404);
     if (result === "area_not_found") return c.json(apiError("not_found", AREA_GONE), 404);
     return c.body(null, 204);

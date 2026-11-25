@@ -6,12 +6,14 @@ struct UsageCall: Identifiable, Hashable, Sendable {
         case progressRead = "progress_read"
         case recap
         case agenda
+        case areaRead = "area_read"
 
         var label: String {
             switch self {
             case .progressRead: "Progress reads"
             case .recap: "Session recaps"
             case .agenda: "Agendas"
+            case .areaRead: "Area reads"
             }
         }
     }

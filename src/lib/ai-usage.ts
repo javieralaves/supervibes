@@ -13,11 +13,12 @@ import { costMicros, type TokenCounts } from "@/lib/ai-pricing";
  * is logged and the feature carries on.
  */
 
-export type AiFeature = "progress_read" | "recap" | "agenda";
+export type AiFeature = "progress_read" | "area_read" | "recap" | "agenda";
 export type AiTrigger = "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto";
 
 /** Who and what a call is for; passed down to whatever makes the call. */
-export type AiCallContext = { userId: string; goalId: string; feature: AiFeature; trigger: AiTrigger };
+/** `goalId` is null for a call about something other than one goal (an area's read). */
+export type AiCallContext = { userId: string; goalId: string | null; feature: AiFeature; trigger: AiTrigger };
 
 /** Running totals for one logical call, which can span several API requests. */
 export class CallMeter {

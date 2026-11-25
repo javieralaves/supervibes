@@ -9,6 +9,8 @@ struct GoalDialog: View {
     var mode: Mode = .create
     /// Today, "YYYY-MM-DD", for the target date's "in 3 weeks".
     var today = CalendarDay.today()
+    /// The person's areas, to place the goal in one; with none, there's no Area field.
+    var areas: [Area] = []
     var onCancel: () -> Void = {}
     var onSave: (GoalInput) -> Void = { _ in }
     /// Editing only: deletes the goal, after an inline "for good?".
@@ -80,8 +82,13 @@ struct GoalDialog: View {
                         .lineLimit(1...6)
                         .placeholder("What does done look like?", when: input.description.isEmpty, font: .app(14))
                         .accessibilityLabel("Description")
-                    TargetDateField(date: $input.targetDate, today: today, isPicking: $isPickingDate)
-                        .padding(.top, 6)
+                    HStack(spacing: 8) {
+                        if !areas.isEmpty {
+                            AreaField(areaId: $input.areaId, areas: areas)
+                        }
+                        TargetDateField(date: $input.targetDate, today: today, isPicking: $isPickingDate)
+                    }
+                    .padding(.top, 6)
                 }
             }
             .padding(.top, 16)
@@ -259,6 +266,57 @@ private struct CloseButton: View {
 }
 
 /// A pill that opens a date picker: "Add target date", or "Target Dec 18 · in 4 weeks" and a clear button.
+/// The goal's area, before its target date: the area's icon and name, or "No area", opening a list of the areas
+/// beside it (a popover, since the dialog is the window's one overlay).
+private struct AreaField: View {
+    @Binding var areaId: String?
+    let areas: [Area]
+    @State private var isPicking = false
+    @State private var isHovered = false
+
+    private var area: Area? { areas.first { $0.id == areaId } }
+
+    var body: some View {
+        Button { isPicking = true } label: {
+            HStack(spacing: 6) {
+                if let area {
+                    GoalIconImage(name: area.icon, size: 14)
+                    Text(area.name).foregroundStyle(Theme.foreground)
+                } else {
+                    Text("No area")
+                }
+                Icon.chevronDown.image(size: 12)
+            }
+            .appText(.xs, .medium)
+            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .overlay(Capsule().strokeBorder(isHovered || isPicking ? Theme.foreground(0.2) : Theme.cardBorder))
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel("Area")
+        .popover(isPresented: $isPicking, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(areas) { area in
+                    AreaMenuRow(name: area.name, icon: area.icon, isChecked: area.id == areaId) {
+                        areaId = area.id
+                        isPicking = false
+                    }
+                }
+                MenuSeparator()
+                AreaMenuAction(icon: .close, title: "No area", isChecked: areaId == nil) {
+                    areaId = nil
+                    isPicking = false
+                }
+            }
+            .padding(6)
+            .frame(width: 232)
+        }
+    }
+}
+
 private struct TargetDateField: View {
     @Binding var date: String?
     let today: String

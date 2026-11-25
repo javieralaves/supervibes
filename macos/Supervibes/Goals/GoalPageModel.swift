@@ -14,6 +14,8 @@ final class GoalPageModel {
     let id: String
     private(set) var load: Load = .loading
     private(set) var detail: GoalDetail?
+    /// The person's areas, for the goal's area menu and Edit goal. Empty if they couldn't be loaded.
+    private(set) var areas: [Area] = []
     private(set) var requestingRead = false
     private(set) var readError: String?
     private(set) var headerError: String?
@@ -37,6 +39,8 @@ final class GoalPageModel {
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
     }
 
+    private var areaAPI: AreaAPI { AreaAPI(client: client, auth: auth) }
+
     func refresh() async {
         do {
             let output = try await client.getGoal(path: .init(id: id), query: .init(timeZone: TimeZone.current.identifier))
@@ -45,6 +49,7 @@ final class GoalPageModel {
                 let next = GoalDetail(api: try ok.body.json)
                 detail = next
                 load = .loaded
+                if let loaded = try? await areaAPI.list() { areas = loaded }
                 if !next.readPending { requestingRead = false }
                 pollWhileReading()
             case .notFound:
@@ -123,7 +128,9 @@ final class GoalPageModel {
             do {
                 switch try await client.updateGoal(path: .init(id: id), body: .json(body)) {
                 case .ok(let ok):
+                    let before = detail?.goal.areaId
                     detail?.goal = Goal(api: try ok.body.json)
+                    if input.areaId != before { await setArea(input.areaId) }
                 case .badRequest(let bad):
                     headerError = (try? bad.body.json.error.message) ?? "Couldn’t save that."
                 case .notFound:
@@ -136,6 +143,29 @@ final class GoalPageModel {
             } catch {
                 headerError = "Couldn’t save. Check your connection."
             }
+        }
+    }
+
+    /// Places the goal in an area, or takes it out with nil, then reloads the page for its area.
+    func setArea(_ areaId: String?) async {
+        headerError = nil
+        do {
+            try await areaAPI.setGoalArea(goalId: id, areaId: areaId)
+            await refresh()
+        } catch {
+            headerError = (error as? AreaAPIError)?.message ?? "Couldn’t change this goal’s area."
+        }
+    }
+
+    /// Makes a new area, from the area menu's New area…, and places the goal in it.
+    func createArea(_ input: AreaInput) async -> String? {
+        if let problem = input.problem { return problem }
+        do {
+            let area = try await areaAPI.create(input)
+            await setArea(area.id)
+            return nil
+        } catch {
+            return (error as? AreaAPIError)?.message ?? "Couldn’t add that area."
         }
     }
 
@@ -470,7 +500,8 @@ extension GoalDetail {
                 ConnectionItem.Provider(rawValue: option.provider.rawValue).map {
                     ConnectionOption(id: option.id, provider: $0, label: option.label, relationHint: option.relationHint)
                 }
-            }
+            },
+            area: body.area.map { AreaRef(id: $0.id, name: $0.name, icon: $0.icon) }
         )
     }
 }

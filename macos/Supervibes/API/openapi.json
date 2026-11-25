@@ -1145,6 +1145,9 @@
           "goal": {
             "$ref": "#/components/schemas/Goal"
           },
+          "area": {
+            "$ref": "#/components/schemas/GoalArea"
+          },
           "today": {
             "type": "string",
             "format": "date"
@@ -1279,6 +1282,7 @@
         },
         "required": [
           "goal",
+          "area",
           "today",
           "read",
           "status",
@@ -1295,6 +1299,28 @@
           "sources",
           "connectionOptions"
         ]
+      },
+      "GoalArea": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "description": "A Hugeicons name from lib/goal-icons.ts."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon"
+        ],
+        "description": "The area the goal sits in, to show and link to; null when none."
       },
       "GoalRead": {
         "type": "object",
@@ -1762,19 +1788,8 @@
         "type": "object",
         "properties": {
           "areaId": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "string",
-                "enum": [
-                  ""
-                ]
-              }
-            ],
-            "description": "One of the person's areas, or an empty string to take the goal out of its area."
+            "type": "string",
+            "description": "One of the person's areas (its id), or an empty string to take the goal out of its area."
           }
         },
         "required": [
@@ -2365,6 +2380,7 @@
             "type": "string",
             "enum": [
               "progress_read",
+              "area_read",
               "recap",
               "agenda"
             ]
@@ -2616,6 +2632,9 @@
           "area": {
             "$ref": "#/components/schemas/Area"
           },
+          "read": {
+            "$ref": "#/components/schemas/AreaRead"
+          },
           "today": {
             "type": "string",
             "format": "date"
@@ -2659,11 +2678,47 @@
         },
         "required": [
           "area",
+          "read",
           "today",
           "trajectory",
           "goals",
           "week"
         ]
+      },
+      "AreaRead": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "goalIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The goals whose reads it drew on."
+          },
+          "usedCalendar": {
+            "type": "boolean",
+            "description": "It drew on the person's time on the calendar."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "headline",
+          "summary",
+          "goalIds",
+          "usedCalendar",
+          "createdAt"
+        ],
+        "description": "Its latest read; null until the person asks for one."
       },
       "AreaTrajectoryDay": {
         "type": "object",
@@ -6072,6 +6127,70 @@
         "responses": {
           "204": {
             "description": "Removed"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/areas/{id}/read": {
+      "post": {
+        "operationId": "readArea",
+        "summary": "Write the area's read from its goals' reads and the calendar, replacing the last; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Not signed in, or the session ended.",

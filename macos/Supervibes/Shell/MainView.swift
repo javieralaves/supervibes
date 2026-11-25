@@ -3,9 +3,12 @@ import SwiftUI
 
 /// What the app's window shows beside the rail.
 enum Route: Hashable {
-    case goals
+    /// Life, the home page: the goals, then the areas they sit in.
+    case life
     /// A goal's own page.
     case goal(String)
+    /// An area's own page.
+    case area(String)
     case settings
     case connections
     /// Planning a day across goals.
@@ -55,11 +58,17 @@ struct MainView: View {
             AppWindowFrame {
                 ZStack {
                     switch shell.route {
-                    case .goals:
+                    case .life:
                         ZStack {
                             Backdrop()
-                            GoalsScreen(auth: auth, shell: shell)
+                            LifeScreen(auth: auth, shell: shell)
                         }
+                    case .area(let id):
+                        ZStack {
+                            Backdrop()
+                            AreaScreen(id: id, auth: auth, shell: shell)
+                        }
+                        .id(id)
                     case .goal(let id):
                         ZStack {
                             Backdrop()
@@ -110,8 +119,8 @@ struct MainView: View {
     }
 }
 
-/// The home page with its goals, in the app's window.
-private struct GoalsScreen: View {
+/// Life, the home page with the goals and areas, in the app's window.
+private struct LifeScreen: View {
     let shell: ShellModel
     @State private var model: GoalsModel
     @Environment(\.overlays) private var overlays
@@ -135,14 +144,16 @@ private struct GoalsScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                GoalsHome(
+                LifeHome(
                     firstName: shell.account?.firstName ?? "there",
                     goals: model.goals,
                     today: model.today,
                     weeks: model.weeks,
+                    areas: model.areas,
                     max: model.max,
                     error: model.error,
                     onOpen: { shell.openGoal($0.id) },
+                    onOpenArea: { shell.openArea($0.id) },
                     onNew: newGoal,
                     actions: GoalCardActions(
                         plan: { shell.openPlan(.goal($0.id)) },
@@ -150,7 +161,13 @@ private struct GoalsScreen: View {
                         updateStatus: { shell.openGoal($0.id, then: .updateStatus) },
                         edit: edit,
                         delete: confirmDelete
-                    )
+                    ),
+                    areaActions: AreaEditActions(
+                        create: { await model.createArea($0) },
+                        update: { model.updateArea($0, $1) },
+                        remove: { model.deleteArea($0) }
+                    ),
+                    areaError: model.areaError
                 )
             }
         }
@@ -164,6 +181,7 @@ private struct GoalsScreen: View {
                 input: GoalInput(editing: goal),
                 mode: .edit,
                 today: model.today,
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()
@@ -199,10 +217,85 @@ private struct GoalsScreen: View {
             GoalDialog(
                 input: input,
                 today: model.today,
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()
                     model.create(saved)
+                }
+            )
+        }
+    }
+}
+
+/// An area's own page with its data, in the app's window.
+private struct AreaScreen: View {
+    let shell: ShellModel
+    @State private var model: AreaPageModel
+    @Environment(\.overlays) private var overlays
+
+    init(id: String, auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: AreaPageModel(id: id, auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .gone:
+                ContentUnavailableView {
+                    Label("This area is gone", systemImage: "square.dashed")
+                } description: {
+                    Text("It may have been removed.")
+                } actions: {
+                    Button("Life") { shell.open(.life) }
+                }
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load this area", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                if let detail = model.detail {
+                    AreaPage(
+                        detail: detail,
+                        otherGoals: model.otherGoals,
+                        error: model.error,
+                        onBack: { shell.open(.life) },
+                        onOpenGoal: { shell.openGoal($0.id) },
+                        actions: AreaPageActions(
+                            save: { await model.save($0) },
+                            remove: { Task { if await model.remove() { shell.open(.life) } } },
+                            takeOut: { model.takeOut($0) },
+                            moveIn: { model.moveIn($0) },
+                            newGoal: { newGoal(today: detail.today) }
+                        ),
+                        reading: model.reading,
+                        readError: model.readError,
+                        onRead: { Task { await model.read() } }
+                    )
+                }
+            }
+        }
+        .task { await model.refresh() }
+    }
+
+    /// A new goal, started in this area.
+    private func newGoal(today: String) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            GoalDialog(
+                input: GoalInput(),
+                today: today,
+                onCancel: { overlays.dismiss() },
+                onSave: { saved in
+                    overlays.dismiss()
+                    model.createGoal(saved)
                 }
             )
         }
@@ -233,7 +326,7 @@ private struct GoalScreen: View {
                 } description: {
                     Text("It may have been deleted.")
                 } actions: {
-                    Button("All goals") { shell.open(.goals) }
+                    Button("Life") { shell.open(.life) }
                 }
             case .failed(let message):
                 ContentUnavailableView {
@@ -252,7 +345,11 @@ private struct GoalScreen: View {
                         headerError: model.headerError,
                         weekState: model.weekState,
                         focusesObjective: focusesObjective,
-                        onBack: { shell.open(.goals) },
+                        onBack: { shell.open(.life) },
+                        onOpenArea: { shell.openArea($0) },
+                        areas: model.areas,
+                        onSetArea: { areaId in Task { await model.setArea(areaId) } },
+                        onNewArea: newArea,
                         onUpdateStatus: model.updateStatus,
                         onEdit: { edit(detail.goal) },
                         onDelete: confirmDelete,
@@ -304,6 +401,18 @@ private struct GoalScreen: View {
         .onDisappear { model.stop() }
     }
 
+    /// A new area from the goal's area menu, made and the goal placed in it.
+    private func newArea() {
+        guard let overlays else { return }
+        overlays.showDialog {
+            NewAreaDialog(onCancel: { overlays.dismiss() }) { input in
+                let problem = await model.createArea(input)
+                if problem == nil { overlays.dismiss() }
+                return problem
+            }
+        }
+    }
+
     /// The page's task actions, with "Plan tasks" opening the board on this goal.
     private var pageTaskActions: TaskActions {
         var actions = model.taskActions
@@ -319,6 +428,7 @@ private struct GoalScreen: View {
                 input: GoalInput(editing: goal),
                 mode: .edit,
                 today: model.detail?.today ?? CalendarDay.today(),
+                areas: model.areas,
                 onCancel: { overlays.dismiss() },
                 onSave: { saved in
                     overlays.dismiss()
@@ -350,7 +460,7 @@ private struct GoalScreen: View {
 
     private func delete() {
         Task {
-            if await model.delete() { shell.open(.goals) }
+            if await model.delete() { shell.open(.life) }
         }
     }
 }

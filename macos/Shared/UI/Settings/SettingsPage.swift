@@ -139,7 +139,7 @@ struct SettingsPage: View {
 private struct UsageSection: View {
     let summary: UsageSummary
 
-    static let colors: [UsageCall.Feature: Color] = [.progressRead: Theme.viz1, .recap: Theme.viz2, .agenda: Theme.viz3]
+    static let colors: [UsageCall.Feature: Color] = [.progressRead: Theme.viz1, .recap: Theme.viz2, .agenda: Theme.viz3, .areaRead: Theme.viz4]
 
     var body: some View {
         if summary.calls.isEmpty {
@@ -347,6 +347,12 @@ private struct DailyChart: View {
 
     private static let height: CGFloat = 160
 
+    /// The features in the key: the ones every account has, and area reads once there are some.
+    private var legend: [UsageCall.Feature] {
+        let used = Set(days.flatMap { $0.parts.map(\.feature) })
+        return UsageCall.Feature.allCases.filter { $0 != .areaRead || used.contains($0) }
+    }
+
     var body: some View {
         let totals = days.map(\.total)
         let max = Swift.max(totals.max() ?? 0, 0.0001)
@@ -357,7 +363,7 @@ private struct DailyChart: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 16) {
                 Text("Spend per day").appText(.xs, .medium).foregroundStyle(Theme.foreground)
-                ForEach(UsageCall.Feature.allCases, id: \.self) { feature in
+                ForEach(legend, id: \.self) { feature in
                     HStack(spacing: 6) {
                         Swatch(color: UsageSection.colors[feature] ?? Theme.muted)
                         Text(feature.label).appText(.xs).foregroundStyle(Theme.muted)

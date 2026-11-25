@@ -12,6 +12,8 @@ import { DEFAULT_GOAL_ICON, GOAL_ICON_GROUPS } from "../src/lib/goal-icons.ts";
 // Icon name → stroke widths needed (the web passes strokeWidth per use; 1.5 is Hugeicons' default).
 const ICONS = {
   Target02Icon: [1.8, 1.5],
+  // The rail's Life item.
+  Compass01Icon: [1.8],
   Calendar03Icon: [1.8],
   Plug01Icon: [1.8],
   Settings02Icon: [1.5, 1.8],

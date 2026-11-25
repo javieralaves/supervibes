@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Loads the goals and adds new ones through /api/v1.
+/// Loads Life's goals and areas, and adds new goals, through /api/v1.
 @MainActor
 @Observable
 final class GoalsModel {
@@ -12,11 +12,15 @@ final class GoalsModel {
 
     private(set) var load: Load = .idle
     private(set) var goals: [Goal] = []
+    /// The person's areas, in order. Empty until they make one, or if they couldn't be loaded.
+    private(set) var areas: [Area] = []
     /// Each goal's week, by goal id.
     private(set) var weeks: [String: GoalWeek] = [:]
     private(set) var today = CalendarDay.today()
     private(set) var max = 12
     private(set) var error: String?
+    /// Why the last change to an area didn't go through; shown above the areas.
+    private(set) var areaError: String?
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -27,8 +31,12 @@ final class GoalsModel {
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
     }
 
+    private var areaAPI: AreaAPI { AreaAPI(client: client, auth: auth) }
+
     func refresh() async {
         if load != .loaded { load = .loading }
+        // Areas load beside the goals; if they don't come, the goals still show.
+        async let areasLoaded = loadAreas()
         do {
             switch try await client.listGoals(query: .init(timeZone: TimeZone.current.identifier)) {
             case .ok(let ok):
@@ -49,6 +57,24 @@ final class GoalsModel {
             Log.app.error("Goals: \(error.localizedDescription, privacy: .public)")
             if load != .loaded { load = .failed("Couldn’t load your goals. Check your connection and try again.") }
         }
+        if let loaded = await areasLoaded { areas = loaded }
+    }
+
+    /// The person's areas, or nil if they couldn't be loaded (the goals show without them).
+    private func loadAreas() async -> [Area]? {
+        do {
+            switch try await client.listAreas(query: .init(timeZone: TimeZone.current.identifier)) {
+            case .ok(let ok):
+                return try ok.body.json.areas.map(Area.init(api:))
+            case .unauthorized:
+                return nil
+            case .badRequest, .undocumented:
+                return nil
+            }
+        } catch {
+            Log.app.error("Areas: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     /// Adds the goal right away, faded, and swaps in the saved one when the server has it.
@@ -63,6 +89,7 @@ final class GoalsModel {
             icon: input.icon,
             color: input.color,
             trajectory: [],
+            areaId: input.areaId,
             isPending: true
         ))
 
@@ -72,7 +99,8 @@ final class GoalsModel {
                 description: input.description.isEmpty ? nil : input.description,
                 targetDate: input.targetDate,
                 icon: .init(rawValue: input.icon) ?? .target02Icon,
-                color: .init(rawValue: input.color) ?? .violet
+                color: .init(rawValue: input.color) ?? .violet,
+                areaId: input.areaId
             )
             do {
                 switch try await client.createGoal(body: .json(body)) {
@@ -80,6 +108,7 @@ final class GoalsModel {
                     let saved = Goal(api: try created.body.json)
                     goals = goals.map { $0.id == pendingID ? saved : $0 }
                     Log.app.info("Goal created")
+                    if saved.areaId != nil { await refreshAreas() }
                 case .badRequest(let bad):
                     fail(pendingID, (try? bad.body.json.error.message) ?? "Couldn’t add that goal.")
                 case .unauthorized:
@@ -121,6 +150,7 @@ final class GoalsModel {
                 case .ok(let ok):
                     let saved = Goal(api: try ok.body.json)
                     goals = goals.map { $0.id == saved.id ? saved : $0 }
+                    if input.areaId != goal.areaId { await setArea(of: saved, to: input.areaId) }
                 case .badRequest(let bad):
                     goals = before
                     error = (try? bad.body.json.error.message) ?? "Couldn’t save that."
@@ -164,6 +194,89 @@ final class GoalsModel {
         }
     }
 
+    // MARK: Areas
+
+    /// Reloads the areas, whose goals and statuses follow the goals moving between them.
+    func refreshAreas() async {
+        if let loaded = await loadAreas() { areas = loaded }
+    }
+
+    /// Adds an area; true once it's saved. Its card shows when the server has it.
+    func createArea(_ input: AreaInput) async -> Bool {
+        areaError = nil
+        if let problem = input.problem {
+            areaError = problem
+            return false
+        }
+        do {
+            areas.append(try await areaAPI.create(input))
+            return true
+        } catch let failure as AreaAPIError {
+            areaError = failure.message
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    /// Saves an area's edits, showing them right away and going back if the server says no.
+    func updateArea(_ area: Area, _ input: AreaInput) {
+        areaError = nil
+        if let problem = input.problem {
+            areaError = problem
+            return
+        }
+        let before = areas
+        areas = areas.map { $0.id == area.id ? input.applied(to: $0) : $0 }
+        Task {
+            do {
+                let saved = try await areaAPI.update(area.id, input)
+                areas = areas.map { $0.id == saved.id ? saved : $0 }
+            } catch {
+                areas = before
+                areaError = (error as? AreaAPIError)?.message ?? "Couldn’t save that area."
+            }
+        }
+    }
+
+    /// Removes an area right away; its goals stay, with no area. Comes back if the server says no.
+    func deleteArea(_ area: Area) {
+        areaError = nil
+        let (areasBefore, goalsBefore) = (areas, goals)
+        areas.removeAll { $0.id == area.id }
+        goals = goals.map { goal in
+            var goal = goal
+            if goal.areaId == area.id { goal.areaId = nil }
+            return goal
+        }
+        Task {
+            do {
+                try await areaAPI.delete(area.id)
+            } catch {
+                areas = areasBefore
+                goals = goalsBefore
+                areaError = (error as? AreaAPIError)?.message ?? "Couldn’t remove that area."
+            }
+        }
+    }
+
+    /// Places a goal in an area, or takes it out with nil, then reloads the areas for their goals and statuses.
+    func setArea(of goal: Goal, to areaId: String?) async {
+        let before = goals
+        goals = goals.map { current in
+            var current = current
+            if current.id == goal.id { current.areaId = areaId }
+            return current
+        }
+        do {
+            try await areaAPI.setGoalArea(goalId: goal.id, areaId: areaId)
+            await refreshAreas()
+        } catch {
+            goals = before
+            self.error = (error as? AreaAPIError)?.message ?? "Couldn’t move that goal."
+        }
+    }
+
     private func fail(_ pendingID: String, _ message: String) {
         goals.removeAll { $0.id == pendingID }
         error = message
@@ -198,7 +311,9 @@ extension Goal {
                     reason: $0.reason,
                     carried: $0.carried
                 )
-            }
+            },
+            areaId: goal.areaId,
+            updatedAt: goal.updatedAt
         )
     }
 }

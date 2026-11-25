@@ -13,6 +13,10 @@ struct Goal: Identifiable, Hashable, Sendable {
     var color: String
     /// The last 28 days, oldest first.
     var trajectory: [TrajectoryDay]
+    /// The area it sits in, if any.
+    var areaId: String? = nil
+    /// When it last moved: its latest progress read or note, or when it was made. Nil until the server says.
+    var updatedAt: Date? = nil
     /// Saving; shown faded until the server has it.
     var isPending = false
 
@@ -80,7 +84,8 @@ extension GoalInput {
             description: goal.description ?? "",
             targetDate: goal.targetDate,
             icon: GoalPalette.iconName(goal.icon),
-            color: GoalPalette.colorInfo(goal.color).key
+            color: GoalPalette.colorInfo(goal.color).key,
+            areaId: goal.areaId
         )
     }
 }
@@ -92,6 +97,8 @@ struct GoalInput: Hashable, Sendable {
     var targetDate: String?
     var icon = GoalPalette.defaultIcon
     var color = GoalPalette.defaultColor
+    /// The area it sits in, if any. Set separately from the rest when editing (PUT /goals/{id}/area).
+    var areaId: String?
 
     static let maxTitle = 120
     static let maxDescription = 1000
@@ -231,6 +238,8 @@ struct GoalDetail: Hashable, Sendable {
     var sources: [SourceItem] = []
     /// Connected apps a new source can read from.
     var connectionOptions: [ConnectionOption] = []
+    /// The area it sits in, to show under its title and link to; nil when none.
+    var area: AreaRef? = nil
 }
 
 extension CalendarDay {
