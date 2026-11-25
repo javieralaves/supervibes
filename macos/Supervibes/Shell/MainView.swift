@@ -534,6 +534,9 @@ private struct CalendarScreen: View {
                         place: model.place(_:day:start:minutes:),
                         plan: model.plan(_:day:),
                         reorder: model.reorder(_:day:to:),
+                        markTaskDone: model.markTaskDone,
+                        deleteTask: model.deleteTask,
+                        changeTask: model.changeTask,
                         defaultGoalId: { model.defaultGoalId },
                         openGoal: { shell.openGoal($0) }
                     ),

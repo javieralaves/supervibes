@@ -578,6 +578,29 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// Right-clicking a task within its goal's time, and one past it (dimmed): the second leads with
+    /// where it could go instead.
+    func testDayTaskMenus() {
+        let data = Fixtures.dayByGoal
+        let row = data.goalRows(day: 0, now: now).first { $0.id == "superfocus" }!
+        func menu(_ id: String) -> some View {
+            DayTaskMenu(
+                task: data.tasks.first { $0.id == id }!, goal: row.goal, suggestions: data.suggestions(for: id, day: 0, now: now)!,
+                sessionMinutes: row.capacity.protected, day: 0, dayISO: row.day, today: "2026-11-18", clock: .twelveHour,
+                actions: CalendarActions.preview
+            )
+        }
+        assertAppearances(
+            HStack(alignment: .top, spacing: 24) {
+                menu("sf-design")
+                menu("sf-renewals")
+            }
+            .padding(24)
+            .background(Theme.background),
+            width: 648
+        )
+    }
+
     /// January renewals held second in Superfocus's list: lifted into its new place, and the dimming
     /// moved so Actions in other apps no longer fits.
     func testDayStripReordering() {

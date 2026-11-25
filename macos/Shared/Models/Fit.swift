@@ -68,6 +68,35 @@ enum Fit {
     static func moves(_ goal: BoardGoal, day: String, today: String, now: Date) -> [Move] {
         var over = over(goal, day: day, now: now)
         guard over > 0 else { return [] }
+        var spots = places(goal, day: day, today: today, now: now)
+        let candidates = goal.tasks.filter { $0.plannedFor == day && $0.scheduledAt == nil }.reversed()
+        var moves: [Move] = []
+        for task in candidates where over > 0 {
+            guard let index = spots.firstIndex(where: { place in
+                place.destination == .thisWeek || place.room >= task.minutes
+            }) else { continue }
+            let place = spots[index]
+            // This week keeps the week's total; the others take the task's time.
+            let roomAfter = place.destination == .thisWeek ? place.room : place.room - task.minutes
+            moves.append(Move(task: task, to: place.destination, roomAfter: roomAfter, protected: place.protected))
+            spots[index].room = roomAfter
+            over -= task.minutes
+        }
+        return moves
+    }
+
+    /// Where one task planned for `day` would go, on its own: the first place with room for all of
+    /// it, in the same order as `moves`. For a task's own menu.
+    static func destination(for task: TaskItem, of goal: BoardGoal, day: String, today: String, now: Date) -> Move? {
+        guard let place = places(goal, day: day, today: today, now: now).first(where: { $0.destination == .thisWeek || $0.room >= task.minutes }) else { return nil }
+        let roomAfter = place.destination == .thisWeek ? place.room : place.room - task.minutes
+        return Move(task: task, to: place.destination, roomAfter: roomAfter, protected: place.protected)
+    }
+
+    /// Where a goal's tasks could move from `day`, in order: the days still ahead this week with room
+    /// (later than the day first, then earlier ones), next week if it has room, then this week
+    /// without a day while the week as a whole has room.
+    private static func places(_ goal: BoardGoal, day: String, today: String, now: Date) -> [(destination: Destination, room: Int, protected: Int)] {
         let thisWeek = CalendarDay.weekStart(today)
         let nextWeek = CalendarDay.addDays(thisWeek, 7)
 
@@ -85,29 +114,15 @@ enum Fit {
         // helps while the week as a whole has room for it.
         let week = Capacity.week(thisWeek, open: open(goal, week: thisWeek, today: today), blocks: goal.protectedBlocks, now: now)
         if CalendarDay.weekStart(day) == thisWeek, week.remaining >= 0 { places.append((.thisWeek, week.remaining, week.protected)) }
-
-        let candidates = goal.tasks.filter { $0.plannedFor == day && $0.scheduledAt == nil }.reversed()
-        var moves: [Move] = []
-        for task in candidates where over > 0 {
-            guard let index = places.firstIndex(where: { place in
-                place.destination == .thisWeek || place.room >= task.minutes
-            }) else { continue }
-            let place = places[index]
-            // This week keeps the week's total; the others take the task's time.
-            let roomAfter = place.destination == .thisWeek ? place.room : place.room - task.minutes
-            moves.append(Move(task: task, to: place.destination, roomAfter: roomAfter, protected: place.protected))
-            places[index].room = roomAfter
-            over -= task.minutes
-        }
-        return moves
+        return places
     }
 
     // MARK: Protecting more time
 
     /// Free time that day, at most two slots: next to the goal's own session first, then the
-    /// longest; each no longer than the day is over.
-    static func freeSlots(for goal: BoardGoal, day: String, in data: BoardData, now: Date, calendar: Calendar = .current) -> [Slot] {
-        let need = over(goal, day: day, now: now)
+    /// longest; each no longer than the day is over, or than `need` when it's given (one task's time).
+    static func freeSlots(for goal: BoardGoal, day: String, in data: BoardData, now: Date, need: Int? = nil, calendar: Calendar = .current) -> [Slot] {
+        let need = need ?? over(goal, day: day, now: now)
         guard need > 0, let midnight = midnight(day, calendar: calendar) else { return [] }
         let wake = midnight.addingTimeInterval(Double(data.wakeTime) * 60)
         let sleep = data.sleepStart > data.wakeTime

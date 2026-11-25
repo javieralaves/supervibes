@@ -352,7 +352,8 @@ struct DayView: View {
                     blocks: data.nextBlocks(now: now),
                     today: CalendarDay.today(now),
                     dayName: Self.dayLabel(offset) ?? shownDay.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US"))),
-                    open: openOnShownDay
+                    open: openOnShownDay,
+                    menu: actions.map { actions in { item in taskMenu(item, actions: actions) } }
                 )
             }
             TimelineScroll(
@@ -365,6 +366,16 @@ struct DayView: View {
         .background(Theme.card, in: .rect(cornerRadius: 16))
         .clipShape(.rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+    }
+
+    /// A task's menu on the strip: the usual rows, and what its goal's time that day suggests.
+    private func taskMenu(_ item: StripItem, actions: CalendarActions) -> AnyView {
+        guard let row = data.goalRows(day: offset, now: now).first(where: { $0.id == item.task.goalId }),
+              let suggestions = data.suggestions(for: item.task.id, day: offset, now: now) else { return AnyView(EmptyView()) }
+        return AnyView(DayTaskMenu(
+            task: item.task, goal: row.goal, suggestions: suggestions, sessionMinutes: row.capacity.protected,
+            day: offset, dayISO: row.day, today: CalendarDay.today(now), clock: clock, actions: actions
+        ))
     }
 
     private func blockPanel(_ block: CalendarBlock) -> some View {
@@ -837,6 +848,10 @@ struct CalendarActions {
     var plan: (_ taskId: String, _ day: Int?) -> Void
     /// Move a task to `index` among its goal's other tasks on `day`'s strip, changing the goal's order.
     var reorder: (_ taskId: String, _ day: Int, _ index: Int) -> Void = { _, _, _ in }
+    /// A task on the strip checked off, deleted, or given another day, week, estimate or due date.
+    var markTaskDone: (_ taskId: String) -> Void = { _ in }
+    var deleteTask: (_ taskId: String) -> Void = { _ in }
+    var changeTask: (_ taskId: String, _ patch: TaskPatch) -> Void = { _, _ in }
     /// The goal a new block starts with.
     var defaultGoalId: () -> String?
     /// A block's menu offers its goal's page.
