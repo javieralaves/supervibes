@@ -7,6 +7,7 @@ import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { completeSuggestion, getLatestRead, passOnSuggestion } from "@/lib/progress";
 import { getGoal } from "@/lib/sources";
 import { TASK_MINUTES, taskDaySchema, taskPatchSchema, taskTitleSchema } from "@/lib/task-schema";
+import { PracticeError } from "@/lib/goals";
 import { createTask, deleteTask, markTaskDone, PlacementError, placeTask, reorderTasks, updateTask, type TaskDTO } from "@/lib/tasks";
 
 /*
@@ -216,6 +217,7 @@ export const tasks = new OpenAPIHono<ApiEnv>()
       if (!task) return c.json(apiError("not_found", GOAL_GONE), 404);
       return c.json(asTask(task), 201);
     } catch (error) {
+      if (error instanceof PracticeError) return c.json(apiError("practice", error.message), 400);
       return c.json(placementProblem(error), 400);
     }
   })
@@ -279,6 +281,7 @@ export const tasks = new OpenAPIHono<ApiEnv>()
     const read = await getLatestRead(userId, id);
     const suggestion = read?.suggestions.find((s) => s.title === title.data);
     if (!suggestion) return c.json(apiError("not_found", SUGGESTION_GONE), 404);
+    // A practice has no reads, so no suggestions: this is a project's.
     const task = await createTask(userId, id, suggestion.title, {
       minutes: suggestion.minutes,
       description: suggestion.why || null,

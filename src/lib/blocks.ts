@@ -39,6 +39,8 @@ export type BlockDTO = {
   sourceKey: string | null;
   sourceCalendar: string | null;
   sourceSnapshot: BlockSourceSnapshot | null;
+  /** For a practice's block: the person said it didn't happen. */
+  missed: boolean;
 };
 
 const columns = {
@@ -56,6 +58,7 @@ const columns = {
   sourceKey: calendarBlocks.sourceKey,
   sourceCalendar: calendarBlocks.sourceCalendar,
   sourceSnapshot: calendarBlocks.sourceSnapshot,
+  missed: calendarBlocks.missed,
 };
 
 const mine = (userId: string, blockId: string) =>

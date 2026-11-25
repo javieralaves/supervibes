@@ -105,6 +105,19 @@ export const goals = pgTable(
     /** The area the goal sits in, if any. Removing the area leaves the goal without one. */
     areaId: uuid().references(() => areas.id, { onDelete: "set null" }),
     /**
+     * "project": something with a finish line, read for progress, with tasks and week objectives (the app calls
+     * these projects; the code still calls every one a goal). "practice": something kept up a number of times a
+     * week, with no end, no tasks and no progress reads; its status is counted from its sessions (src/lib/practice.ts).
+     * Set when it's made, and never changed.
+     */
+    kind: text().$type<GoalKind>().notNull().default("project"),
+    /** For a practice: how many sessions a week it's meant to have. Null for a project. */
+    perWeek: integer(),
+    /** For a practice: a block shorter than this many minutes doesn't count. Null: any length counts. */
+    minMinutes: integer(),
+    /** Whether its sessions get a recap drafted on their own once they're over. On unless the person turns it off. */
+    autoRecaps: boolean().notNull().default(true),
+    /**
      * When a progress read was last asked for and hasn't finished; null when none is pending.
      * Reads run in the background after a post, so the goal page can show one is underway.
      */
@@ -121,6 +134,7 @@ export const goals = pgTable(
 );
 
 export type Goal = typeof goals.$inferSelect;
+export type GoalKind = "project" | "practice";
 
 /**
  * A user's link to another app's remote MCP server (Linear, GitHub, Granola).
@@ -337,6 +351,8 @@ export const calendarBlocks = pgTable(
      * `sourceKey`.
      */
     sourceSnapshot: jsonb().$type<BlockSourceSnapshot>(),
+    /** For a practice's block: the person said it didn't happen, so it doesn't count. Only after it's over. */
+    missed: boolean().notNull().default(false),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
@@ -447,6 +463,60 @@ export const goalTasks = pgTable(
   },
   (t) => [index("goal_tasks_goal_idx").on(t.goalId, t.position)],
 );
+
+/**
+ * A practice's sessions that aren't blocks on the calendar: one meant for a day with no time yet (`doneAt` null), or
+ * one done (logged, or ticked off once its day came). Blocks for a practice count on their own; these are the rest.
+ */
+export const practiceSessions = pgTable(
+  "practice_sessions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    /** The day it's for, "YYYY-MM-DD" in the person's own calendar. */
+    day: date({ mode: "string" }).notNull(),
+    /** When it was done; null while it's only planned for its day. */
+    doneAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("practice_sessions_goal_day_idx").on(t.goalId, t.day)],
+);
+
+export type PracticeSession = typeof practiceSessions.$inferSelect;
+
+/**
+ * When a practice was paused: from `startsOn` until the day it picks up again (`resumesOn`, not included), or until
+ * it's resumed by hand while that's null. Kept after it ends, so the weeks it covered stay out of its status.
+ */
+export const practicePauses = pgTable(
+  "practice_pauses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    /** The first paused day, "YYYY-MM-DD". */
+    startsOn: date({ mode: "string" }).notNull(),
+    /** The day it picks up again, "YYYY-MM-DD"; null until resumed. */
+    resumesOn: date({ mode: "string" }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("practice_pauses_goal_idx").on(t.goalId, t.startsOn)],
+);
+
+export type PracticePause = typeof practicePauses.$inferSelect;
 
 /**
  * One call to the Claude API: what it was for, what started it, and the tokens

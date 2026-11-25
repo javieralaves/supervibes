@@ -4,6 +4,7 @@ import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goals, goalWeeks } from "@/db/schema";
+import { PracticeError } from "@/lib/goals";
 
 /*
  * Weekly objectives: what a week should move for a goal. Optional; one per goal
@@ -49,7 +50,10 @@ export async function listObjectivesBetween(
     .where(and(eq(goalWeeks.userId, userId), gte(goalWeeks.weekStart, from), lte(goalWeeks.weekStart, to)));
 }
 
-/** Sets a week's objective for a goal, or clears it with null. False if the goal isn't theirs. */
+/**
+ * Sets a week's objective for a goal, or clears it with null. False if the goal isn't theirs. Throws PracticeError for
+ * a practice: its week is a count, not an objective.
+ */
 export async function setWeekObjective(
   userId: string,
   goalId: string,
@@ -57,10 +61,11 @@ export async function setWeekObjective(
   objective: string | null,
 ): Promise<boolean> {
   const [goal] = await db
-    .select({ id: goals.id })
+    .select({ id: goals.id, kind: goals.kind })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
   if (!goal) return false;
+  if (goal.kind === "practice") throw new PracticeError("A practice’s week is how many times, not an objective.");
   const week = and(eq(goalWeeks.userId, userId), eq(goalWeeks.goalId, goalId), eq(goalWeeks.weekStart, weekStart));
   if (objective === null) {
     await db.delete(goalWeeks).where(week);

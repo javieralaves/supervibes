@@ -5,6 +5,8 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { requireApiUser, type ApiEnv } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { areas } from "@/lib/api/routes/areas";
+import { practices } from "@/lib/api/routes/practices";
+import { PracticeError } from "@/lib/goals";
 import { blocks } from "@/lib/api/routes/blocks";
 import { calendar } from "@/lib/api/routes/calendar";
 import { connections } from "@/lib/api/routes/connections";
@@ -70,10 +72,13 @@ api.route("/", today);
 api.route("/", usage);
 // Last, so its schemas follow the others in the OpenAPI document rather than reshuffling it.
 api.route("/", areas);
+api.route("/", practices);
 
 api.notFound((c) => c.json(apiError("not_found", "There's nothing here."), 404));
 
 api.onError((error, c) => {
+  // Something only a project has, asked of a practice (a task, a week objective).
+  if (error instanceof PracticeError) return c.json(apiError("practice", error.message), 400);
   console.error(`[api] ${c.req.method} ${c.req.path} failed`, error);
   return c.json(apiError("internal", "Something went wrong. Try again."), 500);
 });

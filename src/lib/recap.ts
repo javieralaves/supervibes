@@ -351,6 +351,13 @@ export async function listAutoRecapCandidates(userId: string, limit: number): Pr
         isNull(goalPosts.id),
         // Reserved time is kept for its own sake: there's no session to recap.
         eq(calendarBlocks.reserved, false),
+        // The person can turn these off, goal by goal (a practice's setting).
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(goals)
+            .where(and(eq(goals.id, calendarBlocks.goalId), eq(goals.autoRecaps, true))),
+        ),
         // Its margin has passed, so work finished just after counts.
         lte(calendarBlocks.endsAt, new Date(now - AFTER_MS)),
         gte(calendarBlocks.endsAt, new Date(now - AUTO_WITHIN_MS)),
