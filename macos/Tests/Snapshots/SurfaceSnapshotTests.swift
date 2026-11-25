@@ -282,7 +282,7 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testLifeHomeEmpty() {
         assertAppearances(
-            LifeHome(firstName: "Javier", goals: [], today: "2026-11-18").background(Theme.background),
+            LifeHome(firstName: "Javier", goals: [], today: "2026-11-18", now: now).background(Theme.background),
             width: 900, height: 760
         )
     }
