@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, eq, max } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { goals, type Goal } from "@/db/schema";
@@ -13,7 +13,7 @@ import { MAX_GOALS, type GoalInput } from "@/lib/goal-schema";
  * from the client.
  */
 
-export type GoalDTO = Pick<Goal, "id" | "title" | "description" | "targetDate" | "icon" | "color" | "position">;
+export type GoalDTO = Pick<Goal, "id" | "title" | "description" | "targetDate" | "icon" | "color" | "position" | "areaId">;
 
 export const goalColumns = {
   id: goals.id,
@@ -23,6 +23,7 @@ export const goalColumns = {
   icon: goals.icon,
   color: goals.color,
   position: goals.position,
+  areaId: goals.areaId,
 };
 
 export async function listGoals(userId: string): Promise<GoalDTO[]> {
@@ -35,7 +36,11 @@ export async function listGoals(userId: string): Promise<GoalDTO[]> {
 
 export class GoalLimitError extends Error {}
 
-export async function createGoal(userId: string, input: GoalInput): Promise<GoalDTO> {
+/**
+ * Adds a goal, in an area when one is given. The caller checks the area is the person's own (ownsAreas in
+ * src/lib/areas.ts).
+ */
+export async function createGoal(userId: string, input: GoalInput, areaId: string | null = null): Promise<GoalDTO> {
   const [{ total, last }] = await db
     .select({ total: count(), last: max(goals.position) })
     .from(goals)
@@ -45,7 +50,7 @@ export async function createGoal(userId: string, input: GoalInput): Promise<Goal
 
   const [goal] = await db
     .insert(goals)
-    .values({ ...input, userId, position: (last ?? -1) + 1 })
+    .values({ ...input, userId, areaId, position: (last ?? -1) + 1 })
     .returning(goalColumns);
   return goal;
 }
@@ -71,4 +76,29 @@ export async function deleteGoal(userId: string, goalId: string): Promise<boolea
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)))
     .returning({ id: goals.id });
   return deleted.length > 0;
+}
+
+/**
+ * When each goal last moved, as the goal cards say "7h ago": the later of its latest progress read and its newest
+ * note (a recap or a checked-off task posts one too), or when it was made if it has neither. Not goals.updatedAt,
+ * which also changes when a read is asked for or fails. Goals not found are left out.
+ */
+export async function listGoalUpdatedAt(userId: string, goalIds: string[]): Promise<Map<string, Date>> {
+  if (goalIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: goals.id,
+      // Spelled out with aliases: inside a raw snippet Drizzle leaves columns unqualified, so the subqueries'
+      // "goals.id" would read as their own table's id and never match.
+      updatedAt: sql<Date>`coalesce(
+        greatest(
+          (select max(p.created_at) from goal_posts p where p.goal_id = "goals"."id"),
+          (select r.created_at from goal_reads r where r.goal_id = "goals"."id")
+        ),
+        "goals"."created_at"
+      )`.mapWith(goals.createdAt),
+    })
+    .from(goals)
+    .where(and(eq(goals.userId, userId), inArray(goals.id, goalIds)));
+  return new Map(rows.map((row) => [row.id, row.updatedAt]));
 }

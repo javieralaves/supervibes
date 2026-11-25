@@ -4,6 +4,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 
 import { requireApiUser, type ApiEnv } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
+import { areas } from "@/lib/api/routes/areas";
 import { blocks } from "@/lib/api/routes/blocks";
 import { calendar } from "@/lib/api/routes/calendar";
 import { connections } from "@/lib/api/routes/connections";
@@ -67,6 +68,8 @@ api.route("/", sources);
 api.route("/", tasks);
 api.route("/", today);
 api.route("/", usage);
+// Last, so its schemas follow the others in the OpenAPI document rather than reshuffling it.
+api.route("/", areas);
 
 api.notFound((c) => c.json(apiError("not_found", "There's nothing here."), 404));
 

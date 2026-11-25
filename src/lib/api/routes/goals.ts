@@ -16,7 +16,8 @@ import { goalWeekLoads, sessionBlocks } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
-import { createGoal, deleteGoal, GoalLimitError, listGoals, updateGoal, type GoalDTO } from "@/lib/goals";
+import { ownsAreas, setGoalArea } from "@/lib/areas";
+import { createGoal, deleteGoal, GoalLimitError, listGoals, listGoalUpdatedAt, updateGoal, type GoalDTO } from "@/lib/goals";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
 import { getSettings, getTimeZone } from "@/lib/settings";
@@ -29,7 +30,7 @@ import { weekObjectiveSchema, weekStartSchema } from "@/lib/week-objective-schem
 import { getWeekObjectives, listObjectivesBetween, setWeekObjective } from "@/lib/week-objectives";
 import { startOfDayIn } from "@/lib/zoned-day";
 
-const TrajectoryDaySchema = z
+export const TrajectoryDaySchema = z
   .object({
     day: z.iso.date(),
     status: z.enum(STATUSES).nullable(),
@@ -42,7 +43,7 @@ const TrajectoryDaySchema = z
 /** A goal's session time on the calendar, clipped to the weeks it's sent for. */
 export const ProtectedBlockSchema = z.object({ startsAt: z.iso.datetime(), endsAt: z.iso.datetime() }).openapi("ProtectedBlock");
 
-const GoalSchema = z
+export const GoalSchema = z
   .object({
     id: z.string(),
     title: z.string(),
@@ -50,11 +51,15 @@ const GoalSchema = z
     targetDate: z.iso.date().nullable(),
     icon: z.string().openapi({ description: "A Hugeicons name from lib/goal-icons.ts, e.g. Rocket01Icon." }),
     color: z.string().openapi({ description: "A key from lib/goal-colors.ts, e.g. violet." }),
+    areaId: z.string().nullable().openapi({ description: "The area the goal sits in; null when none." }),
+    updatedAt: z.iso.datetime().openapi({
+      description: "When the goal last moved: its latest progress read or note, or when it was made if it has neither.",
+    }),
     trajectory: z.array(TrajectoryDaySchema).openapi({ description: "The last 28 days, oldest first." }),
   })
   .openapi("Goal");
 
-const GoalWeekSchema = z
+export const GoalWeekSchema = z
   .object({
     goalId: z.string(),
     objective: z.string().nullable().openapi({ description: "What this week should move for the goal; null when not set." }),
@@ -92,6 +97,28 @@ const GoalInputSchema = z
   })
   .openapi("GoalInput");
 
+// GoalInput plus where to start it, spelled out rather than extended: an extended schema becomes an allOf, which the
+// Mac app's generated client turns into a wrapper instead of a plain struct.
+const NewGoalSchema = z
+  .object({
+    title: z.string(),
+    description: z.string().nullable().optional().openapi({ description: "Left out or null: none." }),
+    targetDate: z.string().nullable().optional().openapi({ description: "YYYY-MM-DD; left out or null: none." }),
+    icon: z.enum(GOAL_ICON_NAMES),
+    color: z.enum(GOAL_COLOR_KEYS),
+    areaId: z.uuid().nullable().optional().openapi({ description: "An area of the person's to start the goal in; left out or null: none." }),
+  })
+  .openapi("NewGoal");
+
+const GoalAreaInputSchema = z
+  .object({
+    // An empty string, not null, takes the goal out: the Mac app's generated client can't send an explicit null.
+    areaId: z.union([z.uuid(), z.literal("")]).openapi({
+      description: "One of the person's areas, or an empty string to take the goal out of its area.",
+    }),
+  })
+  .openapi("GoalAreaInput");
+
 const listRoute = createRoute({
   method: "get",
   path: "/goals",
@@ -115,7 +142,7 @@ const createRoute_ = createRoute({
   operationId: "createGoal",
   summary: "Add a goal",
   security: [{ bearerAuth: [] }],
-  request: { body: { required: true, content: { "application/json": { schema: GoalInputSchema } } } },
+  request: { body: { required: true, content: { "application/json": { schema: NewGoalSchema } } } },
   responses: {
     201: { description: "Created", content: { "application/json": { schema: GoalSchema } } },
     ...errorResponses,
@@ -195,6 +222,7 @@ const GoalDetailSchema = z
 const goalParam = z.object({ id: z.uuid().openapi({ param: { name: "id", in: "path" } }) });
 const notFound = { description: "Not found.", content: { "application/json": { schema: ErrorSchema } } };
 const GOAL_GONE = "That goal doesn’t exist anymore.";
+const AREA_GONE = "That area doesn’t exist anymore.";
 
 const getRoute = createRoute({
   method: "get",
@@ -263,60 +291,83 @@ const weekRoute = createRoute({
   responses: { 204: { description: "Saved" }, ...errorResponses, 404: notFound },
 });
 
-const asGoal = (goal: GoalDTO, trajectory: z.infer<typeof TrajectoryDaySchema>[]) => ({
+const areaRoute = createRoute({
+  method: "put",
+  path: "/goals/{id}/area",
+  operationId: "setGoalArea",
+  summary: "Place a goal in an area, or take it out of its area",
+  security: [{ bearerAuth: [] }],
+  request: { params: goalParam, body: { required: true, content: { "application/json": { schema: GoalAreaInputSchema } } } },
+  responses: { 204: { description: "Saved" }, ...errorResponses, 404: notFound },
+});
+
+export const asGoal = (goal: GoalDTO, trajectory: z.infer<typeof TrajectoryDaySchema>[], updatedAt: Date | undefined) => ({
   id: goal.id,
   title: goal.title,
   description: goal.description,
   targetDate: goal.targetDate,
   icon: goal.icon,
   color: goal.color,
+  areaId: goal.areaId,
+  updatedAt: (updatedAt ?? new Date()).toISOString(),
   trajectory,
 });
+
+/**
+ * Goals as Goals home and an area's page show them: each with its last four weeks and when it last moved, and this
+ * week goal by goal (its objective and its time). `only` narrows them to some goals, in the same order.
+ */
+export async function loadGoals(userId: string, timeZone: string | null, only?: (goal: GoalDTO) => boolean) {
+  const today = todayIn(timeZone);
+  const weekStart = weekStartOf(today);
+  const zone = timeZone ?? "UTC";
+  const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
+  const list = (await listGoals(userId)).filter((goal) => !only || only(goal));
+  const ids = list.map((goal) => goal.id);
+  const [trajectories, updated, tasks, blocks, objectives] = await Promise.all([
+    listTrajectories(userId, ids, timeZone),
+    listGoalUpdatedAt(userId, ids),
+    listOpenTasks(userId),
+    listBlocks(userId, weekBounds.start, weekBounds.end),
+    listObjectivesBetween(userId, weekStart, weekStart),
+  ]);
+  const loads = goalWeekLoads(ids, tasks, blocks, weekBounds, today, new Date());
+  const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
+  return {
+    today,
+    goals: list.map((goal) => asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today), updated.get(goal.id))),
+    week: {
+      start: weekStart,
+      goals: ids.map((goalId) => ({
+        goalId,
+        objective: objectiveOf.get(goalId) ?? null,
+        ...(loads.get(goalId) ?? { sessionMinutes: 0, reservedMinutes: 0, plannedMinutes: 0 }),
+      })),
+    },
+  };
+}
 
 export const goals = new OpenAPIHono<ApiEnv>()
   .openapi(listRoute, async (c) => {
     const userId = c.var.user.id;
     const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
-    const today = todayIn(timeZone);
-    const weekStart = weekStartOf(today);
-    const zone = timeZone ?? "UTC";
-    const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
-    const list = await listGoals(userId);
-    const ids = list.map((goal) => goal.id);
-    const [trajectories, tasks, blocks, objectives] = await Promise.all([
-      listTrajectories(userId, ids, timeZone),
-      listOpenTasks(userId),
-      listBlocks(userId, weekBounds.start, weekBounds.end),
-      listObjectivesBetween(userId, weekStart, weekStart),
-    ]);
-    const loads = goalWeekLoads(ids, tasks, blocks, weekBounds, today, new Date());
-    const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
-    return c.json(
-      {
-        today,
-        max: MAX_GOALS,
-        goals: list.map((goal) => asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today))),
-        week: {
-          start: weekStart,
-          goals: ids.map((goalId) => ({
-            goalId,
-            objective: objectiveOf.get(goalId) ?? null,
-            ...(loads.get(goalId) ?? { sessionMinutes: 0, reservedMinutes: 0, plannedMinutes: 0 }),
-          })),
-        },
-      },
-      200,
-    );
+    const { today, goals, week } = await loadGoals(userId, timeZone);
+    return c.json({ today, max: MAX_GOALS, goals, week }, 200);
   })
   .openapi(createRoute_, async (c) => {
     // Same rules and messages as the web's dialog (lib/goal-schema.ts).
-    const parsed = goalInputSchema.safeParse(c.req.valid("json"));
+    const body = c.req.valid("json");
+    const parsed = goalInputSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(apiError("invalid_request", parsed.error.issues[0]?.message ?? "Check the form."), 400);
     }
+    const areaId = body.areaId ?? null;
+    if (areaId && !(await ownsAreas(c.var.user.id, [areaId]))) {
+      return c.json(apiError("invalid_request", AREA_GONE), 400);
+    }
     try {
-      const goal = await createGoal(c.var.user.id, parsed.data);
-      return c.json(asGoal(goal, buildTrajectory([], null, todayIn(await getTimeZone(c.var.user.id)))), 201);
+      const goal = await createGoal(c.var.user.id, parsed.data, areaId);
+      return c.json(asGoal(goal, buildTrajectory([], null, todayIn(await getTimeZone(c.var.user.id))), new Date()), 201);
     } catch (error) {
       if (error instanceof GoalLimitError) {
         return c.json(apiError("goal_limit", `You can have up to ${MAX_GOALS} goals.`), 400);
@@ -339,7 +390,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
     // This week and next, for the planning board's capacity.
     const twoWeeksEnd = startOfDayIn(addDays(weekStart, 14), zone);
-    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks] = await Promise.all([
+    const [read, status, readStatus, trajectories, objectives, sources, tasks, posts, schedules, settings, connections, blocks, updated] = await Promise.all([
       getLatestRead(userId, id),
       getLatestStatus(userId, id),
       getReadStatus(userId, id),
@@ -352,6 +403,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       getSettings(userId),
       listConnections(userId),
       listBlocks(userId, weekBounds.start, twoWeeksEnd),
+      listGoalUpdatedAt(userId, [id]),
     ]);
     const trajectory = trajectories.get(id);
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
@@ -368,7 +420,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
 
     return c.json(
       {
-        goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today)),
+        goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today), updated.get(id)),
         today,
         read: read && {
           headline: read.headline,
@@ -415,8 +467,11 @@ export const goals = new OpenAPIHono<ApiEnv>()
     const userId = c.var.user.id;
     const goal = await updateGoal(userId, c.req.valid("param").id, parsed.data);
     if (!goal) return c.json(apiError("not_found", GOAL_GONE), 404);
-    const trajectories = await listTrajectories(userId, [goal.id], await getTimeZone(userId));
-    return c.json(asGoal(goal, trajectories.get(goal.id)?.days ?? []), 200);
+    const [trajectories, updated] = await Promise.all([
+      listTrajectories(userId, [goal.id], await getTimeZone(userId)),
+      listGoalUpdatedAt(userId, [goal.id]),
+    ]);
+    return c.json(asGoal(goal, trajectories.get(goal.id)?.days ?? [], updated.get(goal.id)), 200);
   })
   .openapi(deleteRoute, async (c) => {
     const deleted = await deleteGoal(c.var.user.id, c.req.valid("param").id);
@@ -430,6 +485,12 @@ export const goals = new OpenAPIHono<ApiEnv>()
     // As the web's "Update status": the read runs after this responds.
     await requestRead(userId, id, { trigger: "manual", settle: false });
     return c.body(null, 202);
+  })
+  .openapi(areaRoute, async (c) => {
+    const result = await setGoalArea(c.var.user.id, c.req.valid("param").id, c.req.valid("json").areaId || null);
+    if (result === "goal_not_found") return c.json(apiError("not_found", GOAL_GONE), 404);
+    if (result === "area_not_found") return c.json(apiError("not_found", AREA_GONE), 404);
+    return c.body(null, 204);
   })
   .openapi(weekRoute, async (c) => {
     const { id, weekStart } = c.req.valid("param");

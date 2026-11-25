@@ -67,7 +67,7 @@ final class GoalsModel {
         ))
 
         Task {
-            let body = Components.Schemas.GoalInput(
+            let body = Components.Schemas.NewGoal(
                 title: input.title,
                 description: input.description.isEmpty ? nil : input.description,
                 targetDate: input.targetDate,

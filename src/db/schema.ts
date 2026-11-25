@@ -25,6 +25,37 @@ export * from "./auth-schema";
 // Every table holding personal data references the owning user, and every
 // query filters on it (see src/lib/goals.ts for the pattern).
 
+/**
+ * A part of the person's life (Work, Health, a city they care about): where they stand in it and where they want it
+ * to go, in their own words. Goals sit in at most one area; an area may have none. Areas stay while goals come and go.
+ */
+export const areas = pgTable(
+  "areas",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    /** Name of a Hugeicons icon from src/lib/goal-icons.ts, e.g. "LaptopIcon". Areas share the goals' icons. */
+    icon: text().notNull(),
+    /** Where the person is in this part of their life, in their words; null until they say. */
+    now: text(),
+    /** Where they want it to go, in their words; null until they say. */
+    want: text(),
+    /** Manual sort order within a user's areas, ascending. */
+    position: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("areas_user_id_position_idx").on(t.userId, t.position)],
+);
+
+export type Area = typeof areas.$inferSelect;
+
 export const goals = pgTable(
   "goals",
   {
@@ -43,6 +74,8 @@ export const goals = pgTable(
     color: text().notNull(),
     /** Manual sort order within a user's goals, ascending. */
     position: integer().notNull().default(0),
+    /** The area the goal sits in, if any. Removing the area leaves the goal without one. */
+    areaId: uuid().references(() => areas.id, { onDelete: "set null" }),
     /**
      * When a progress read was last asked for and hasn't finished; null when none is pending.
      * Reads run in the background after a post, so the goal page can show one is underway.
@@ -56,7 +89,7 @@ export const goals = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("goals_user_id_position_idx").on(t.userId, t.position)],
+  (t) => [index("goals_user_id_position_idx").on(t.userId, t.position), index("goals_area_id_idx").on(t.areaId)],
 );
 
 export type Goal = typeof goals.$inferSelect;
