@@ -562,6 +562,37 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// The Anytime strip by goal: a row each, over first, every one closed.
+    func testDayStripByGoal() {
+        assertAppearances(
+            DayView(data: Fixtures.dayByGoal, offset: 0, now: now).background(Theme.background),
+            width: 1000, height: 820
+        )
+    }
+
+    /// Superfocus open: its tasks listed, the four its sessions don't reach dimmed, its sessions ringed.
+    func testDayStripGoalOpen() {
+        assertAppearances(
+            DayView(data: Fixtures.dayByGoal, offset: 0, now: now, openGoals: ["superfocus"]).background(Theme.background),
+            width: 1000, height: 820
+        )
+    }
+
+    /// Superfocus open on the strip: its two sessions ringed lightly, its reserved meetings and Build's session not.
+    func testDayTimelineGoalSessionsRinged() {
+        let top = DayGrid.standard.y(12 * 60 + 30)
+        let bottom = DayGrid.standard.y(17 * 60 + 30)
+        assertAppearances(
+            DayTimeline(data: Fixtures.dayByGoal, offset: 0, now: now, clock: .twelveHour, ringedGoals: ["superfocus"])
+                .frame(width: 736)
+                .offset(y: -top)
+                .frame(width: 736, height: bottom - top, alignment: .topLeading)
+                .clipped()
+                .background(Theme.card),
+            width: 736, height: bottom - top
+        )
+    }
+
     func testBlockPanels() {
         let data = Fixtures.calendar
         let now = now
