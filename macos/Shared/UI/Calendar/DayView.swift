@@ -2,8 +2,9 @@ import SwiftUI
 
 /*
  * One day, hour by hour, matching src/app/(app)/calendar/day-calendar.tsx: the top bar, the
- * "Anytime" strip of tasks planned or due without a time, then the timeline with sleep shaded,
- * past time washed, blocks filling in as their time passes, and the now line.
+ * "Anytime" strip of tasks planned or due without a time, a row per goal (GoalStrip), then the
+ * timeline with sleep shaded, past time washed, blocks filling in as their time passes, and the now
+ * line. A goal open on the strip rings its sessions on the timeline.
  */
 
 /// The timeline's geometry (geometry.ts). Pinching changes how tall an hour is (`HourGrid`).
@@ -81,6 +82,8 @@ struct DayView: View {
     /// The block being named or given a goal in the popover.
     @State private var editing: BlockEditing?
     @State private var width: CGFloat = 0
+    /// The goals open on the strip, by day ("YYYY-MM-DD"): their tasks showing and their sessions ringed.
+    @State private var openGoals: [String: Set<String>]
 
     init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
          onToday: @escaping () -> Void = {}, first: Int? = nil, firstRange: ClosedRange<Int>? = nil,
@@ -91,7 +94,8 @@ struct DayView: View {
          setObjective: ((String, String, String) async -> String?)? = nil,
          dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil,
          eventsPanel: AnyView? = nil, showsEvents: Bool = false, onToggleEvents: (() -> Void)? = nil, eventChanges: Int = 0,
-         eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil, importChanges: [String: ImportChange] = [:]) {
+         eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil, importChanges: [String: ImportChange] = [:],
+         openGoals: Set<String> = []) {
         self.data = data
         self.offset = offset
         self.now = now
@@ -122,9 +126,16 @@ struct DayView: View {
         self.eventPreview = eventPreview
         self.importChanges = importChanges
         _editing = State(initialValue: editing)
+        _openGoals = State(initialValue: [CalendarDay.today(CalendarDayMath.midnight(offset, from: now)): openGoals])
     }
 
     private var isMultiDay: Bool { span.isMultiDay }
+
+    /// The goals open on the shown day's strip.
+    private var openOnShownDay: Binding<Set<String>> {
+        let day = CalendarDay.today(CalendarDayMath.midnight(offset, from: now))
+        return Binding(get: { openGoals[day] ?? [] }, set: { openGoals[day] = $0 })
+    }
     /// The first of the days shown, in days from today: any day, once they've been scrolled.
     private var shownFirst: Int { first ?? (span == .week ? CalendarDayMath.monday(of: offset, from: now) : offset) }
     /// The Monday-to-Sunday week the overview and the "This week" label go by: the one holding the
@@ -329,21 +340,20 @@ struct DayView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Rectangle().fill(Theme.cardBorder).frame(height: 1)
             }
-            let strip = data.strip(day: offset, today: now)
+            let rows = data.goalRows(day: offset, now: now)
             // With nothing on it, the strip only shows when there are tasks beside it to drop in.
-            if !strip.isEmpty || showsTasks {
-                DayStrip(
-                    items: strip,
-                    goals: data.goals,
+            if !rows.isEmpty || showsTasks {
+                GoalStrip(
+                    rows: rows,
                     blocks: data.nextBlocks(now: now),
                     today: CalendarDay.today(now),
                     dayName: Self.dayLabel(offset) ?? shownDay.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US"))),
-                    onUnplan: actions.map { actions in { actions.plan($0, nil) } }
+                    open: openOnShownDay
                 )
             }
             TimelineScroll(
                 data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
-                selectedId: selected?.id,
+                selectedId: selected?.id, ringedGoals: openOnShownDay.wrappedValue,
                 onSelect: panel != nil && width >= 1024 ? { selectedId.wrappedValue = $0 } : nil,
                 storedHour: dayHour
             )
@@ -628,148 +638,7 @@ struct DaysMenu: View {
     }
 }
 
-// MARK: - Anytime strip
-
-/// The top of a day: tasks meant for it without a time, and tasks due then. Drop a task here to
-/// plan it for the day; drag one from here onto the timeline to give it a time.
-struct DayStrip: View {
-    let items: [StripItem]
-    let goals: [CalendarGoal]
-    /// Each task's next block, for dragging it.
-    var blocks: [String: CalendarBlock] = [:]
-    /// Today, "YYYY-MM-DD", for "from Mon" and "Overdue since Mon".
-    let today: String
-    /// "Today" or "Friday", for the drop hint.
-    var dayName = ""
-    /// Takes a task off this day; without it the chips have no ×.
-    var onUnplan: ((String) -> Void)?
-    @Environment(\.taskDrag) private var drag
-
-    var body: some View {
-        let placing = drag?.placing.flatMap { $0.moved ? $0 : nil }
-        let dropping = placing?.onStrip ?? false
-        HStack(alignment: .top, spacing: 0) {
-            Text("Anytime").font(.app(11, .medium)).foregroundStyle(Theme.muted)
-                .frame(width: DayGrid.gutter, alignment: .trailing)
-                .padding(.trailing, 8)
-                .padding(.top, 12)
-            FlowLayout(spacing: 6) {
-                if items.isEmpty {
-                    Text(placing != nil ? "Drop to plan it for \(dayName)" : "Drag a task here to plan it for the day, without a time.")
-                        .appText(.xs).foregroundStyle(dropping ? Theme.foreground : Theme.muted)
-                        .padding(.horizontal, 4)
-                        .frame(minHeight: 28)
-                }
-                ForEach(items) { item in
-                    StripChip(
-                        item: item,
-                        block: blocks[item.task.id],
-                        color: goals.first { $0.id == item.task.goalId }?.color ?? "slate",
-                        today: today,
-                        isDragging: placing?.taskId == item.task.id,
-                        onUnplan: onUnplan.map { unplan in { unplan(item.task.id) } }
-                    )
-                }
-                if dropping, !items.isEmpty {
-                    Text("Drop to plan it for \(dayName)").appText(.xs).foregroundStyle(Theme.foreground)
-                        .padding(.horizontal, 4)
-                        .frame(minHeight: 28)
-                }
-            }
-            .padding(.vertical, 8)
-            .padding(.trailing, 12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        }
-        .background(dropping ? Theme.foreground(0.05) : .clear)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { drag?.stripFrame = $0 }
-        .onDisappear { drag?.stripFrame = .zero }
-    }
-}
-
-/// A task on the strip, tinted with its goal: why it's here (a calendar or a flag), the title, its
-/// estimate; on hover, an × to take it off the day.
-private struct StripChip: View {
-    let item: StripItem
-    let block: CalendarBlock?
-    let color: String
-    let today: String
-    var isDragging = false
-    var onUnplan: (() -> Void)?
-    @State private var isHovered = false
-
-    private var isPending: Bool { block?.isPending ?? false }
-
-    var body: some View {
-        let carried = item.carriedFrom.map { "from \(CalendarDay.relativeLabel($0, today: today))" }
-        HStack(spacing: 6) {
-            (item.due != nil ? Icon.flag : Icon.calendarSmall).image(size: 13)
-                .foregroundStyle(item.due == .overdue ? Theme.danger : GoalPalette.color(color))
-            Text(item.task.title).font(.app(13, .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
-            Text(TaskItem.minutesLabel(item.task.minutes)).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted)
-            if let carried {
-                Text(carried).font(.app(11, .medium)).foregroundStyle(Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24)))
-            }
-        }
-        .padding(.leading, 8)
-        .padding(.trailing, 10)
-        .padding(.vertical, 4)
-        .frame(maxWidth: 272, alignment: .leading)
-        .background(GoalPalette.mix(color, light: 0.13, dark: 0.18), in: .rect(cornerRadius: 8))
-        .overlay(alignment: .trailing) {
-            // Takes no room: it fades in over the end of the chip on hover.
-            if item.planned, !isPending, let onUnplan {
-                Button(action: onUnplan) {
-                    UnplanMark()
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 16)
-                .padding(.trailing, 4)
-                .frame(maxHeight: .infinity)
-                .background(LinearGradient(
-                    stops: [.init(color: GoalPalette.mix(color, light: 0.13, dark: 0.18).opacity(0), location: 0),
-                            .init(color: GoalPalette.mix(color, light: 0.13, dark: 0.18), location: 0.45)],
-                    startPoint: .leading, endPoint: .trailing
-                ))
-                .opacity(isHovered ? 1 : 0)
-                .help("Take it off this day")
-                .accessibilityLabel("Take “\(item.task.title)” off this day")
-            }
-        }
-        .clipShape(.rect(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
-        .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.05)), radius: 1, y: 1)
-        .opacity(isDragging || isPending ? 0.5 : 1)
-        .onHover { isHovered = $0 }
-        .pointerStyle(isPending ? nil : .grabIdle)
-        .modifier(TaskDragSource(task: PanelTask(task: item.task, block: block)))
-        .help(helpText)
-    }
-
-    private var helpText: String {
-        var lines = [item.task.title]
-        if let from = item.carriedFrom { lines.append("Planned from \(CalendarDay.relativeLabel(from, today: today))") }
-        else if item.planned { lines.append("Planned for this day") }
-        if item.due == .overdue, let due = item.task.dueOn { lines.append("Overdue since \(CalendarDay.relativeLabel(due, today: today))") }
-        else if item.due == .due { lines.append("Due this day") }
-        if onUnplan != nil { lines.append("Drag onto the timeline to give it a time") }
-        return lines.joined(separator: "\n")
-    }
-}
-
-/// The × on a strip chip.
-private struct UnplanMark: View {
-    @State private var isHovered = false
-
-    var body: some View {
-        Icon.close.image(size: 12)
-            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
-            .frame(width: 20, height: 20)
-            .background(isHovered ? Theme.foreground(0.1) : .clear, in: .rect(cornerRadius: 6))
-            .contentShape(.rect)
-            .onHover { isHovered = $0 }
-    }
-}
+// MARK: - Flow layout (the strip by goal is GoalStrip.swift)
 
 /// A view a FlowLayout may leave out when it would start a new row, such as a pill that's
 /// invisible until hover: it keeps its place on a row that has room, without adding a blank one.
@@ -841,6 +710,8 @@ private struct TimelineScroll: View {
     let actions: CalendarActions?
     @Binding var editing: BlockEditing?
     let selectedId: String?
+    /// Goals open on the strip: their sessions are ringed.
+    var ringedGoals: Set<String> = []
     let onSelect: ((String) -> Void)?
     /// How tall an hour is, kept between visits; without it the timeline keeps its own.
     let storedHour: Binding<CGFloat>?
@@ -872,7 +743,7 @@ private struct TimelineScroll: View {
             ScrollView {
                 DayTimeline(
                     data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
-                    selectedId: selectedId, onSelect: onSelect, proxy: proxy
+                    selectedId: selectedId, ringedGoals: ringedGoals, onSelect: onSelect, proxy: proxy
                 )
                 .environment(\.dayGrid, grid)
                 .modifier(HourPinch(
@@ -1012,6 +883,8 @@ struct DayTimeline: View {
     @Binding var editing: BlockEditing?
     /// The block whose panel is open, ringed in its goal's colour.
     var selectedId: String?
+    /// Goals open on the strip: their sessions are ringed, lightly.
+    var ringedGoals: Set<String> = []
     /// Clicking a block opens its panel; without it, the click edits it in place.
     var onSelect: ((String) -> Void)?
     /// A block's menu offers to give its time to another goal, where that's wired (nothing does yet).
@@ -1033,7 +906,8 @@ struct DayTimeline: View {
     private static let sleepLabelHeight: CGFloat = 132
 
     init(data: CalendarData, offset: Int, now: Date, clock: Clock, actions: CalendarActions? = nil,
-         editing: Binding<BlockEditing?> = .constant(nil), selectedId: String? = nil, onSelect: ((String) -> Void)? = nil,
+         editing: Binding<BlockEditing?> = .constant(nil), selectedId: String? = nil, ringedGoals: Set<String> = [],
+         onSelect: ((String) -> Void)? = nil,
          onGive: ((String) -> Void)? = nil, proxy: ScrollViewProxy? = nil) {
         self.data = data
         self.offset = offset
@@ -1042,6 +916,7 @@ struct DayTimeline: View {
         self.actions = actions
         _editing = editing
         self.selectedId = selectedId
+        self.ringedGoals = ringedGoals
         self.onSelect = onSelect
         self.onGive = onGive
         self.proxy = proxy
@@ -1140,6 +1015,7 @@ struct DayTimeline: View {
                         isDragging: moving != nil,
                         isMenuOpen: overlays?.presented?.owner == block.id,
                         isSelected: block.id == selectedId,
+                        isRinged: ringedGoals.contains(block.goalId) && block.kind == .session,
                         onDrag: { edge, dy in dragBlock(segment, edge: edge, dy: dy) },
                         onDragEnd: { edge in endBlockDrag(block, segment, edge: edge) },
                         onMenu: { anchor in showMenu(block, segment, anchor: anchor) }
@@ -1458,6 +1334,8 @@ private struct TimelineBlock: View {
     let isDragging: Bool
     let isMenuOpen: Bool
     var isSelected = false
+    /// Its goal is open on the strip and it's one of the goal's sessions: a lighter ring.
+    var isRinged = false
     let onDrag: (BlockEdge, CGFloat) -> Void
     let onDragEnd: (BlockEdge) -> Void
     let onMenu: (CGRect) -> Void
@@ -1495,9 +1373,9 @@ private struct TimelineBlock: View {
                 }
             }
             .overlay {
-                // Its panel is open: a ring in its goal's colour.
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 10).strokeBorder(GoalPalette.color(goal?.color ?? "slate").opacity(0.6), lineWidth: 2)
+                // Its panel is open: a ring in its goal's colour; its goal open on the strip, a lighter one.
+                if isSelected || isRinged {
+                    RoundedRectangle(cornerRadius: 10).strokeBorder(GoalPalette.color(goal?.color ?? "slate").opacity(isSelected ? 0.6 : 0.3), lineWidth: 2)
                         .padding(-2)
                         .allowsHitTesting(false)
                 }

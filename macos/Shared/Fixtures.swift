@@ -405,6 +405,55 @@ enum Fixtures {
     }
 
 
+    /// A day just planned across goals, for the strip by goal ("The day, by goal" in supervibes-design):
+    /// Superfocus 1 h 30 min over its sessions, Build with 45 min spare, two goals with tasks and no
+    /// sessions, and one with only a task due today.
+    static var dayByGoal: CalendarData {
+        let day = Calendar.current.startOfDay(for: referenceNow)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date { day.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        let today = "2026-11-18"
+        let goals = [
+            CalendarGoal(id: "build", title: "Build Supervibes as a fresh take on productivity", icon: "Rocket01Icon", color: "sky"),
+            CalendarGoal(id: "jacob", title: "Build an app that helps Jacob find an apartment in Madrid", icon: "Home01Icon", color: "teal"),
+            CalendarGoal(id: "playbook", title: "Deliver research-backed housing playbook for Madrid", icon: "Target02Icon", color: "coral"),
+            CalendarGoal(id: "leisure", title: "Carve time out for leisure", icon: "Plant01Icon", color: "pink"),
+            CalendarGoal(id: "superfocus", title: "Stay engaged with Superfocus and the community", icon: "Briefcase01Icon", color: "indigo"),
+        ]
+        let blocks = [
+            CalendarBlock(id: "sf1", goalId: "superfocus", title: nil, startsAt: at(13), endsAt: at(14, 30)),
+            CalendarBlock(id: "hamish", goalId: "superfocus", title: "Chat about Superfocus – Hamish", startsAt: at(14, 30), endsAt: at(15), reserved: true),
+            CalendarBlock(id: "sf2", goalId: "superfocus", title: nil, startsAt: at(15), endsAt: at(16)),
+            CalendarBlock(id: "vinay", goalId: "superfocus", title: "Chat about Superfocus – Vinay", startsAt: at(16), endsAt: at(16, 30), reserved: true),
+            CalendarBlock(id: "richie", goalId: "superfocus", title: "Chat about Superfocus – Richie", startsAt: at(16, 30), endsAt: at(17), reserved: true),
+            CalendarBlock(id: "build1", goalId: "build", title: nil, startsAt: at(17), endsAt: at(20, 30)),
+        ]
+        func task(_ id: String, _ goal: String, _ title: String, _ minutes: Int, planned: Bool = true, due: Bool = false) -> CalendarTask {
+            CalendarTask(id: id, goalId: goal, title: title, minutes: minutes, plannedFor: planned ? today : nil, dueOn: due ? today : nil)
+        }
+        let tasks = [
+            task("sf-spark", "superfocus", "Brainstorm experience for Spark Summit", 60, due: true),
+            task("b-polish", "build", "Polish here and there", 60),
+            task("p-election", "playbook", "Assess election likeliness & impact on the housing market", 30),
+            task("b-catch", "build", "“Catch up” to new activity", 30),
+            task("j-listings", "jacob", "Daily time aside to update listings", 30),
+            task("b-login", "build", "Launch at login", 15),
+            task("sf-design", "superfocus", "Test the design system workflow", 30),
+            task("j-skor", "jacob", "Research Skor product strategy", 30),
+            task("sf-actions", "superfocus", "Actions in other apps", 60),
+            task("j-idealista", "jacob", "Brainstorm “modern Idealista”", 30),
+            task("sf-community", "superfocus", "Put time aside daily for community", 15),
+            task("sf-reality", "superfocus", "Look into extending reality tracking", 15),
+            task("b-delete", "build", "A signed-in user can delete or export their data", 15),
+            task("sf-renewals", "superfocus", "January renewals for the first founding members", 30),
+            task("b-imported", "build", "Imported calendar events land on the right goal", 30),
+            task("b-blocks", "build", "Deleting several selected blocks at once", 15),
+            task("sf-focus", "superfocus", "Make focus time editing more forgiving", 30),
+            task("l-tickets", "leisure", "Buy tickets for Doomsday", 30, planned: false, due: true),
+        ]
+        return CalendarData(blocks: blocks, goals: goals, tasks: tasks, sleepStart: 23 * 60 + 30, wakeTime: 7 * 60 + 30,
+                            clock: .twelveHour, objectives: [])
+    }
+
     // MARK: - Calendar import
 
     /// A time on a day of the reference week (Wednesday Nov 18 is today), in Madrid.
