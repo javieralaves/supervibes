@@ -137,9 +137,14 @@ private struct GoalStripRow: View {
                 .padding(.bottom, 6)
                 // Where the list is, so a task held over it can find its place; forgotten once it closes.
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .calendar) } action: { frame in
+                    guard let drag else { return }
                     let ids = Set(row.items.map(\.task.id))
-                    drag?.lists[row.id, default: StripList()].frame = frame
-                    drag?.lists[row.id]?.rows = drag?.lists[row.id]?.rows.filter { ids.contains($0.key) } ?? [:]
+                    // Read, then write once: reading `lists` inside its own assignment is an
+                    // overlapping access, which Swift stops the app for.
+                    var list = drag.lists[row.id] ?? StripList()
+                    list.frame = frame
+                    list.rows = list.rows.filter { ids.contains($0.key) }
+                    drag.lists[row.id] = list
                 }
                 .onDisappear { drag?.lists[row.id] = nil }
             }
