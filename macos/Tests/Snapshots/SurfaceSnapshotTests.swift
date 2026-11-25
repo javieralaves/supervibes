@@ -377,21 +377,29 @@ final class SurfaceSnapshotTests: XCTestCase {
     }
 
     /// The panel an over day's ring opens, built as the board builds it.
-    private func fitPanel(_ goalId: String, day: String, dayName: String, label: String, mode: MakeItFitPanel.Mode = .move) -> some View {
+    private func fitPanel(_ goalId: String, day: String, dayName: String, label: String, mode: MakeItFitPanel.Mode = .move, applied: Set<String> = []) -> some View {
         let data = Fixtures.board
-        let goal = data.goal(goalId)!
-        let capacity = Capacity.day(day, open: goal.tasks.filter { $0.plannedFor == day }.reduce(0) { $0 + $1.minutes }, blocks: goal.protectedBlocks, now: now)
-        let free = Fit.freeSlots(for: goal, day: day, in: data, now: now).map { FitSource(give: nil, goalTitle: nil, goalColor: nil, slot: $0) }
-        let given = Fit.gives(to: goal, day: day, in: data, now: now).map { give in
-            FitSource(give: give, goalTitle: data.goal(give.fromGoal)!.title, goalColor: data.goal(give.fromGoal)!.color, slot: give.slot)
-        }
         return MakeItFitPanel(
-            label: label, dayName: dayName, capacity: capacity, color: goal.color,
-            moves: Fit.moves(goal, day: day, today: data.today, now: now), sources: free + given,
-            today: data.today, clock: .device, initialMode: mode, onMove: { _ in }, onProtect: { _ in }
+            goal: data.goal(goalId)!, day: day, dayName: dayName, in: data, now: now, clock: .device,
+            initialMode: mode, applied: applied, actions: BoardFitActions()
         )
         .padding(24)
         .background(Theme.background)
+    }
+
+    /// Superfocus today from the Day view's strip, its first move already applied: "Moved", and the
+    /// ring and totals counting it.
+    func testDayMakeItFit() {
+        let data = Fixtures.dayByGoal.board(now: now)
+        assertAppearances(
+            MakeItFitPanel(
+                goal: data.goal("superfocus")!, day: "2026-11-18", dayName: "Today", in: data, now: now, clock: .twelveHour,
+                applied: ["sf-focus"], actions: BoardFitActions()
+            )
+            .padding(24)
+            .background(Theme.background),
+            width: 420, height: 420
+        )
     }
 
     func testMakeItFitMovingTasksOut() {

@@ -353,7 +353,8 @@ struct DayView: View {
                     today: CalendarDay.today(now),
                     dayName: Self.dayLabel(offset) ?? shownDay.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "en_US"))),
                     open: openOnShownDay,
-                    menu: actions.map { actions in { item in taskMenu(item, actions: actions) } }
+                    menu: actions.map { actions in { item in taskMenu(item, actions: actions) } },
+                    fit: offset >= 0 ? actions.map { actions in { row in fitPanel(row, actions: actions) } } : nil
                 )
             }
             TimelineScroll(
@@ -366,6 +367,27 @@ struct DayView: View {
         .background(Theme.card, in: .rect(cornerRadius: 16))
         .clipShape(.rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+    }
+
+    /// An over goal's Make it fit for the day, as the planning board opens it. Applying a move plans
+    /// the task where it's going; protecting time makes a session; taking time shortens the other
+    /// goal's session and gives its end to this one.
+    private func fitPanel(_ row: DayGoalRow, actions: CalendarActions) -> AnyView {
+        let board = data.board(now: now)
+        guard let goal = board.goal(row.goal.id) else { return AnyView(EmptyView()) }
+        let day = offset
+        let fit = BoardFitActions(
+            move: { moves, _ in
+                for move in moves { actions.changeTask(move.task.id, move.to.patch(today: board.today)) }
+            },
+            protect: { slot, goalId in
+                let start = CalendarDayMath.minutes(slot.start)
+                actions.create(day, start, start + slot.minutes, goalId, nil, .session)
+            },
+            give: { give, goalId in actions.giveTime(give.blockId, give.slot.minutes, goalId) }
+        )
+        let dayName = Self.dayLabel(offset) ?? CalendarDay.weekday(row.day)
+        return AnyView(MakeItFitPanel(goal: goal, day: row.day, dayName: dayName, in: board, now: now, clock: clock, actions: fit))
     }
 
     /// A task's menu on the strip: the usual rows, and what its goal's time that day suggests.
@@ -852,6 +874,8 @@ struct CalendarActions {
     var markTaskDone: (_ taskId: String) -> Void = { _ in }
     var deleteTask: (_ taskId: String) -> Void = { _ in }
     var changeTask: (_ taskId: String, _ patch: TaskPatch) -> Void = { _, _ in }
+    /// The end of a session, `minutes` long, given to another goal.
+    var giveTime: (_ blockId: String, _ minutes: Int, _ goalId: String) -> Void = { _, _, _ in }
     /// The goal a new block starts with.
     var defaultGoalId: () -> String?
     /// A block's menu offers its goal's page.

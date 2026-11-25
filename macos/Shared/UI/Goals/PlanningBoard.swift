@@ -370,7 +370,7 @@ struct PlanningBoard: View {
             color: goal.color,
             capacity: capacity(column, of: goal),
             capacityLabel: label,
-            fitPanel: fitPanel(column, of: goal, label: label),
+            fitPanel: fitPanel(column, of: goal),
             fill: fill(column, of: goal),
             fillAction: "Plan for \(relativeName(column))",
             hoveredFiller: initiallyHoveredFiller,
@@ -476,25 +476,13 @@ struct PlanningBoard: View {
     // MARK: Making a day fit
 
     /// What clicking a day's ring opens when more is planned than there's time for, today or later.
-    private func fitPanel(_ column: BoardColumn, of goal: BoardGoal, label: String) -> (() -> AnyView)? {
+    private func fitPanel(_ column: BoardColumn, of goal: BoardGoal) -> (() -> AnyView)? {
         guard case .day(let day) = column, day >= today, let capacity = capacity(column, of: goal), capacity.planned > capacity.protected else {
             return nil
         }
         let dayName = title(column)
-        return { [data, now, today, clock, fit] in
-            let free = Fit.freeSlots(for: goal, day: day, in: data, now: now).map { FitSource(give: nil, goalTitle: nil, goalColor: nil, slot: $0) }
-            let given = Fit.gives(to: goal, day: day, in: data, now: now).compactMap { give in
-                data.goal(give.fromGoal).map { FitSource(give: give, goalTitle: $0.title, goalColor: $0.color, slot: give.slot) }
-            }
-            return AnyView(MakeItFitPanel(
-                label: label, dayName: dayName, capacity: capacity, color: goal.color,
-                moves: Fit.moves(goal, day: day, today: today, now: now), sources: free + given,
-                today: today, clock: clock,
-                onMove: { fit.move($0, goal.id) },
-                onProtect: { source in
-                    if let give = source.give { fit.give(give, goal.id) } else { fit.protect(source.slot, goal.id) }
-                }
-            ))
+        return { [data, now, clock, fit] in
+            AnyView(MakeItFitPanel(goal: goal, day: day, dayName: dayName, in: data, now: now, clock: clock, actions: fit))
         }
     }
 

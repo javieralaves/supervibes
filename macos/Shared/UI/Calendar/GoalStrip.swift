@@ -5,7 +5,7 @@ import SwiftUI
  * a goal with tasks on the day: its icon, title and how many, then the gap between its tasks and its
  * session time and its ring, as the planning board counts them (DayGoalRow). Rows run over first.
  * Click one to open it: its tasks follow as a plain list, the ones its time doesn't reach dimmed, and
- * the Day view rings its sessions on the timeline. Drag a task up or down its list to change the
+ * the Day view rings its sessions on the timeline. An over goal's ring opens Make it fit beside it. Drag a task up or down its list to change the
  * goal's order: it's lifted into the place it would go and the dimming follows. Drag it onto the
  * timeline to give it a time; drop one from the task panel anywhere on the strip to plan it for the day.
  */
@@ -24,6 +24,8 @@ struct GoalStrip: View {
     var holding: Placing?
     /// A task's menu on a right-click; without it, there's none.
     var menu: ((StripItem) -> AnyView)?
+    /// What an over goal's ring opens: Make it fit for the day; without it, the ring does nothing.
+    var fit: ((DayGoalRow) -> AnyView)?
     @Environment(\.taskDrag) private var drag
 
     /// Lines the strip's first row up with "Anytime".
@@ -46,7 +48,7 @@ struct GoalStrip: View {
                 }
                 ForEach(rows) { row in
                     GoalStripRow(
-                        row: row, blocks: blocks, today: today, menu: menu, isOpen: open.contains(row.id),
+                        row: row, blocks: blocks, today: today, menu: menu, fit: row.isOver ? fit : nil, isOpen: open.contains(row.id),
                         draggingId: placing?.taskId,
                         listIndex: placing?.goalId == row.id ? placing?.listIndex : nil
                     ) {
@@ -78,6 +80,7 @@ private struct GoalStripRow: View {
     let blocks: [String: CalendarBlock]
     let today: String
     let menu: ((StripItem) -> AnyView)?
+    let fit: ((DayGoalRow) -> AnyView)?
     let isOpen: Bool
     /// The task being dragged, if it's one of these.
     let draggingId: String?
@@ -85,7 +88,12 @@ private struct GoalStripRow: View {
     let listIndex: Int?
     let onToggle: () -> Void
     @State private var isHovered = false
+    @State private var ringFrame = CGRect.zero
     @Environment(\.taskDrag) private var drag
+    @Environment(\.overlays) private var overlays
+
+    private var fitOwner: String { "fit#\(row.id)" }
+    private var isFitting: Bool { overlays?.presented?.owner == fitOwner }
 
     /// The tasks as they'd be with the held one let go where it is.
     private var order: [StripItem] {
@@ -95,29 +103,28 @@ private struct GoalStripRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: onToggle) {
-                HStack(spacing: 8) {
-                    (isOpen ? Icon.chevronDown : Icon.arrowRight).image(size: 12).foregroundStyle(Theme.muted)
-                    GoalIconImage(name: row.goal.icon, size: 15).foregroundStyle(GoalPalette.color(row.goal.color))
-                    // The title, then how many tasks right after it.
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(row.goal.title).font(.app(13, .medium)).foregroundStyle(Theme.foreground)
-                            .lineLimit(1).truncationMode(.tail)
-                        Text("\(row.items.count)").font(.app(12)).monospacedDigit().foregroundStyle(Theme.muted)
+            HStack(spacing: 8) {
+                Button(action: onToggle) {
+                    HStack(spacing: 8) {
+                        (isOpen ? Icon.chevronDown : Icon.arrowRight).image(size: 12).foregroundStyle(Theme.muted)
+                        GoalIconImage(name: row.goal.icon, size: 15).foregroundStyle(GoalPalette.color(row.goal.color))
+                        // The title, then how many tasks right after it.
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(row.goal.title).font(.app(13, .medium)).foregroundStyle(Theme.foreground)
+                                .lineLimit(1).truncationMode(.tail)
+                            Text("\(row.items.count)").font(.app(12)).monospacedDigit().foregroundStyle(Theme.muted)
+                        }
+                        Spacer(minLength: 8)
                     }
-                    Spacer(minLength: 8)
-                    Text(row.gapLabel).font(.app(13)).monospacedDigit()
-                        .foregroundStyle(row.isOver ? Theme.amber : Theme.muted)
-                        .lineLimit(1)
-                    CapacityRing(planned: row.capacity.planned, protected: row.capacity.protected, color: row.goal.color, size: 16)
+                    .frame(height: 32)
+                    .contentShape(.rect)
                 }
-                .padding(.leading, 6)
-                .padding(.trailing, 8)
-                .frame(height: 32)
-                .contentShape(.rect)
+                .buttonStyle(.plain)
+                .help(isOpen ? "Hide its tasks" : "Show its tasks")
+                gapAndRing
             }
-            .buttonStyle(.plain)
-            .help(isOpen ? "Hide its tasks" : "Show its tasks")
+            .padding(.leading, 6)
+            .padding(.trailing, 8)
             .accessibilityLabel("\(row.goal.title), \(row.items.count) \(row.items.count == 1 ? "task" : "tasks"), \(row.gapLabel)")
             .accessibilityAddTraits(isOpen ? .isSelected : [])
 
@@ -155,6 +162,36 @@ private struct GoalStripRow: View {
         }
         .background((isOpen || isHovered) ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
         .onHover { isHovered = $0 }
+    }
+
+    /// The gap and the ring; over, a button that opens Make it fit beside it, washed while it's open.
+    @ViewBuilder private var gapAndRing: some View {
+        let label = HStack(spacing: 6) {
+            Text(row.gapLabel).font(.app(13)).monospacedDigit()
+                .foregroundStyle(row.isOver ? Theme.amber : Theme.muted)
+                .lineLimit(1)
+            CapacityRing(planned: row.capacity.planned, protected: row.capacity.protected, color: row.goal.color, size: 16)
+        }
+        if let fit {
+            Button {
+                // To the right of the ring, out past the day's edge, so the goal's tasks and sessions
+                // stay in view; moved left where the window ends.
+                overlays?.showMenu(at: CGPoint(x: ringFrame.maxX + 20, y: ringFrame.minY - 10), owner: fitOwner) { fit(row) }
+            } label: {
+                label
+                    .padding(.horizontal, 6)
+                    .frame(height: 24)
+                    .background(isFitting ? Theme.foreground(0.07) : .clear, in: .rect(cornerRadius: 6))
+                    .contentShape(.rect(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, -6)
+            .modifier(AnchorReader(frame: $ringFrame))
+            .pointerStyle(.link)
+            .help("Make it fit")
+        } else {
+            label
+        }
     }
 }
 
