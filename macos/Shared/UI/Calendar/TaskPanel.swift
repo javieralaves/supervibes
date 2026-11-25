@@ -28,6 +28,16 @@ struct Placing: Equatable {
     var start: Int?
     /// Over the shown day's strip, to plan it for the day without a time.
     var onStrip = false
+    /// Over its own goal's open list on the strip: the place among the goal's other tasks there it
+    /// would move to.
+    var listIndex: Int?
+}
+
+/// An open goal's task list on the strip, for reordering it: where it is and where each task is,
+/// in the calendar's space.
+struct StripList: Equatable {
+    var frame: CGRect = .zero
+    var rows: [String: CGRect] = [:]
 }
 
 /// The drag in progress, and where the timeline and strip are, so the drop can be worked out.
@@ -40,6 +50,8 @@ final class TaskDragState {
     @ObservationIgnored var timelineFrame: CGRect = .zero
     @ObservationIgnored var viewportFrame: CGRect = .zero
     @ObservationIgnored var stripFrame: CGRect = .zero
+    /// The open goals' task lists on the strip, by goal.
+    @ObservationIgnored var lists: [String: StripList] = [:]
     /// The timeline's geometry, at the height it's pinched to.
     @ObservationIgnored var grid = DayGrid.standard
     /// Called with the drag when it's let go past the threshold.
@@ -69,8 +81,18 @@ final class TaskDragState {
         } else {
             current.start = nil
         }
-        current.onStrip = stripFrame.contains(p)
+        current.listIndex = listIndex(of: current, at: p)
+        // Moving within its own list isn't planning it for the day.
+        current.onStrip = stripFrame.contains(p) && current.listIndex == nil
         if current != placing { placing = current }
+    }
+
+    /// Over its own goal's open list: how many of the goal's other tasks there sit above the pointer.
+    /// The list is drawn with the task already in that place, so the others below it have moved down
+    /// a row and the count holds while the pointer stays on it.
+    private func listIndex(of current: Placing, at p: CGPoint) -> Int? {
+        guard let list = lists[current.goalId], list.frame.contains(p), list.rows[current.taskId] != nil else { return nil }
+        return list.rows.filter { $0.key != current.taskId && $0.value.midY < p.y }.count
     }
 }
 

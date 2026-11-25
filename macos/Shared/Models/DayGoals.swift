@@ -18,10 +18,39 @@ struct DayGoalRow: Identifiable, Hashable, Sendable {
     let items: [StripItem]
     /// Its tasks planned for the day against its sessions, as the board's day cell.
     let capacity: Capacity
-    /// The tasks its session time still ahead doesn't reach.
-    let pastTime: Set<String>
+    /// The day, "YYYY-MM-DD": its tasks planned for it are the ones counted.
+    let day: String
+    /// Session time still ahead for the counted tasks on the strip, or nil when nothing dims (no
+    /// sessions at all, or a day gone by).
+    let budget: Int?
 
     var id: String { goal.id }
+
+    /// The tasks its session time still ahead doesn't reach.
+    var pastTime: Set<String> { pastTime(in: items) }
+
+    /// The same for the tasks in another order, as while one is dragged to a new place: done in that
+    /// order, the counted task the time runs out at and every counted task after it.
+    func pastTime(in order: [StripItem]) -> Set<String> {
+        guard var left = budget else { return [] }
+        var past: Set<String> = []
+        for item in order where item.task.plannedFor == day {
+            if past.isEmpty, item.task.minutes <= left {
+                left -= item.task.minutes
+            } else {
+                past.insert(item.task.id)
+            }
+        }
+        return past
+    }
+
+    /// Its tasks with `taskId` moved to `index` among the others.
+    func items(moving taskId: String, to index: Int) -> [StripItem] {
+        guard let moving = items.first(where: { $0.task.id == taskId }) else { return items }
+        var others = items.filter { $0.task.id != taskId }
+        others.insert(moving, at: min(max(index, 0), others.count))
+        return others
+    }
 
     /// Which way the goal's tasks are off its session time, and by how much.
     enum Gap: Hashable, Sendable {
@@ -81,33 +110,42 @@ extension CalendarData {
             let open = planned.reduce(0) { $0 + $1.minutes }
             let sessions = blocks.filter { $0.goalId == goal.id && !$0.reserved }.map { ProtectedBlock(start: $0.startsAt, end: $0.endsAt) }
             let capacity = Capacity.day(dayISO, open: open, blocks: sessions, now: now, calendar: calendar)
-            return DayGoalRow(goal: goal, items: items, capacity: capacity, pastTime: pastTime(items, planned: planned, capacity: capacity, onPastDay: day < 0, dayISO: dayISO))
+            let budget = day < 0 ? nil : timeLeft(for: items, planned: planned, capacity: capacity)
+            return DayGoalRow(goal: goal, items: items, capacity: capacity, day: dayISO, budget: budget)
         }
         return rows.enumerated().sorted { a, b in
             a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset
         }.map(\.element)
     }
 
-    /// The counted tasks on the strip that the goal's session time still ahead doesn't reach. Tasks
-    /// planned for the day with a time of their own aren't on the strip, but their estimates still
-    /// count, so they take their share first. A goal with no sessions dims nothing (it has no time at
-    /// all, which its ring says), and neither does a day gone by.
-    private func pastTime(_ items: [StripItem], planned: [CalendarTask], capacity: Capacity, onPastDay: Bool, dayISO: String) -> Set<String> {
-        guard capacity.protected > 0, !onPastDay else { return [] }
+    /// The session time still ahead for the counted tasks on the strip. Tasks planned for the day
+    /// with a time of their own aren't on the strip, but their estimates still count, so they take
+    /// their share first. A goal with no sessions has none to share (its ring says it has no time).
+    private func timeLeft(for items: [StripItem], planned: [CalendarTask], capacity: Capacity) -> Int? {
+        guard capacity.protected > 0 else { return nil }
         let open = planned.reduce(0) { $0 + $1.minutes }
         // Session time not yet gone by.
         let ahead = capacity.protected - (capacity.planned - open)
         let onStrip = Set(items.map(\.task.id))
         let timed = planned.filter { !onStrip.contains($0.id) }.reduce(0) { $0 + $1.minutes }
-        var left = ahead - timed
-        var past: Set<String> = []
-        for item in items where item.task.plannedFor == dayISO {
-            if past.isEmpty, item.task.minutes <= left {
-                left -= item.task.minutes
-            } else {
-                past.insert(item.task.id)
-            }
+        return ahead - timed
+    }
+
+    /// A goal's open tasks in their new order once `taskId` is dropped at `index` among the others on
+    /// `day`'s strip: just before the strip task it lands above, or just after the last. The goal's
+    /// other tasks keep their places. Nil when it isn't on the strip or nothing would change.
+    func goalOrder(moving taskId: String, toStripIndex index: Int, day: Int, now: Date, calendar: Calendar = .current) -> (goalId: String, ids: [String])? {
+        guard let row = goalRows(day: day, now: now, calendar: calendar).first(where: { $0.items.contains { $0.task.id == taskId } }) else { return nil }
+        let others = row.items.map(\.task.id).filter { $0 != taskId }
+        let current = tasks.filter { $0.goalId == row.goal.id }.map(\.id)
+        var ids = current.filter { $0 != taskId }
+        if index < others.count, let at = ids.firstIndex(of: others[max(index, 0)]) {
+            ids.insert(taskId, at: at)
+        } else if let last = others.last, let at = ids.firstIndex(of: last) {
+            ids.insert(taskId, at: at + 1)
+        } else {
+            return nil
         }
-        return past
+        return ids == current ? nil : (row.goal.id, ids)
     }
 }
