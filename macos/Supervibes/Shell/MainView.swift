@@ -357,6 +357,9 @@ private struct GoalScreen: View {
                         onLogOne: model.logSession,
                         onPause: model.pause(until:),
                         onResume: model.resume,
+                        onPlanDay: model.planSession,
+                        onOpenCalendar: { shell.open(.calendar) },
+                        onTickSession: model.tickSession,
                         onEdit: { edit(detail.goal) },
                         onDelete: confirmDelete
                     ) {
@@ -685,7 +688,13 @@ private struct CalendarScreen: View {
                         changeTask: model.changeTask,
                         giveTime: { model.giveTime($0, minutes: $1, to: $2) },
                         defaultGoalId: { model.defaultGoalId },
-                        openGoal: { shell.openGoal($0) }
+                        openGoal: { shell.openGoal($0) },
+                        practices: PracticeActions(
+                            logToday: model.logPractice,
+                            plan: { model.planPractice($0, day: $1) },
+                            setDone: model.setPracticeSessionDone,
+                            remove: model.removePracticeSession
+                        )
                     ),
                     showsTasks: showsTasks,
                     onToggleTasks: { showsTasks.toggle() },

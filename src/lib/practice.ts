@@ -187,6 +187,15 @@ export async function getPractice(userId: string, goalId: string): Promise<Pract
 
 export type OffCalendarDTO = { id: string; day: string; doneAt: Date | null };
 
+/** Every practice's sessions off the calendar from `from` to `to` (days, "YYYY-MM-DD", `to` not included). */
+export async function listPracticeSessionsBetween(userId: string, from: string, to: string) {
+  return db
+    .select({ id: practiceSessions.id, goalId: practiceSessions.goalId, day: practiceSessions.day, doneAt: practiceSessions.doneAt })
+    .from(practiceSessions)
+    .where(and(eq(practiceSessions.userId, userId), gte(practiceSessions.day, from), lt(practiceSessions.day, to)))
+    .orderBy(asc(practiceSessions.day), asc(practiceSessions.createdAt));
+}
+
 const sessionColumns = { id: practiceSessions.id, day: practiceSessions.day, doneAt: practiceSessions.doneAt };
 
 /** Adds one: planned for `day`, or done (logged) when `done`. Null when the practice isn't theirs. */
@@ -199,13 +208,25 @@ export async function addPracticeSession(userId: string, goalId: string, day: st
   return row;
 }
 
-/** Moves one to another day, or ticks it off or back. Null when it isn't theirs. */
+export class FutureSessionError extends Error {}
+
+/**
+ * Moves one to another day, or ticks it off or back. Null when it isn't theirs. Throws FutureSessionError for ticking
+ * off one whose day hasn't come yet.
+ */
 export async function updatePracticeSession(
   userId: string,
   goalId: string,
   sessionId: string,
   patch: { day?: string; done?: boolean },
+  today?: string,
 ): Promise<OffCalendarDTO | null> {
+  const mine = and(eq(practiceSessions.id, sessionId), eq(practiceSessions.goalId, goalId), eq(practiceSessions.userId, userId));
+  if (patch.done && today) {
+    const [current] = await db.select({ day: practiceSessions.day }).from(practiceSessions).where(mine);
+    if (!current) return null;
+    if ((patch.day ?? current.day) > today) throw new FutureSessionError("It can’t be done on a day that hasn’t come yet.");
+  }
   const [row] = await db
     .update(practiceSessions)
     .set({

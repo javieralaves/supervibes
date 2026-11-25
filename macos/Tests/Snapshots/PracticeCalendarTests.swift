@@ -48,6 +48,31 @@ final class PracticeCalendarTests: XCTestCase {
         )
     }
 
+    /// The week with practices: today's chips in the Anytime row (Walk logged, Workouts any time), Friday's planned
+    /// Workouts, and the Week row with what's left: Workouts 1, Walk 3, Tagalog 4.
+    func testWeekWithPractices() {
+        assertAppearances(
+            DayView(data: Fixtures.calendarWithPractices, offset: 0, now: now, span: .week, onSetSpan: { _ in })
+                .background(Theme.background),
+            width: 1400, height: 520
+        )
+    }
+
+    /// Today in the Day view: the Practices bar under the strip, the day's sessions then the week's left.
+    func testDayWithPractices() {
+        assertAppearances(
+            DayView(data: Fixtures.calendarWithPractices, offset: 0, now: now).background(Theme.background),
+            width: 1000, height: 420
+        )
+    }
+
+    func testPracticesLeft() {
+        let left = Fixtures.calendarWithPractices.practicesLeft()
+        XCTAssertEqual(left.map(\.goal.id), ["w", "k", "t"])
+        XCTAssertEqual(left.map(\.left), [1, 3, 4])
+        XCTAssertEqual(Fixtures.calendarWithPractices.practiceSessions(day: 0, today: now).map(\.id), ["ps2", "ps3"])
+    }
+
     func testGoalSections() {
         let sections = GoalSections(Fixtures.practiceCalendarGoals).sections
         XCTAssertEqual(sections.map(\.title), ["Projects", "Practices"])

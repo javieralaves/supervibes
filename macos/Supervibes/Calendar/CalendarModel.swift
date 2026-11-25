@@ -412,6 +412,77 @@ final class CalendarModel {
 
     private func restoreGoals(_ goals: [CalendarGoal]) { data.goals = goals }
 
+    // MARK: Practices' sessions off the calendar
+
+    /// Logs one of a practice's sessions as done today.
+    func logPractice(_ goalId: String) {
+        addPracticeSession(goalId, day: CalendarDay.today(), done: true)
+    }
+
+    /// Plans one of a practice's sessions for a day ("YYYY-MM-DD"), with no time.
+    func planPractice(_ goalId: String, day: String) {
+        addPracticeSession(goalId, day: day, done: false)
+    }
+
+    private func addPracticeSession(_ goalId: String, day: String, done: Bool) {
+        let before = data
+        let pending = CalendarPracticeSession(id: "pending-\(UUID().uuidString)", goalId: goalId, day: day, done: done, isPending: true)
+        data.practiceSessions.append(pending)
+        countPractice(goalId, day: day, done: done ? 1 : 0, planned: done ? 0 : 1)
+        write(undo: { [weak self] in self?.data = before }) { client in
+            switch try await client.addPracticeSession(path: .init(id: goalId), body: .json(.init(day: day, done: done))) {
+            case .created: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t save that (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Ticks off a session planned for its day, or puts it back to planned.
+    func setPracticeSessionDone(_ sessionId: String, _ done: Bool) {
+        guard let index = data.practiceSessions.firstIndex(where: { $0.id == sessionId }), !data.practiceSessions[index].isPending else { return }
+        let before = data
+        let session = data.practiceSessions[index]
+        guard session.done != done else { return }
+        data.practiceSessions[index].done = done
+        countPractice(session.goalId, day: session.day, done: done ? 1 : -1, planned: done ? -1 : 1)
+        write(undo: { [weak self] in self?.data = before }) { client in
+            switch try await client.updatePracticeSession(path: .init(id: session.goalId, sessionId: sessionId), body: .json(.init(done: done))) {
+            case .ok: return .done
+            case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that.")
+            case .notFound: return .gone
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t save that (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Takes a session off its day.
+    func removePracticeSession(_ sessionId: String) {
+        guard let session = data.practiceSessions.first(where: { $0.id == sessionId }), !session.isPending else { return }
+        let before = data
+        data.practiceSessions.removeAll { $0.id == sessionId }
+        countPractice(session.goalId, day: session.day, done: session.done ? -1 : 0, planned: session.done ? 0 : -1)
+        write(undo: { [weak self] in self?.data = before }) { client in
+            switch try await client.deletePracticeSession(path: .init(id: session.goalId, sessionId: sessionId)) {
+            case .noContent, .notFound: return .done
+            case .unauthorized: return .signedOut
+            case .undocumented(let status, _): return .failed("Couldn’t remove that (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Moves a practice's count this week by what just changed, until the reload brings the server's.
+    private func countPractice(_ goalId: String, day: String, done: Int, planned: Int) {
+        guard let index = data.goals.firstIndex(where: { $0.id == goalId }), var week = data.goals[index].week,
+              CalendarDay.weekStart(day) == week.start else { return }
+        week.done = max(0, week.done + done)
+        week.planned = max(0, week.planned + planned)
+        data.goals[index].week = week
+    }
+
     /// Make a block a session, reserved time or a task's time. Protected time becomes a task's time
     /// by making a task from its title and description; a task's time lets go of its task, which
     /// stays open.
@@ -967,7 +1038,8 @@ extension CalendarData {
             sleepStart: body.settings.sleepStart,
             wakeTime: body.settings.wakeTime,
             clock: body.settings.clock.flatMap { Clock(rawValue: $0.rawValue) },
-            objectives: body.objectives.map { WeekObjective(goalId: $0.goalId, weekStart: $0.weekStart, objective: $0.objective) }
+            objectives: body.objectives.map { WeekObjective(goalId: $0.goalId, weekStart: $0.weekStart, objective: $0.objective) },
+            practiceSessions: body.practiceSessions.map { CalendarPracticeSession(id: $0.id, goalId: $0.goalId, day: $0.day, done: $0.done) }
         )
     }
 }

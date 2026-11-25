@@ -357,6 +357,17 @@ struct DayView: View {
                     fit: offset >= 0 ? actions.map { actions in { row in fitPanel(row, actions: actions) } } : nil
                 )
             }
+            // Practices: the day's sessions with no time, then, on a day of this week, what's left of each.
+            let practiceSessions = data.practiceSessions(day: offset, today: now)
+            let todayISO = CalendarDay.today(now)
+            let shownISO = CalendarDay.addDays(todayISO, offset)
+            let left = CalendarDay.weekStart(shownISO) == CalendarDay.weekStart(todayISO) ? data.practicesLeft() : []
+            if !practiceSessions.isEmpty || !left.isEmpty {
+                DayPracticesBar(
+                    sessions: practiceSessions, left: left, goals: data.goals, today: todayISO,
+                    actions: actions?.practices, openGoal: actions?.openGoal
+                )
+            }
             TimelineScroll(
                 data: data, offset: offset, now: now, clock: clock, actions: actions, editing: $editing,
                 selectedId: selected?.id, ringedGoals: openOnShownDay.wrappedValue,
@@ -880,6 +891,18 @@ struct CalendarActions {
     var defaultGoalId: () -> String?
     /// A block's menu offers its goal's page.
     var openGoal: ((String) -> Void)?
+    /// Practices' sessions off the calendar; nil leaves them read-only.
+    var practices: PracticeActions? = nil
+}
+
+/// What the calendar can do with practices' sessions that aren't blocks.
+struct PracticeActions {
+    /// Logs one done today.
+    var logToday: (_ goalId: String) -> Void
+    /// Plans one for a day ("YYYY-MM-DD"), with no time.
+    var plan: (_ goalId: String, _ day: String) -> Void
+    var setDone: (_ sessionId: String, _ done: Bool) -> Void
+    var remove: (_ sessionId: String) -> Void
 }
 
 extension CalendarActions {

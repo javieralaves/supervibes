@@ -172,6 +172,52 @@ final class GoalPageModel {
         }
     }
 
+    /// Plans one of the practice's sessions for a day ("YYYY-MM-DD"), with no time.
+    func planSession(_ day: String) {
+        practiceError = nil
+        Task {
+            do {
+                switch try await client.addPracticeSession(path: .init(id: id), body: .json(.init(day: day, done: false))) {
+                case .created:
+                    await refresh()
+                case .badRequest(let bad):
+                    practiceError = (try? bad.body.json.error.message) ?? "Couldn’t plan that."
+                case .notFound:
+                    load = .gone
+                case .unauthorized:
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    practiceError = "Couldn’t plan that (the server answered \(status))."
+                }
+            } catch {
+                practiceError = "Couldn’t plan that. Check your connection."
+            }
+        }
+    }
+
+    /// Ticks off a session planned for its day, once the day has come.
+    func tickSession(_ sessionId: String) {
+        practiceError = nil
+        Task {
+            do {
+                switch try await client.updatePracticeSession(path: .init(id: id, sessionId: sessionId), body: .json(.init(done: true))) {
+                case .ok:
+                    await refresh()
+                case .badRequest(let bad):
+                    practiceError = (try? bad.body.json.error.message) ?? "Couldn’t tick that off."
+                case .notFound:
+                    await refresh()
+                case .unauthorized:
+                    await auth.sessionEnded()
+                case .undocumented(let status, _):
+                    practiceError = "Couldn’t tick that off (the server answered \(status))."
+                }
+            } catch {
+                practiceError = "Couldn’t tick that off. Check your connection."
+            }
+        }
+    }
+
     /// Pauses the practice from today until `resumesOn` ("YYYY-MM-DD"), or until it's resumed when nil.
     func pause(until resumesOn: String?) {
         practiceError = nil

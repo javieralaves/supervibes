@@ -172,6 +172,24 @@ struct CalendarTask: Identifiable, Hashable, Sendable {
     var isPending = false
 }
 
+/// A practice's session off the calendar: meant for a day with no time, or done (logged, or ticked off).
+struct CalendarPracticeSession: Identifiable, Hashable, Sendable {
+    let id: String
+    let goalId: String
+    /// "YYYY-MM-DD".
+    var day: String
+    var done: Bool
+    var isPending = false
+}
+
+/// What's left of a practice this week that isn't on a day yet: what the Week row shows.
+struct PracticeLeft: Identifiable, Hashable, Sendable {
+    let goal: CalendarGoal
+    /// Sessions still to do this week with no block or day for them.
+    let left: Int
+    var id: String { goal.id }
+}
+
 struct CalendarData: Hashable, Sendable {
     var blocks: [CalendarBlock]
     var goals: [CalendarGoal]
@@ -180,6 +198,8 @@ struct CalendarData: Hashable, Sendable {
     var wakeTime: Int
     var clock: Clock?
     var objectives: [WeekObjective]
+    /// Practices' sessions off the calendar, over the same days as the blocks.
+    var practiceSessions: [CalendarPracticeSession] = []
 
     struct WeekObjective: Hashable, Sendable {
         let goalId: String
@@ -368,6 +388,22 @@ struct StripItem: Identifiable, Hashable, Sendable {
 extension CalendarData {
     /// A day's strip: tasks meant for that day without a time on it, and tasks due then. On today,
     /// plans missed on earlier days and overdue tasks carry over. As stripFor in day-calendar.tsx.
+    /// A day's practice sessions off the calendar, planned first, in each practice's order.
+    func practiceSessions(day: Int, today: Date) -> [CalendarPracticeSession] {
+        let dayISO = CalendarDay.today(CalendarDayMath.midnight(day, from: today))
+        return practiceSessions.filter { $0.day == dayISO }
+    }
+
+    /// Each practice with sessions still to do this week and nothing planned for them (no block, no day), in the
+    /// practices' order. Paused practices and ones without this week's count are left out.
+    func practicesLeft() -> [PracticeLeft] {
+        goals.compactMap { goal in
+            guard goal.isPractice, !goal.paused, let perWeek = goal.perWeek, let week = goal.week else { return nil }
+            let left = perWeek - week.done - week.planned
+            return left > 0 ? PracticeLeft(goal: goal, left: left) : nil
+        }
+    }
+
     func strip(day: Int, today: Date) -> [StripItem] {
         let dayISO = CalendarDay.today(CalendarDayMath.midnight(day, from: today))
         let todayISO = CalendarDay.today(today)

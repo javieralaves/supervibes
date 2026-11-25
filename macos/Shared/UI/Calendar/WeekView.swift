@@ -303,8 +303,12 @@ struct WeekView: View {
     /// Day names, then each day's tasks planned without a time, sliding with the days.
     private var header: some View {
         let strips = Dictionary(uniqueKeysWithValues: days.map { ($0, data.strip(day: $0, today: now)) })
+        let practiceDays = Dictionary(uniqueKeysWithValues: days.map { ($0, data.practiceSessions(day: $0, today: now)) })
         // Only the days in view decide whether there's an Anytime row, and how tall it is.
         let inView = Set(daysInView)
+        // What's left of practices this week, while this week is in view.
+        let thisWeek = Set((0..<7).map { $0 - CalendarDay.daysUntil(CalendarDay.today(now), today: CalendarDay.weekStart(CalendarDay.today(now))) })
+        let left = inView.isDisjoint(with: thisWeek) ? [] : data.practicesLeft()
         return VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: WeekGrid.gutter, height: 1)
@@ -312,17 +316,27 @@ struct WeekView: View {
                     DayHeader(date: CalendarDayMath.midnight(day, from: now), isToday: day == 0) { onOpenDay(day) }
                 }
             }
-            if inView.contains(where: { !(strips[$0] ?? []).isEmpty }) {
+            if inView.contains(where: { !(strips[$0] ?? []).isEmpty || !(practiceDays[$0] ?? []).isEmpty }) {
                 HStack(alignment: .top, spacing: 0) {
                     Text("Anytime").font(.app(10, .medium)).foregroundStyle(Theme.muted)
                         .frame(width: WeekGrid.gutter - 8, alignment: .trailing)
                         .padding(.trailing, 8)
                         .padding(.top, 6)
                     sliding { day in
-                        AnytimeDay(items: strips[day] ?? [], goals: data.goals) { onOpenDay(day) }
+                        AnytimeDay(
+                            items: strips[day] ?? [], practices: practiceDays[day] ?? [], goals: data.goals,
+                            today: CalendarDay.today(now), actions: actions?.practices
+                        ) { onOpenDay(day) }
                             .frame(height: inView.contains(day) ? nil : 0, alignment: .top)
                     }
                 }
+            }
+            if !left.isEmpty {
+                WeekPracticesRow(
+                    left: left, today: CalendarDay.today(now), actions: actions?.practices,
+                    openGoal: actions?.openGoal, gutter: WeekGrid.gutter
+                )
+                .overlay(alignment: .top) { Rectangle().fill(Theme.cardBorder).frame(height: 1) }
             }
         }
         .overlay {
@@ -674,12 +688,19 @@ private struct DayHeader: View {
 /// A day's tasks planned without a time, and due then, under its name. Click to step into the day.
 private struct AnytimeDay: View {
     let items: [StripItem]
+    /// Practices' sessions planned for the day with no time, or done on it.
+    var practices: [CalendarPracticeSession] = []
     let goals: [CalendarGoal]
+    var today = ""
+    var actions: PracticeActions?
     let onOpen: () -> Void
 
     var body: some View {
         let shown = items.prefix(WeekGrid.maxAnytime)
         VStack(alignment: .leading, spacing: 2) {
+            ForEach(practices) { session in
+                PracticeDayChip(session: session, goal: goals.first { $0.id == session.goalId }, today: today, actions: actions, compact: true)
+            }
             ForEach(Array(shown)) { item in
                 let color = goals.first { $0.id == item.task.goalId }?.color ?? "slate"
                 Button(action: onOpen) {

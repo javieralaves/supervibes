@@ -10,7 +10,7 @@ import type { BlockRecap } from "@/lib/recap-schema";
 import { CALENDAR_DAYS_AHEAD, CALENDAR_DAYS_BACK, listBlocksAroundNow, type BlockDTO } from "@/lib/blocks";
 import { DEFAULT_GOAL_COLOR, isGoalColor } from "@/lib/goal-colors";
 import { GOAL_KINDS } from "@/lib/goal-schema";
-import { listPracticeStates } from "@/lib/practice";
+import { listPracticeSessionsBetween, listPracticeStates } from "@/lib/practice";
 import type { PracticeState } from "@/lib/practice-count";
 import { listGoals } from "@/lib/goals";
 import { draftRecapsAfterResponse, listAutoRecapCandidates } from "@/lib/recap";
@@ -165,6 +165,18 @@ const CalendarSchema = z
       clock: z.enum(CLOCKS).nullable(),
     }),
     objectives: z.array(z.object({ goalId: z.string(), weekStart: z.iso.date(), objective: z.string() })),
+    practiceSessions: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            goalId: z.string(),
+            day: z.iso.date(),
+            done: z.boolean().openapi({ description: "Done (logged, or ticked off); otherwise planned for its day with no time." }),
+          })
+          .openapi("CalendarPracticeSession"),
+      )
+      .openapi({ description: "Practices' sessions off the calendar over the same days as the blocks: meant for a day with no time, or done." }),
   })
   .openapi("Calendar");
 
@@ -215,7 +227,7 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
   const userId = c.var.user.id;
   const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
   const today = todayIn(timeZone);
-  const [tasks, settings, goals, blocks, toRecap, objectives, practices] = await Promise.all([
+  const [tasks, settings, goals, blocks, toRecap, objectives, practices, practiceSessions] = await Promise.all([
     listOpenTasks(userId),
     getSettings(userId),
     listGoals(userId),
@@ -233,6 +245,7 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
         timeZone,
       ),
     ),
+    listPracticeSessionsBetween(userId, addDays(today, -CALENDAR_DAYS_BACK), addDays(today, CALENDAR_DAYS_AHEAD + 1)),
   ]);
   // Sessions that just ended draft their recaps after this responds, as when the web page opens.
   const drafting = new Set(toRecap);
@@ -258,6 +271,7 @@ export const calendar = new OpenAPIHono<ApiEnv>().openapi(getRoute, async (c) =>
       tasks: tasks.map(({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn }) => ({ id, goalId, title, description, minutes, plannedFor, plannedWeek, dueOn })),
       settings,
       objectives: objectives.map(({ goalId, weekStart, objective }) => ({ goalId, weekStart, objective })),
+      practiceSessions: practiceSessions.map(({ id, goalId, day, doneAt }) => ({ id, goalId, day, done: doneAt !== null })),
     },
     200,
   );
