@@ -139,6 +139,64 @@ enum Fixtures {
         ]
     }
 
+    /// The six goals as Life shows them: each in an area, and when each last moved, before `referenceNow`.
+    static var lifeGoals: [Goal] {
+        let placed: [String: (area: String, minutesAgo: Double)] = [
+            "1": ("work", 120), "2": ("madrid", 20 * 60), "3": ("madrid", 7 * 60),
+            "4": ("people", 3 * 24 * 60), "5": ("health", 9 * 24 * 60), "6": ("work", 45),
+        ]
+        return goals.map { goal in
+            var goal = goal
+            goal.areaId = placed[goal.id]?.area
+            goal.updatedAt = placed[goal.id].map { referenceNow.addingTimeInterval(-$0.minutesAgo * 60) }
+            return goal
+        }
+    }
+
+    /// Six areas, rolled up from `lifeGoals`: Work on track, Madrid off track (its playbook is), People on track,
+    /// Health with a goal and no status yet, and two with no goals. People has no words yet.
+    static var areas: [Area] {
+        [
+            Area(id: "work", name: "Work", icon: "LaptopIcon",
+                 now: "Superfocus sprints are landing. Supervibes ships fast but isn’t ready to show Pablo and Denis.",
+                 want: "Supervibes inspires a new direction for Superfocus, and for productivity more broadly.",
+                 status: .onTrack, goalIds: ["1", "6"]),
+            Area(id: "madrid", name: "Madrid", icon: "Building03Icon",
+                 now: "The housing playbook is live. The rent app works for Jacob; nobody has landed a home yet.",
+                 want: "A playbook institutions act on, and friends finding a home in Madrid with ease.",
+                 status: .offTrack, goalIds: ["2", "3"]),
+            Area(id: "people", name: "People", icon: "UserGroupIcon", status: .onTrack, goalIds: ["4"]),
+            Area(id: "health", name: "Health", icon: "HeartCheckIcon",
+                 want: "Daily walks and three home workouts a week, without having to think about it.",
+                 status: nil, goalIds: ["5"]),
+            Area(id: "rest", name: "Rest & play", icon: "Coffee01Icon", status: nil, goalIds: []),
+            Area(id: "home", name: "Home & money", icon: "Sofa01Icon", status: nil, goalIds: []),
+        ]
+    }
+
+    /// Madrid's page: its two goals, and its last weeks as the worse of theirs each day.
+    static var areaDetail: AreaDetail {
+        let area = areas[1]
+        let goals = lifeGoals.filter { area.goalIds.contains($0.id) }
+        let rank: [GoalStatus: Int] = [.unclear: 0, .onTrack: 1, .atRisk: 2, .offTrack: 3]
+        let trajectory = (0..<28).map { index -> AreaTrajectoryDay in
+            let days = goals.map { $0.trajectory[index] }.filter { $0.status != nil }
+            let worst = days.compactMap(\.status).max { rank[$0, default: 0] < rank[$1, default: 0] }
+            return AreaTrajectoryDay(day: goals[0].trajectory[index].day, status: worst,
+                                     carried: !days.isEmpty && days.allSatisfy(\.carried))
+        }
+        return AreaDetail(area: area, today: "2026-11-18", trajectory: trajectory, goals: goals,
+                          weeks: goalWeeks.filter { area.goalIds.contains($0.key) })
+    }
+
+    /// An area just made: a name and an icon, nothing else yet.
+    static var newAreaDetail: AreaDetail {
+        let area = Area(id: "learning", name: "Learning", icon: "BookOpen01Icon", status: nil, goalIds: [])
+        return AreaDetail(area: area, today: "2026-11-18",
+                          trajectory: (0..<28).map { AreaTrajectoryDay(day: CalendarDay.addDays("2026-10-22", $0), status: nil, carried: false) },
+                          goals: [], weeks: [:])
+    }
+
     /// The first goal's page, with a read, a status and this week's objective.
     static var goalDetail: GoalDetail {
         var goal = goals[0]

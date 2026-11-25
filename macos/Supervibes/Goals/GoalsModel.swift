@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Loads the goals and adds new ones through /api/v1.
+/// Loads Life's goals and areas, and adds new goals, through /api/v1.
 @MainActor
 @Observable
 final class GoalsModel {
@@ -12,6 +12,8 @@ final class GoalsModel {
 
     private(set) var load: Load = .idle
     private(set) var goals: [Goal] = []
+    /// The person's areas, in order. Empty until they make one, or if they couldn't be loaded.
+    private(set) var areas: [Area] = []
     /// Each goal's week, by goal id.
     private(set) var weeks: [String: GoalWeek] = [:]
     private(set) var today = CalendarDay.today()
@@ -29,6 +31,8 @@ final class GoalsModel {
 
     func refresh() async {
         if load != .loaded { load = .loading }
+        // Areas load beside the goals; if they don't come, the goals still show.
+        async let areasLoaded = loadAreas()
         do {
             switch try await client.listGoals(query: .init(timeZone: TimeZone.current.identifier)) {
             case .ok(let ok):
@@ -48,6 +52,24 @@ final class GoalsModel {
         } catch {
             Log.app.error("Goals: \(error.localizedDescription, privacy: .public)")
             if load != .loaded { load = .failed("Couldn’t load your goals. Check your connection and try again.") }
+        }
+        if let loaded = await areasLoaded { areas = loaded }
+    }
+
+    /// The person's areas, or nil if they couldn't be loaded (the goals show without them).
+    private func loadAreas() async -> [Area]? {
+        do {
+            switch try await client.listAreas(query: .init(timeZone: TimeZone.current.identifier)) {
+            case .ok(let ok):
+                return try ok.body.json.areas.map(Area.init(api:))
+            case .unauthorized:
+                return nil
+            case .badRequest, .undocumented:
+                return nil
+            }
+        } catch {
+            Log.app.error("Areas: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
@@ -198,7 +220,9 @@ extension Goal {
                     reason: $0.reason,
                     carried: $0.carried
                 )
-            }
+            },
+            areaId: goal.areaId,
+            updatedAt: goal.updatedAt
         )
     }
 }

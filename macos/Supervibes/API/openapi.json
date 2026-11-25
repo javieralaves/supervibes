@@ -1145,6 +1145,9 @@
           "goal": {
             "$ref": "#/components/schemas/Goal"
           },
+          "area": {
+            "$ref": "#/components/schemas/GoalArea"
+          },
           "today": {
             "type": "string",
             "format": "date"
@@ -1279,6 +1282,7 @@
         },
         "required": [
           "goal",
+          "area",
           "today",
           "read",
           "status",
@@ -1295,6 +1299,28 @@
           "sources",
           "connectionOptions"
         ]
+      },
+      "GoalArea": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "description": "A Hugeicons name from lib/goal-icons.ts."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon"
+        ],
+        "description": "The area the goal sits in, to show and link to; null when none."
       },
       "GoalRead": {
         "type": "object",

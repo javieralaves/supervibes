@@ -16,7 +16,7 @@ import { goalWeekLoads, sessionBlocks } from "@/lib/goal-week";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { goalInputSchema, MAX_GOALS } from "@/lib/goal-schema";
 import { getLatestStatus, listTrajectories } from "@/lib/goal-statuses";
-import { ownsAreas, setGoalArea } from "@/lib/areas";
+import { getArea, ownsAreas, setGoalArea } from "@/lib/areas";
 import { createGoal, deleteGoal, GoalLimitError, listGoals, listGoalUpdatedAt, updateGoal, type GoalDTO } from "@/lib/goals";
 import { listPosts } from "@/lib/posts";
 import { getLatestRead } from "@/lib/progress";
@@ -175,9 +175,18 @@ const StatusViewSchema = z
   })
   .openapi("GoalStatusView");
 
+const GoalAreaSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    icon: z.string().openapi({ description: "A Hugeicons name from lib/goal-icons.ts." }),
+  })
+  .openapi("GoalArea");
+
 const GoalDetailSchema = z
   .object({
     goal: GoalSchema,
+    area: GoalAreaSchema.nullable().openapi({ description: "The area the goal sits in, to show and link to; null when none." }),
     today: z.iso.date(),
     read: ReadSchema.nullable(),
     status: StatusViewSchema.nullable(),
@@ -405,6 +414,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
       listBlocks(userId, weekBounds.start, twoWeeksEnd),
       listGoalUpdatedAt(userId, [id]),
     ]);
+    const area = goal.areaId ? await getArea(userId, goal.areaId) : null;
     const trajectory = trajectories.get(id);
     // Blocks clipped to the week, so one running over Sunday midnight counts only its part.
     const goalBlocks = blocks.filter((b) => b.goalId === id);
@@ -421,6 +431,7 @@ export const goals = new OpenAPIHono<ApiEnv>()
     return c.json(
       {
         goal: asGoal(goal, trajectory?.days ?? buildTrajectory([], null, today), updated.get(id)),
+        area: area && { id: area.id, name: area.name, icon: area.icon },
         today,
         read: read && {
           headline: read.headline,

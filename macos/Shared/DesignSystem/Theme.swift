@@ -126,6 +126,8 @@ enum Fonts {
 enum Icon: String {
     case target = "Target02-1_8"
     case targetThin = "Target02-1_5"
+    /// The rail's Life item.
+    case compass = "Compass01-1_8"
     case lock = "SquareLock02-1_5"
     case checkCircle = "CheckmarkCircle02-1_5"
     case calendar = "Calendar03-1_8"

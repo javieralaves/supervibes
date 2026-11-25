@@ -470,7 +470,8 @@ extension GoalDetail {
                 ConnectionItem.Provider(rawValue: option.provider.rawValue).map {
                     ConnectionOption(id: option.id, provider: $0, label: option.label, relationHint: option.relationHint)
                 }
-            }
+            },
+            area: body.area.map { AreaRef(id: $0.id, name: $0.name, icon: $0.icon) }
         )
     }
 }

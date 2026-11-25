@@ -6,8 +6,8 @@ enum WeekObjectiveState: Equatable {
     case failed(String)
 }
 
-/// A goal's own page, matching src/app/(app)/goals/[id]: "All goals", the header, this week's
-/// objective and the progress card. Tasks, notes and sources follow in `sections`.
+/// A goal's own page, matching src/app/(app)/goals/[id]: the way back to Life, the header (with its area, if it has
+/// one), this week's objective and the progress card. Tasks, notes and sources follow in `sections`.
 struct GoalPage<Sections: View>: View {
     let detail: GoalDetail
     /// A read was asked for here and hasn't been picked up yet.
@@ -20,6 +20,8 @@ struct GoalPage<Sections: View>: View {
     /// For "2 hr ago"; fixed in snapshots.
     var now = Date()
     var onBack: () -> Void = {}
+    /// Opens the goal's area, by id, from its name under the title.
+    var onOpenArea: (String) -> Void = { _ in }
     var onUpdateStatus: () -> Void = {}
     var onEdit: () -> Void = {}
     var onDelete: () -> Void = {}
@@ -38,6 +40,7 @@ struct GoalPage<Sections: View>: View {
                     detail: detail,
                     reading: reading,
                     error: headerError,
+                    onOpenArea: onOpenArea,
                     onUpdateStatus: onUpdateStatus,
                     onEdit: onEdit,
                     onDelete: onDelete
@@ -79,7 +82,7 @@ extension GoalPage where Sections == EmptyView {
     }
 }
 
-/// "← All goals": `text-sm font-medium text-muted hover:text-foreground`
+/// "← Life": `text-sm font-medium text-muted hover:text-foreground`
 private struct BackLink: View {
     let action: () -> Void
     @State private var isHovered = false
@@ -88,7 +91,7 @@ private struct BackLink: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Icon.arrowLeft.image(size: 16)
-                Text("All goals").appText(.sm, .medium)
+                Text("Life").appText(.sm, .medium)
             }
             .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
             .contentShape(.rect)
@@ -104,6 +107,7 @@ private struct GoalHeader: View {
     let detail: GoalDetail
     let reading: Bool
     let error: String?
+    let onOpenArea: (String) -> Void
     let onUpdateStatus: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -127,14 +131,22 @@ private struct GoalHeader: View {
                 .foregroundStyle(Theme.foreground)
                 .padding(.top, 20)
 
-            if let target = goal.targetDate {
-                let days = CalendarDay.daysUntil(target, today: detail.today)
-                HStack(spacing: 6) {
-                    Icon.calendarSmall.image(size: 14)
-                    Text("\(CalendarDay.format(target, today: detail.today)) · \(CalendarDay.relative(days))")
-                        .appText(.sm).monospacedDigit()
+            // Under the title: its area, which links to the area's page, then its target date.
+            if detail.area != nil || goal.targetDate != nil {
+                HStack(spacing: 8) {
+                    if let area = detail.area {
+                        AreaChip(area: area) { onOpenArea(area.id) }
+                    }
+                    if let target = goal.targetDate {
+                        let days = CalendarDay.daysUntil(target, today: detail.today)
+                        HStack(spacing: 6) {
+                            Icon.calendarSmall.image(size: 14)
+                            Text("\(CalendarDay.format(target, today: detail.today)) · \(CalendarDay.relative(days))")
+                                .appText(.sm).monospacedDigit()
+                        }
+                        .foregroundStyle(days < 0 ? Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24)) : Theme.muted)
+                    }
                 }
-                .foregroundStyle(days < 0 ? Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24)) : Theme.muted)
                 .padding(.top, 8)
             }
 
@@ -175,6 +187,28 @@ private struct GoalHeader: View {
                 }
             }
         }
+    }
+}
+
+/// A goal's area under its title: its icon and name on a light wash, opening the area's page.
+private struct AreaChip: View {
+    let area: AreaRef
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            AreaLabel(name: area.name, icon: area.icon, size: 14)
+                .appText(.sm, .medium)
+                .foregroundStyle(Theme.foreground(isHovered ? 1 : 0.8))
+                .padding(.horizontal, 6)
+                .frame(height: 24)
+                .background(Theme.foreground(isHovered ? 0.08 : 0.05), in: .rect(cornerRadius: 6))
+                .contentShape(.rect(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Open \(area.name)")
     }
 }
 

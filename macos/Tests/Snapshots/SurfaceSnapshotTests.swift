@@ -234,19 +234,47 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    func testGoalsHome() {
+    /// Life with six goals in four of six areas: Work on track, Madrid off track, People on track, Health with no
+    /// status yet, and two areas with no goals.
+    func testLifeHome() {
         assertAppearances(
-            GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
-                      actions: GoalCardActions(setObjective: { _ in }))
+            LifeHome(firstName: "Javier", goals: Fixtures.lifeGoals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                     areas: Fixtures.areas, now: now, actions: GoalCardActions(setObjective: { _ in }))
+                .background(Theme.background),
+            width: 1180, height: 1300
+        )
+    }
+
+    /// Before any areas: the goals alone, with no Areas section and no area on the cards.
+    func testLifeHomeNoAreas() {
+        assertAppearances(
+            LifeHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                     now: now, actions: GoalCardActions(setObjective: { _ in }))
                 .background(Theme.background),
             width: 1180, height: 900
         )
     }
 
-    func testGoalsHomeEmpty() {
+    func testLifeHomeEmpty() {
         assertAppearances(
-            GoalsHome(firstName: "Javier", goals: [], today: "2026-11-18").background(Theme.background),
+            LifeHome(firstName: "Javier", goals: [], today: "2026-11-18").background(Theme.background),
             width: 900, height: 760
+        )
+    }
+
+    /// Madrid's page: its words, and its two goals with their objectives and statuses.
+    func testAreaPage() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.areaDetail).background(Theme.background),
+            width: 900, height: 820
+        )
+    }
+
+    /// An area just made: prompts for its words, and no goals yet.
+    func testAreaPageNew() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.newAreaDetail).background(Theme.background),
+            width: 900, height: 720
         )
     }
 
@@ -266,6 +294,16 @@ final class SurfaceSnapshotTests: XCTestCase {
     func testGoalPage() {
         assertAppearances(
             GoalPage(detail: Fixtures.goalDetail, now: now).background(Theme.background),
+            width: 900, height: 880
+        )
+    }
+
+    /// A goal in an area: the area leads the line under the title, before the target date.
+    func testGoalPageInArea() {
+        var detail = Fixtures.goalDetail
+        detail.area = AreaRef(id: "work", name: "Work", icon: "LaptopIcon")
+        assertAppearances(
+            GoalPage(detail: detail, now: now).background(Theme.background),
             width: 900, height: 880
         )
     }

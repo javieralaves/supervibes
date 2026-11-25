@@ -3,9 +3,12 @@ import SwiftUI
 
 /// What the app's window shows beside the rail.
 enum Route: Hashable {
-    case goals
+    /// Life, the home page: the goals, then the areas they sit in.
+    case life
     /// A goal's own page.
     case goal(String)
+    /// An area's own page.
+    case area(String)
     case settings
     case connections
     /// Planning a day across goals.
@@ -55,11 +58,17 @@ struct MainView: View {
             AppWindowFrame {
                 ZStack {
                     switch shell.route {
-                    case .goals:
+                    case .life:
                         ZStack {
                             Backdrop()
-                            GoalsScreen(auth: auth, shell: shell)
+                            LifeScreen(auth: auth, shell: shell)
                         }
+                    case .area(let id):
+                        ZStack {
+                            Backdrop()
+                            AreaScreen(id: id, auth: auth, shell: shell)
+                        }
+                        .id(id)
                     case .goal(let id):
                         ZStack {
                             Backdrop()
@@ -110,8 +119,8 @@ struct MainView: View {
     }
 }
 
-/// The home page with its goals, in the app's window.
-private struct GoalsScreen: View {
+/// Life, the home page with the goals and areas, in the app's window.
+private struct LifeScreen: View {
     let shell: ShellModel
     @State private var model: GoalsModel
     @Environment(\.overlays) private var overlays
@@ -135,14 +144,16 @@ private struct GoalsScreen: View {
                     Button("Try Again") { Task { await model.refresh() } }
                 }
             case .loaded:
-                GoalsHome(
+                LifeHome(
                     firstName: shell.account?.firstName ?? "there",
                     goals: model.goals,
                     today: model.today,
                     weeks: model.weeks,
+                    areas: model.areas,
                     max: model.max,
                     error: model.error,
                     onOpen: { shell.openGoal($0.id) },
+                    onOpenArea: { shell.openArea($0.id) },
                     onNew: newGoal,
                     actions: GoalCardActions(
                         plan: { shell.openPlan(.goal($0.id)) },
@@ -209,6 +220,51 @@ private struct GoalsScreen: View {
     }
 }
 
+/// An area's own page with its data, in the app's window.
+private struct AreaScreen: View {
+    let shell: ShellModel
+    @State private var model: AreaPageModel
+
+    init(id: String, auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: AreaPageModel(id: id, auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .gone:
+                ContentUnavailableView {
+                    Label("This area is gone", systemImage: "square.dashed")
+                } description: {
+                    Text("It may have been removed.")
+                } actions: {
+                    Button("Life") { shell.open(.life) }
+                }
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load this area", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                if let detail = model.detail {
+                    AreaPage(
+                        detail: detail,
+                        onBack: { shell.open(.life) },
+                        onOpenGoal: { shell.openGoal($0.id) }
+                    )
+                }
+            }
+        }
+        .task { await model.refresh() }
+    }
+}
+
 /// A goal's own page with its data, in the app's window.
 private struct GoalScreen: View {
     let shell: ShellModel
@@ -233,7 +289,7 @@ private struct GoalScreen: View {
                 } description: {
                     Text("It may have been deleted.")
                 } actions: {
-                    Button("All goals") { shell.open(.goals) }
+                    Button("Life") { shell.open(.life) }
                 }
             case .failed(let message):
                 ContentUnavailableView {
@@ -252,7 +308,8 @@ private struct GoalScreen: View {
                         headerError: model.headerError,
                         weekState: model.weekState,
                         focusesObjective: focusesObjective,
-                        onBack: { shell.open(.goals) },
+                        onBack: { shell.open(.life) },
+                        onOpenArea: { shell.openArea($0) },
                         onUpdateStatus: model.updateStatus,
                         onEdit: { edit(detail.goal) },
                         onDelete: confirmDelete,
@@ -350,7 +407,7 @@ private struct GoalScreen: View {
 
     private func delete() {
         Task {
-            if await model.delete() { shell.open(.goals) }
+            if await model.delete() { shell.open(.life) }
         }
     }
 }

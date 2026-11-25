@@ -11,12 +11,13 @@ struct RailItem: Identifiable, Hashable {
     let label: String
     let icon: Icon
 
-    static let goals = RailItem(id: "goals", label: "Goals", icon: .target)
+    /// Life, the home page: the goals, then the areas they sit in.
+    static let life = RailItem(id: "life", label: "Life", icon: .compass)
     /// Planning a day across goals.
     static let plan = RailItem(id: "plan", label: "Plan", icon: .plan)
     static let calendar = RailItem(id: "calendar", label: "Calendar", icon: .calendar)
     static let connections = RailItem(id: "connections", label: "Connections", icon: .plug)
-    static let all = [goals, plan, calendar, connections]
+    static let all = [life, plan, calendar, connections]
 }
 
 /// The person shown at the bottom of the rail and in its menu.
@@ -201,15 +202,15 @@ struct AppWindowFrame<Content: View>: View {
     }
 }
 
-/// The whole window as it opens, on Goals: rail, frame and backdrop.
+/// The whole window as it opens, on Life: rail, frame and backdrop.
 #Preview("Window") {
     HStack(spacing: 0) {
-        Rail(active: .goals, account: RailAccount(name: "Javi", email: "you@example.com", imageURL: nil), topInset: 28)
+        Rail(active: .life, account: RailAccount(name: "Javi", email: "you@example.com", imageURL: nil), topInset: 28)
         AppWindowFrame {
             ZStack {
                 Backdrop()
-                GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
-                          actions: GoalCardActions(setObjective: { _ in }))
+                LifeHome(firstName: "Javier", goals: Fixtures.lifeGoals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                         areas: Fixtures.areas, now: Fixtures.referenceNow, actions: GoalCardActions(setObjective: { _ in }))
             }
         }
     }

@@ -5,7 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class ShellModel {
-    var route: Route = .goals
+    var route: Route = .life
     var isAccountMenuOpen = false
     private(set) var account: RailAccount?
     /// Menus and dialogs drawn above the window's content.
@@ -23,7 +23,7 @@ final class ShellModel {
     /// The rail item to light up for what's showing.
     var activeRailItem: RailItem? {
         switch route {
-        case .goals, .goal: .goals
+        case .life, .goal, .area: .life
         case .plan: .plan
         case .calendar: .calendar
         case .connections: .connections
@@ -43,7 +43,7 @@ final class ShellModel {
         case .plan: .plan
         case .calendar: .calendar
         case .connections: .connections
-        default: .goals
+        default: .life
         }
     }
 
@@ -62,6 +62,13 @@ final class ShellModel {
     var planScope: BoardScope = .all
     /// The goal whose page opened the board, for its Back; nil opened from elsewhere.
     var planOrigin: String?
+
+    /// An area's own page, from its card on Life or from a goal's page.
+    func openArea(_ id: String) {
+        isAccountMenuOpen = false
+        overlays.dismiss()
+        route = .area(id)
+    }
 
     /// The planning board, on every goal or one, and the goal page it was opened from, if any.
     func openPlan(_ scope: BoardScope = .all, from goal: String? = nil) {
@@ -95,10 +102,10 @@ final class ShellModel {
     func signedInChanged() async {
         guard auth.isSignedIn else {
             account = nil
-            route = .goals
+            route = .life
             return
         }
-        route = .goals
+        route = .life
         await loadAccount()
     }
 

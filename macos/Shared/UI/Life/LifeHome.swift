@@ -1,18 +1,23 @@
 import SwiftUI
 
-/// The home page, matching src/app/(app)/page.tsx and goals-board.tsx: a greeting, then the goals
-/// as cards, each with its week (this week's objective, and its tasks against its session time),
-/// its status and the last weeks, and a button for a new goal.
-struct GoalsHome: View {
+/// Life, the home page: a greeting, the goals as cards (each with its week: this week's objective, and its tasks
+/// against its session time), then the areas those goals sit in. A goal's card says its area and when it last moved;
+/// an area's card, its status and the goals moving it. With no areas yet, there's no Areas section.
+struct LifeHome: View {
     let firstName: String
     let goals: [Goal]
-    /// Today, "YYYY-MM-DD"; the trails end on it.
+    /// Today, "YYYY-MM-DD".
     let today: String
     /// Each goal's week, by goal id. A goal without one (or a page without any) shows no week.
     var weeks: [String: GoalWeek] = [:]
+    /// The person's areas, in order.
+    var areas: [Area] = []
     var max = 12
     var error: String?
+    /// For "2 hr ago" on the goal cards; fixed in snapshots.
+    var now = Date()
     var onOpen: (Goal) -> Void = { _ in }
+    var onOpenArea: (Area) -> Void = { _ in }
     var onNew: (GoalInput) -> Void = { _ in }
     /// What a goal card's right-click menu offers besides opening it.
     var actions = GoalCardActions()
@@ -28,18 +33,17 @@ struct GoalsHome: View {
                 // `text-5xl leading-[1.05] tracking-[-0.035em]`: the lines sit tighter than the font's own.
                 VStack(alignment: .leading, spacing: -48 * 0.15) {
                     Text("Hey \(firstName),")
-                    Text("good to see you.").foregroundStyle(Theme.muted)
+                    Text("here’s where you stand.").foregroundStyle(Theme.muted)
                 }
                 .font(.app(48, .semibold))
                 .tracking(-0.035 * 48)
                 .foregroundStyle(Theme.foreground)
 
-                Text("Here’s what you’re working toward.")
-                    .appText(.base)
-                    .foregroundStyle(Theme.muted)
-                    .padding(.top, 20)
+                goalsSection.padding(.top, 48)
 
-                board.padding(.top, 48)
+                if !areas.isEmpty {
+                    areasSection.padding(.top, 48)
+                }
             }
             .frame(maxWidth: 1024, alignment: .leading)
             .padding(.horizontal, 32)
@@ -54,39 +58,29 @@ struct GoalsHome: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    private var board: some View {
+    // MARK: Goals
+
+    private var goalsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Goals").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-            Spacer()
-            if !goals.isEmpty {
-                Text(countLine).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
-            }
-        }
-        .padding(.bottom, 16)
-
-        if let error {
-            Banner(text: error, tone: .error).padding(.bottom, 16)
-        }
-
-        if goals.isEmpty {
-            EmptyGoals(onNew: onNew)
-        } else {
-            let cells: [Cell] = goals.map { .goal($0) } + (goals.count < max ? [.new] : [])
-            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                ForEach(Array(stride(from: 0, to: cells.count, by: columns)), id: \.self) { start in
-                    GridRow(alignment: .top) {
-                        ForEach(start..<min(start + columns, cells.count), id: \.self) { index in
-                            cell(cells[index])
-                        }
-                        // Keep a short last row's cards the same width as the rest.
-                        ForEach(0..<(start + columns - min(start + columns, cells.count)), id: \.self) { _ in
-                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                        }
-                    }
+            HStack(alignment: .firstTextBaseline) {
+                Text("Goals").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
+                Spacer()
+                if !goals.isEmpty {
+                    Text(countLine).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted)
                 }
             }
-        }
+            .padding(.bottom, 16)
+
+            if let error {
+                Banner(text: error, tone: .error).padding(.bottom, 16)
+            }
+
+            if goals.isEmpty {
+                EmptyGoals(onNew: onNew)
+            } else {
+                let cells: [Cell] = goals.map { .goal($0) } + (goals.count < max ? [.new] : [])
+                CardGrid(count: cells.count, columns: columns) { cell(cells[$0]) }
+            }
         }
     }
 
@@ -106,7 +100,13 @@ struct GoalsHome: View {
     @ViewBuilder private func cell(_ cell: Cell) -> some View {
         switch cell {
         case .goal(let goal):
-            GoalCard(goal: goal, week: weeks[goal.id], today: today, onSetObjective: actions.setObjective) { onOpen(goal) }
+            GoalCard(
+                goal: goal,
+                week: weeks[goal.id],
+                area: areas.first { $0.id == goal.areaId },
+                now: now,
+                onSetObjective: actions.setObjective
+            ) { onOpen(goal) }
                 .contextPanel(owner: GoalCard.menuOwner(goal), isEnabled: !goal.isPending) {
                     GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
                 }
@@ -114,10 +114,46 @@ struct GoalsHome: View {
             NewGoalButton { onNew(GoalInput()) }
         }
     }
+
+    // MARK: Areas
+
+    private var areasSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Areas").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
+                .padding(.bottom, 16)
+            CardGrid(count: areas.count, columns: columns) { index in
+                let area = areas[index]
+                AreaCard(area: area, goals: area.goalIds.compactMap { id in goals.first { $0.id == id } }) {
+                    onOpenArea(area)
+                }
+            }
+        }
+    }
 }
 
-/// `rounded-2xl border bg-card p-5`, hover `border-line-strong`: who it is at the top, how it's going
-/// pinned to the bottom, so footers line up across a row.
+/// Cards in rows of `columns`, each row as tall as its tallest card, a short last row keeping full-width cards.
+private struct CardGrid<Content: View>: View {
+    let count: Int
+    let columns: Int
+    @ViewBuilder let content: (Int) -> Content
+
+    var body: some View {
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            ForEach(Array(stride(from: 0, to: count, by: columns)), id: \.self) { start in
+                GridRow(alignment: .top) {
+                    ForEach(start..<min(start + columns, count), id: \.self) { index in
+                        content(index)
+                    }
+                    // Keep a short last row's cards the same width as the rest.
+                    ForEach(0..<(start + columns - min(start + columns, count)), id: \.self) { _ in
+                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A goal card's menu, beyond opening it: each nil leaves its row out.
 struct GoalCardActions {
     /// Opens its planning board.
@@ -164,11 +200,16 @@ struct GoalCardMenu: View {
     }
 }
 
+/// `rounded-2xl border bg-card p-5`, hover `border-line-strong`. Its badge with its status at the top right, the
+/// title with this week's objective under it; pinned to the bottom, its week's time, then its area and when it last
+/// moved, so footers line up across a row.
 private struct GoalCard: View {
     let goal: Goal
     /// Its week; nil shows none.
     var week: GoalWeek?
-    let today: String
+    /// The area it sits in, if any.
+    var area: Area?
+    let now: Date
     var onSetObjective: ((Goal) -> Void)?
     let action: () -> Void
     @State private var isHovered = false
@@ -182,27 +223,27 @@ private struct GoalCard: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 10) {
-                    GoalBadge(icon: goal.icon, color: goal.color, size: .xs)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(goal.title)
-                            .font(.app(15.2, .semibold))
-                            .tracking(-0.01 * 15.2)
-                            .lineSpacing(15.2 * 0.375 - 15.2 * 0.2)
-                            .foregroundStyle(Theme.foreground)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        if let week {
-                            WeekObjectiveLine(week: week, onSet: onSetObjective.map { set in { set(goal) } })
-                        }
+                HStack(alignment: .center) {
+                    GoalBadge(icon: goal.icon, color: goal.color, size: .card)
+                    Spacer(minLength: 12)
+                    if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
+                        StatusText(status: status, basis: basis)
+                    } else {
+                        Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
                     }
-                    .padding(.top, 2)
-                    Spacer(minLength: 20)
                 }
-                .overlay(alignment: .topTrailing) {
-                    Icon.arrowRight.image(size: 16).foregroundStyle(Theme.muted)
-                        .opacity(isEngaged ? 1 : 0)
-                        .offset(x: 4)
+
+                Text(goal.title)
+                    .font(.app(15.2, .semibold))
+                    .tracking(-0.01 * 15.2)
+                    .lineSpacing(15.2 * 0.375 - 15.2 * 0.2)
+                    .foregroundStyle(Theme.foreground)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .padding(.top, 12)
+                if let week {
+                    WeekObjectiveLine(week: week, onSet: onSetObjective.map { set in { set(goal) } })
+                        .padding(.top, 4)
                 }
 
                 Spacer(minLength: 20)
@@ -211,22 +252,21 @@ private struct GoalCard: View {
                     WeekTimeLine(week: week, color: goal.color).padding(.bottom, 10)
                 }
 
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
-                        StatusText(status: status, basis: basis)
-                    } else {
-                        Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
+                HStack(spacing: 12) {
+                    if let area {
+                        AreaLabel(name: area.name, icon: area.icon)
                     }
                     Spacer(minLength: 0)
-                    if let target = goal.targetDate {
-                        let days = CalendarDay.daysUntil(target, today: today)
-                        Text("\(CalendarDay.format(target, today: today)) · \(CalendarDay.shortRelative(days))")
-                            .appText(.xs).monospacedDigit()
-                            .foregroundStyle(days < 0 ? Color.adaptive(light: .rgb(0xb45309), dark: .rgb(0xfbbf24)) : Theme.muted)
-                            .help("Target \(CalendarDay.format(target, today: today))")
+                    if let updatedAt = goal.updatedAt {
+                        HStack(spacing: 4) {
+                            Icon.clock.image(size: 12)
+                            Text(updatedAt.shortAgo(now: now))
+                        }
+                        .help("Last updated \(updatedAt.webMonthDayTime)")
                     }
                 }
-                TrajectoryStrip(days: goal.trajectory).padding(.top, 8)
+                .appText(.xs)
+                .foregroundStyle(Theme.muted)
             }
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -239,6 +279,55 @@ private struct GoalCard: View {
         .opacity(goal.isPending ? 0.6 : 1)
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isEngaged)
+    }
+}
+
+/// An area on Life, in the goal cards' shape: its tile with its status at the top right, its name, and pinned to the
+/// bottom the goals moving it as their badges, with how many.
+private struct AreaCard: View {
+    let area: Area
+    /// Its goals, in order.
+    let goals: [Goal]
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center) {
+                    AreaTile(icon: area.icon)
+                    Spacer(minLength: 12)
+                    AreaStatusText(status: area.status)
+                }
+                Text(area.name)
+                    .font(.app(15.2, .semibold))
+                    .tracking(-0.01 * 15.2)
+                    .foregroundStyle(Theme.foreground)
+                    .lineLimit(1)
+                    .padding(.top, 12)
+
+                Spacer(minLength: 20)
+
+                HStack(spacing: 6) {
+                    ForEach(goals) { goal in
+                        GoalBadge(icon: goal.icon, color: goal.color, size: .mini)
+                    }
+                    Text(goals.isEmpty ? "No goals" : goals.count == 1 ? "1 goal" : "\(goals.count) goals")
+                        .appText(.xs)
+                        .foregroundStyle(Theme.muted)
+                        .padding(.leading, goals.isEmpty ? 0 : 2)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(minHeight: 148)
+            .background(Theme.card, in: .rect(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .contentShape(.rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }
 
@@ -390,15 +479,22 @@ private struct EmptyGoals: View {
     }
 }
 
-#Preview("Goals") {
-    GoalsHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
-              actions: GoalCardActions(setObjective: { _ in }))
+#Preview("Life") {
+    LifeHome(firstName: "Javier", goals: Fixtures.lifeGoals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+             areas: Fixtures.areas, now: Fixtures.referenceNow, actions: GoalCardActions(setObjective: { _ in }))
+        .background(Theme.background)
+        .frame(width: 1180, height: 1300)
+}
+
+#Preview("No areas yet") {
+    LifeHome(firstName: "Javier", goals: Fixtures.goals, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+             now: Fixtures.referenceNow, actions: GoalCardActions(setObjective: { _ in }))
         .background(Theme.background)
         .frame(width: 1180, height: 900)
 }
 
 #Preview("No goals yet") {
-    GoalsHome(firstName: "Javier", goals: [], today: "2026-11-18")
+    LifeHome(firstName: "Javier", goals: [], today: "2026-11-18")
         .background(Theme.background)
         .frame(width: 900, height: 760)
 }

@@ -68,8 +68,12 @@ struct GoalIconImage: View {
 /// A goal's icon on a tile tinted with its colour.
 struct GoalBadge: View {
     enum Size {
+        /// 20, rounded 5, icon 12: a goal among others, as an area card lists its goals.
+        case mini
         /// `h-6 w-6 rounded-md`, icon 14
         case xs
+        /// 32, rounded 10, icon 16: a card's badge on Life, the same size as an area's tile.
+        case card
         /// `h-9 w-9 rounded-lg`, icon 18
         case field
         /// `h-10 w-10 rounded-xl`, icon 20
@@ -77,9 +81,9 @@ struct GoalBadge: View {
         /// `h-14 w-14 rounded-2xl`, icon 28
         case lg
 
-        var tile: CGFloat { switch self { case .xs: 24; case .field: 36; case .sm: 40; case .lg: 56 } }
-        var radius: CGFloat { switch self { case .xs: 6; case .field: 8; case .sm: 12; case .lg: 16 } }
-        var icon: CGFloat { switch self { case .xs: 14; case .field: 18; case .sm: 20; case .lg: 28 } }
+        var tile: CGFloat { switch self { case .mini: 20; case .xs: 24; case .card: 32; case .field: 36; case .sm: 40; case .lg: 56 } }
+        var radius: CGFloat { switch self { case .mini: 5; case .xs: 6; case .card: 10; case .field: 8; case .sm: 12; case .lg: 16 } }
+        var icon: CGFloat { switch self { case .mini: 12; case .xs: 14; case .card: 16; case .field: 18; case .sm: 20; case .lg: 28 } }
     }
 
     let icon: String
