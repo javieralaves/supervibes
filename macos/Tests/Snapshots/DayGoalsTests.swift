@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 
 /// The Day view's strip by goal: each goal's tasks against its sessions as the board counts them,
@@ -84,5 +85,30 @@ final class DayGoalsTests: XCTestCase {
         let yesterday = madrid.date(byAdding: .day, value: 1, to: now)!
         let rows = Fixtures.dayByGoal.goalRows(day: -1, now: yesterday, calendar: madrid)
         XCTAssertTrue(rows.allSatisfy(\.pastTime.isEmpty))
+    }
+}
+
+/// The strip as the Day view hosts it, with a drag going: opening a goal records where its list and
+/// tasks are, without tripping Swift's exclusive-access check (it once crashed the app on open).
+@MainActor
+final class GoalStripHostingTests: XCTestCase {
+    func testOpeningAGoalRecordsWhereItsTasksAre() {
+        let drag = TaskDragState()
+        let rows = Fixtures.dayByGoal.goalRows(day: 0, now: Fixtures.referenceNow)
+        let host = NSHostingView(rootView:
+            GoalStrip(rows: rows, today: "2026-11-18", dayName: "Today", open: .constant(["superfocus"]))
+                .frame(width: 768)
+                .coordinateSpace(.calendar)
+                .environment(\.taskDrag, drag)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 768, height: 600)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        host.layoutSubtreeIfNeeded()
+
+        let list = drag.lists["superfocus"]
+        XCTAssertNotNil(list)
+        XCTAssertEqual(list?.rows.count, 7)
+        XCTAssertGreaterThan(list?.frame.height ?? 0, 0)
     }
 }
