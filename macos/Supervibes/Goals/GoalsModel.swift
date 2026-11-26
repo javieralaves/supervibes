@@ -21,6 +21,8 @@ final class GoalsModel {
     private(set) var error: String?
     /// Why the last change to an area didn't go through; shown above the areas.
     private(set) var areaError: String?
+    /// The running season, one being set up and one just ended; nil until loaded, or if they couldn't be.
+    private(set) var seasons: CurrentSeasons?
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -37,6 +39,7 @@ final class GoalsModel {
         if load != .loaded { load = .loading }
         // Areas load beside the goals; if they don't come, the goals still show.
         async let areasLoaded = loadAreas()
+        async let seasonsLoaded = loadSeasons()
         do {
             switch try await client.listGoals(query: .init(timeZone: TimeZone.current.identifier)) {
             case .ok(let ok):
@@ -58,6 +61,17 @@ final class GoalsModel {
             if load != .loaded { load = .failed("Couldn’t load your goals. Check your connection and try again.") }
         }
         if let loaded = await areasLoaded { areas = loaded }
+        if let loaded = await seasonsLoaded { seasons = loaded }
+    }
+
+    /// The person's seasons, or nil if they couldn't be loaded (Life shows without its season panel).
+    private func loadSeasons() async -> CurrentSeasons? {
+        do {
+            return try await SeasonAPI(client: client, auth: auth).current()
+        } catch {
+            Log.app.error("Seasons: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     /// The person's areas, or nil if they couldn't be loaded (the goals show without them).

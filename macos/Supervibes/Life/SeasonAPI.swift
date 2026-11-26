@@ -1,0 +1,212 @@
+import Foundation
+
+/// The season calls Life and starting a season share: the current seasons, a draft's days, reading where an area
+/// stands, choosing quests and what moves them, and starting. Each throws `AreaAPIError` with a message written for
+/// people, ready to show.
+@MainActor
+struct SeasonAPI {
+    let client: Client
+    let auth: AuthModel
+
+    private var timeZone: String { TimeZone.current.identifier }
+
+    /// The running season, the one being set up and one that just ended, and the popular areas to offer.
+    func current() async throws -> CurrentSeasons {
+        try await call("Couldn’t load your season") {
+            switch try await client.getCurrentSeasons(query: .init(timeZone: timeZone)) {
+            case .ok(let ok): return CurrentSeasons(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t load your season.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t load your season (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Starts setting up a season, on its default days: 13 weeks from the next Monday.
+    func createDraft() async throws -> Season {
+        try await call("Couldn’t start a season") {
+            switch try await client.createSeason() {
+            case .created(let created): return Season(api: try created.body.json)
+            case .unauthorized: throw await signedOut()
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t start a season.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t start a season (the server answered \(status)).")
+            }
+        }
+    }
+
+    func update(_ id: String, _ input: SeasonInput) async throws -> Season {
+        try await call("Couldn’t save the season") {
+            let body = Components.Schemas.SeasonDays(
+                name: input.name.trimmingCharacters(in: .whitespacesAndNewlines), startsOn: input.startsOn, endsOn: input.endsOn
+            )
+            switch try await client.updateSeason(path: .init(id: id), body: .json(body)) {
+            case .ok(let ok): return Season(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t save the season.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t save the season (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Reads where an area stands for the draft: names its gap if it has none, and writes its candidate quest.
+    func readStand(season: String, area: String) async throws -> (gap: AreaGap?, quest: Quest) {
+        try await call("Couldn’t read this area") {
+            switch try await client.readAreaStand(path: .init(id: season, areaId: area)) {
+            case .ok(let ok):
+                let stand = try ok.body.json
+                return (stand.gap.map(AreaGap.init(api:)), Quest(api: stand.quest))
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season or area doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t read this area. Try again.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t read this area (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Changes a quest's words, or chooses it or lets it go (in a draft).
+    func updateQuest(_ id: String, title: String? = nil, fromText: String? = nil, chosen: Bool? = nil) async throws -> Quest {
+        try await call("Couldn’t save the quest") {
+            let body = Components.Schemas.QuestChange(title: title, fromText: fromText, chosen: chosen)
+            switch try await client.updateQuest(path: .init(id: id), body: .json(body)) {
+            case .ok(let ok): return Quest(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That quest doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t save the quest.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t save the quest (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Sets the projects and practices that move a quest, replacing the last.
+    func setQuestGoals(_ id: String, _ goalIds: [String]) async throws -> Quest {
+        try await call("Couldn’t save what moves the quest") {
+            switch try await client.setQuestGoals(path: .init(id: id), body: .json(.init(goalIds: goalIds))) {
+            case .ok(let ok): return Quest(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That quest doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t save what moves the quest.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t save what moves the quest (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// A few projects and practices Supervibes suggests for a quest. Nothing is saved.
+    func suggestions(for quest: String) async throws -> [QuestSuggestion] {
+        try await call("Couldn’t get suggestions") {
+            switch try await client.suggestForQuest(path: .init(id: quest)) {
+            case .ok(let ok):
+                return try ok.body.json.suggestions.map {
+                    QuestSuggestion(kind: $0.kind == .practice ? .practice : .project, title: $0.title, line: $0.line, perWeek: $0.perWeek)
+                }
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That quest doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t get suggestions. Try again.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t get suggestions (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Starts the draft: its unchosen quests go, and it runs from its first day.
+    func start(_ id: String) async throws -> Season {
+        try await call("Couldn’t start the season") {
+            switch try await client.startSeason(path: .init(id: id)) {
+            case .ok(let ok): return Season(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t start the season.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t start the season (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Makes a project or practice; it comes back as the server has it.
+    func createGoal(_ input: GoalInput) async throws -> Goal {
+        try await call("Couldn’t add that \(input.kind.noun)") {
+            switch try await client.createGoal(body: .json(Components.Schemas.NewGoal(new: input, areaId: input.areaId))) {
+            case .created(let created): return Goal(api: try created.body.json)
+            case .unauthorized: throw await signedOut()
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t add that \(input.kind.noun).")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t add that \(input.kind.noun) (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Every goal, with this week's of each, for linking.
+    func goals() async throws -> [Goal] {
+        try await call("Couldn’t load your projects and practices") {
+            switch try await client.listGoals(query: .init(timeZone: timeZone)) {
+            case .ok(let ok): return try ok.body.json.goals.map(Goal.init(api:))
+            case .unauthorized: throw await signedOut()
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t load your projects and practices.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t load your projects and practices (the server answered \(status)).")
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    /// Runs a call, turning a dropped connection into a message.
+    private func call<T>(_ what: String, _ run: () async throws -> T) async throws -> T {
+        do {
+            return try await run()
+        } catch let error as AreaAPIError {
+            throw error
+        } catch {
+            Log.app.error("Seasons: \(error.localizedDescription, privacy: .public)")
+            throw AreaAPIError("\(what). Check your connection.")
+        }
+    }
+
+    private func signedOut() async -> AreaAPIError {
+        await auth.sessionEnded()
+        return AreaAPIError("You were signed out.")
+    }
+}
+
+// MARK: - From the API
+
+extension Season {
+    init(api season: Components.Schemas.Season) {
+        self.init(
+            id: season.id,
+            name: season.name,
+            startsOn: season.startsOn,
+            endsOn: season.endsOn,
+            state: State(rawValue: season.state.rawValue) ?? .draft,
+            week: season.week,
+            weeks: season.weeks,
+            status: season.status.flatMap { GoalStatus(rawValue: $0.rawValue) },
+            quests: season.quests.map(Quest.init(api:))
+        )
+    }
+}
+
+extension Quest {
+    init(api quest: Components.Schemas.Quest) {
+        self.init(
+            id: quest.id,
+            seasonId: quest.seasonId,
+            areaId: quest.areaId,
+            title: quest.title,
+            fromText: quest.fromText,
+            reach: quest.reach,
+            chosen: quest.chosen,
+            position: quest.position,
+            goalIds: quest.goalIds,
+            effort: quest.effort.flatMap { GoalStatus(rawValue: $0.rawValue) }
+        )
+    }
+}
+
+extension CurrentSeasons {
+    init(api body: Components.Schemas.CurrentSeasons) {
+        self.init(
+            today: body.today,
+            active: body.active.map(Season.init(api:)),
+            draft: body.draft.map(Season.init(api:)),
+            ended: body.ended.map(Season.init(api:)),
+            popularAreas: body.popularAreas.map { PopularArea(name: $0.name, icon: $0.icon, line: $0.line) }
+        )
+    }
+}

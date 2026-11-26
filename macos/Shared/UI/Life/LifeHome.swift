@@ -30,6 +30,10 @@ struct LifeHome: View {
     /// Opens with the areas being edited, and optionally a new one being named (snapshots).
     var startsEditingAreas = false
     var startsWithNewArea = false
+    /// The person's seasons; nil leaves out the season panel.
+    var seasons: CurrentSeasons?
+    /// Opens starting a season, or picks up the one being set up.
+    var onStartSeason: (() -> Void)?
 
     @State private var width: CGFloat = 1024
     /// Editing the areas; nil until the pencil or Done is pressed, then it follows them.
@@ -56,6 +60,15 @@ struct LifeHome: View {
                     .font(.app(48, .semibold))
                     .tracking(-0.035 * 48)
                     .foregroundStyle(Theme.foreground)
+
+                // The season's place: with none running, an invitation to start one. (A running season's panel
+                // comes with the season's own pages.)
+                if let seasons, seasons.active == nil, let onStartSeason {
+                    NoSeasonPanel(draft: seasons.draft, ended: seasons.ended, onStart: onStartSeason)
+                        .padding(.top, 40)
+                        .opacity(isEditingAreas ? 0.4 : 1)
+                        .allowsHitTesting(!isEditingAreas)
+                }
 
                 Group {
                     projectsSection.padding(.top, 48)

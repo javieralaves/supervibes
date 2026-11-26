@@ -172,8 +172,9 @@ How to work:
 
 What to return:
 - gapTitle and gapBody: the gap, as "From <where it is> to <where they want it>." (at most 14 words) and one or two sentences under 45 words. If a gap was given, return it unchanged.
-- title: what the season could reach, as a quest's name: a concrete state, at most 9 words, no date, e.g. "Moving five days a week" or "A real conversation in Tagalog".
-- fromText: where the quest starts, at most 9 words, in the person's terms, e.g. "Active when the week allows".
+- title: what the season could reach, as a quest's name: one concrete state someone could see, at most 9 words, no date, e.g. "Moving five days a week" or "A real conversation in Tagalog". One idea only: no semicolons, no "and" joining two goals, no lists.
+- fromText: where the quest starts, at most 9 words, in the person's terms, e.g. "Active when the week allows". A plain phrase, no semicolons.
+- Use plain words a friend would use. Keep the names they use (projects, people, products), but no jargon of your own.
 - reach: how much of the gap the season would close, as a whole number from 5 to 95.`;
 
 const STAND_SCHEMA = {

@@ -23,7 +23,7 @@ final class ShellModel {
     /// The rail item to light up for what's showing.
     var activeRailItem: RailItem? {
         switch route {
-        case .life, .goal, .area: .life
+        case .life, .goal, .area, .startSeason: .life
         case .plan: .plan
         case .calendar: .calendar
         case .connections: .connections
@@ -68,6 +68,13 @@ final class ShellModel {
         isAccountMenuOpen = false
         overlays.dismiss()
         route = .area(id)
+    }
+
+    /// Starting a season: picks up the one being set up, or makes it.
+    func openStartSeason() {
+        isAccountMenuOpen = false
+        overlays.dismiss()
+        route = .startSeason
     }
 
     /// The planning board, on every goal or one, and the goal page it was opened from, if any.
