@@ -4,6 +4,8 @@ import SwiftUI
 /// weeks that makes. The server's checks show before anything is sent.
 struct SeasonDialog: View {
     @State var input: SeasonInput
+    /// A running season keeps its first day; only its name and end move.
+    var lockStart = false
     var isSaving = false
     var error: String?
     var onCancel: () -> Void = {}
@@ -36,6 +38,9 @@ struct SeasonDialog: View {
 
             HStack(spacing: 8) {
                 dayField("Starts", day: input.startsOn, edge: .start)
+                    .inactive(lockStart)
+                    .opacity(lockStart ? 0.6 : 1)
+                    .help(lockStart ? "A running season keeps its first day" : "")
                 dayField("Ends", day: input.endsOn, edge: .end)
             }
             .padding(.top, 12)

@@ -108,4 +108,60 @@ extension Fixtures {
         state.season.quests[2].goalIds = ["p1", "p2"]
         return state
     }
+
+    // MARK: - A season running
+
+    /// Winter in its first week (Monday Nov 16 to Feb 14, so Wednesday the 18th is week 1): Work's quest moved by Build
+    /// Supervibes and the community, Health's by its two practices.
+    static var activeSeason: Season {
+        Season(
+            id: "winter", name: "Winter", startsOn: "2026-11-16", endsOn: "2027-02-14", state: .active, week: 1, weeks: 13,
+            status: .atRisk,
+            quests: [
+                quest("q-work", "work", "A Supervibes build Pablo and Denis ask to try", "Fast, but not ready to show", reach: 38,
+                      chosen: true, position: 1, goals: ["1", "p4"]).with(effort: .onTrack),
+                quest("q-health", "health", "Moving five days a week", "Active when the week allows", reach: 45,
+                      chosen: true, position: 2, goals: ["p1", "p2"]).with(effort: .atRisk),
+            ]
+        )
+    }
+
+    static var runningSeasons: CurrentSeasons {
+        CurrentSeasons(today: "2026-11-18", active: activeSeason, draft: nil, ended: nil, popularAreas: [])
+    }
+
+    static var seasonRead: AreaRead {
+        AreaRead(
+            headline: "Work is moving; Health is still finding its rhythm",
+            summary: "Build Supervibes is on track and the community is keeping pace. Workouts are at 1 of 3 with two planned, so Thursday’s session decides whether Health’s quest starts the season moving.",
+            goalIds: ["1", "p4", "p1", "p2"], usedCalendar: true, createdAt: referenceNow.addingTimeInterval(-2 * 3600)
+        )
+    }
+
+    static var seasonPage: SeasonPageData {
+        SeasonPageData(season: activeSeason, read: seasonRead, goals: lifeWithPractices, weeks: goalWeeks,
+                       areas: seasonAreas, today: "2026-11-18")
+    }
+
+    static var questPage: QuestPageData {
+        QuestPageData(quest: activeSeason.quests[1], season: activeSeason, gap: nil, read: nil, goals: lifeWithPractices,
+                      weeks: goalWeeks, areas: seasonAreas, today: "2026-11-18")
+    }
+
+    /// Health's page with Winter running: its quest under This season, its practices marked.
+    static var areaDetailInSeason: AreaDetail {
+        var detail = practiceAreaDetail
+        detail.area.now = "Walks most days, workouts when the week allows."
+        detail.quest = activeSeason.quests[1]
+        detail.season = activeSeason
+        return detail
+    }
+}
+
+extension Quest {
+    func with(effort: GoalStatus?) -> Quest {
+        var copy = self
+        copy.effort = effort
+        return copy
+    }
 }

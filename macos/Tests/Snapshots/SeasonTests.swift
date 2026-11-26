@@ -92,4 +92,45 @@ final class SeasonTests: XCTestCase {
     func testSeasonReview() {
         assertAppearances(SeasonSetupView(state: Fixtures.setupReview).background(Theme.background), width: 1200, height: 900)
     }
+
+    // MARK: A season running
+
+    /// Life in Winter's first week: the season panel with a column per quest, the season's projects and practices
+    /// first and marked, the rest a step dimmer, and In season on its areas.
+    func testLifeWithSeason() {
+        assertAppearances(
+            LifeHome(firstName: "Javier", goals: Fixtures.lifeWithPractices, today: "2026-11-18", weeks: Fixtures.goalWeeks,
+                     areas: Fixtures.practiceAreas, now: Fixtures.referenceNow, seasons: Fixtures.runningSeasons,
+                     onStartSeason: {}, onOpenSeason: { _ in }, onOpenQuest: { _ in })
+                .background(Theme.background),
+            width: 1180, height: 1900
+        )
+    }
+
+    /// The season's page: its weeks, its read, its two quests, and what moves them.
+    func testSeasonPage() {
+        assertAppearances(
+            SeasonPage(data: Fixtures.seasonPage, now: Fixtures.referenceNow,
+                       actions: SeasonPageActions(read: {}, editSeason: {}))
+                .background(Theme.background),
+            width: 1180, height: 1400
+        )
+    }
+
+    /// Health's quest: ready for its first read, its two practices, and the area it comes from.
+    func testQuestPage() {
+        assertAppearances(
+            QuestPage(data: Fixtures.questPage, now: Fixtures.referenceNow, actions: SeasonPageActions(read: {}, toggleGoal: { _ in }))
+                .background(Theme.background),
+            width: 1180, height: 1180
+        )
+    }
+
+    /// Health's page with Winter running: In season by its status, This season holding its quest.
+    func testAreaPageInSeason() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.areaDetailInSeason, now: Fixtures.referenceNow).background(Theme.background),
+            width: 900, height: 1320
+        )
+    }
 }

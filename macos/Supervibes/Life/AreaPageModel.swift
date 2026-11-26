@@ -43,7 +43,14 @@ final class AreaPageModel {
         do {
             switch try await client.getArea(path: .init(id: id), query: .init(timeZone: TimeZone.current.identifier)) {
             case .ok(let ok):
-                detail = AreaDetail(api: try ok.body.json)
+                var loaded = AreaDetail(api: try ok.body.json)
+                // Its quest this season, if it has one; the page shows without it if it can't be loaded.
+                if let questId = loaded.area.questId,
+                   let found = try? await SeasonAPI(client: client, auth: auth).quest(questId) {
+                    loaded.quest = found.quest
+                    loaded.season = found.season
+                }
+                detail = loaded
                 load = .loaded
                 await loadOtherGoals()
             case .notFound:
@@ -254,7 +261,8 @@ extension Area {
             want: area.want,
             status: area.status.flatMap { GoalStatus(rawValue: $0.rawValue) },
             goalIds: area.goalIds,
-            gap: area.gap.map(AreaGap.init(api:))
+            gap: area.gap.map(AreaGap.init(api:)),
+            questId: area.questId ?? nil
         )
     }
 }

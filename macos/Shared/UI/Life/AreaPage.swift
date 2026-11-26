@@ -4,8 +4,10 @@ import SwiftUI
 /// design's AreaPageLayout in supervibes-design, seasons-quests.tsx):
 ///   1. Who it is: the way back to Life, its tile and name, then one quiet line with its status.
 ///   2. Where it's going: where you are and where you want to be side by side, and the gap between them under them.
-///   3. How it's going: Supervibes' read. Its status is in the header, so the read doesn't repeat it.
-///   4. Projects & practices: one list, each row opening its page, then a way to start one in it.
+///   3. This season: its quest, when the running season has one here.
+///   4. How it's going: Supervibes' read. Its status is in the header, so the read doesn't repeat it.
+///   5. Projects & practices: one list, the season's own first and marked, each row opening its page, then a way to
+///      start one in it.
 ///
 /// The pencil edits it in place: its icon, name and words become fields, each goal can be taken out of it, another
 /// goal moved in, and the area removed. Done saves. The gap is written from its own card.
@@ -17,6 +19,7 @@ struct AreaPage: View {
     var error: String?
     var onBack: () -> Void = {}
     var onOpenGoal: (Goal) -> Void = { _ in }
+    var onOpenQuest: (Quest) -> Void = { _ in }
     /// What can change the area; nil leaves the page as it is.
     var actions: AreaPageActions?
     /// Opens being edited (snapshots).
@@ -74,6 +77,22 @@ struct AreaPage: View {
                 }
 
                 direction.padding(.top, 32)
+
+                if !isEditing, let quest = detail.quest, let season = detail.season, season.state == .active {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            SectionTitle("This season")
+                            HStack(spacing: 6) {
+                                Icon.season.image(size: 12)
+                                Text("\(season.name) · \(weekLine(season))").monospacedDigit()
+                            }
+                            .font(.app(13))
+                            .foregroundStyle(Theme.muted)
+                        }
+                        AreaQuestCard(quest: quest, goals: questGoals) { onOpenQuest(quest) }
+                    }
+                    .padding(.top, 40)
+                }
 
                 // The read is Supervibes' to write, so it's out of the way while you edit.
                 if !isEditing {
@@ -139,16 +158,46 @@ struct AreaPage: View {
                 .padding(.top, 16)
             // Its status, its goals' worst: the one place the page says it.
             Group {
-                if let status = area.status {
-                    StatusText(status: status, basis: .target)
-                        .help("The most pressing of its projects’ and practices’ statuses")
-                } else {
-                    Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
+                HStack(spacing: 12) {
+                    if let status = area.status {
+                        StatusText(status: status, basis: .target)
+                            .help("The most pressing of its projects’ and practices’ statuses")
+                    } else {
+                        Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
+                    }
+                    if hasSeason {
+                        Rectangle().fill(Theme.foreground(0.15)).frame(width: 1, height: 12)
+                        HStack(spacing: 6) {
+                            Icon.season.image(size: 13)
+                            Text("In season")
+                        }
+                        .font(.app(13))
+                        .foregroundStyle(Theme.muted)
+                    }
                 }
             }
             .frame(height: 16)
             .padding(.top, 12)
         }
+    }
+
+    /// The running season's quest here moves these.
+    private var questGoals: [Goal] {
+        guard let quest = detail.quest else { return [] }
+        return detail.goals.filter { quest.goalIds.contains($0.id) }
+    }
+
+    private var hasSeason: Bool { detail.quest != nil && detail.season?.state == .active }
+
+    private func season(of goal: Goal) -> InSeason {
+        guard hasSeason, let quest = detail.quest else { return .none }
+        return quest.goalIds.contains(goal.id) ? .moving : .outside
+    }
+
+    /// The season's own first, then the rest, each in their usual order.
+    private var orderedGoals: [Goal] {
+        guard hasSeason else { return detail.goals }
+        return detail.goals.filter { season(of: $0) == .moving } + detail.goals.filter { season(of: $0) != .moving }
     }
 
     // MARK: Where it's going
@@ -217,11 +266,12 @@ struct AreaPage: View {
                     .padding(.horizontal, 20)
                     .frame(height: 56)
             }
-            ForEach(Array(detail.goals.enumerated()), id: \.element.id) { index, goal in
+            ForEach(Array(orderedGoals.enumerated()), id: \.element.id) { index, goal in
                 if index > 0 { hairline }
                 AreaGoalRow(
                     goal: goal,
                     week: detail.weeks[goal.id],
+                    season: season(of: goal),
                     onTakeOut: isEditing ? actions.map { actions in { actions.takeOut(goal) } } : nil
                 ) { onOpenGoal(goal) }
             }
@@ -241,7 +291,8 @@ struct AreaPage: View {
                 }
             }
         }
-        .background(Theme.card, in: .rect(cornerRadius: 16))
+        // With a season running, the list's own fill is a step dimmer and the season's rows fill themselves.
+        .background(hasSeason ? InSeason.outside.cardFill : Theme.card, in: .rect(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
         .clipShape(.rect(cornerRadius: 16))
     }
@@ -514,6 +565,7 @@ private struct RemoveAreaLink: View {
 private struct AreaGoalRow: View {
     let goal: Goal
     let week: GoalWeek?
+    var season: InSeason = .none
     var onTakeOut: (() -> Void)?
     let action: () -> Void
     @State private var isHovered = false
@@ -543,6 +595,7 @@ private struct AreaGoalRow: View {
                     Icon.arrowRight.image(size: 14).foregroundStyle(Theme.muted)
                 }
                 .background(isHovered ? Theme.wash : .clear)
+                .background(season == .moving ? Theme.card : .clear)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -552,7 +605,7 @@ private struct AreaGoalRow: View {
 
     private func row(@ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 12) {
-            GoalBadge(goal: goal, size: .card)
+            GoalBadge(goal: goal, size: .card).seasonMark(season == .moving)
             VStack(alignment: .leading, spacing: 2) {
                 Text(goal.title)
                     .font(.app(14, .semibold))
@@ -579,6 +632,63 @@ private struct AreaGoalRow: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(minHeight: 64)
+    }
+}
+
+/// The area's quest this season (the design's AreaQuestCard): the route tile, its name and where it starts, its
+/// effort; then its goals, the effort's reason, and Open quest.
+private struct AreaQuestCard: View {
+    let quest: Quest
+    let goals: [Goal]
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 14) {
+                    Icon.route.image(size: 19)
+                        .foregroundStyle(Theme.foreground)
+                        .frame(width: 40, height: 40)
+                        .background(Theme.foreground(0.06), in: .rect(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(quest.title)
+                            .font(.app(17, .semibold)).tracking(-0.015 * 17)
+                            .foregroundStyle(Theme.foreground)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(quest.fromLine).font(.app(13.5)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer(minLength: 8)
+                    if let effort = quest.effort {
+                        StatusText(status: effort, basis: .target)
+                    } else {
+                        Text("No status yet").appText(.xs).foregroundStyle(Theme.muted)
+                    }
+                }
+                Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.top, 16)
+                HStack(spacing: 10) {
+                    OverlappingBadges(goals: goals)
+                    Text(effortLine(quest.effort, goals: goals)).appText(.xs).foregroundStyle(Theme.muted).lineLimit(1)
+                    Spacer(minLength: 8)
+                    HStack(spacing: 4) {
+                        Text("Open quest")
+                        Icon.arrowRight.image(size: 13)
+                    }
+                    .font(.app(13, .medium))
+                    .foregroundStyle(isHovered ? Theme.foreground : Theme.foreground(0.8))
+                }
+                .padding(.top, 14)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+            .background(Theme.card, in: .rect(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isHovered ? Theme.lineStrong : Theme.cardBorder))
+            .contentShape(.rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
