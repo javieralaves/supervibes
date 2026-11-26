@@ -372,7 +372,8 @@ struct PlanningBoard: View {
         }
     }
 
-    /// A column's time across every goal: Unplanned's total, or planned against protected.
+    /// A column's time across every goal: Unplanned's total, or each goal's planned against its
+    /// protected, added up (see PlanTime.across).
     private func totalTime(_ column: BoardColumn) -> PlanTime {
         guard column != .unplanned else {
             let minutes = data.goals.reduce(0) { sum, goal in
@@ -380,12 +381,7 @@ struct PlanningBoard: View {
             }
             return totalTasks(column) == 0 ? .none : .total(minutes)
         }
-        let each = data.goals.compactMap { capacity(column, of: $0) }
-        guard !each.isEmpty else { return .none }
-        let planned = each.reduce(0) { $0 + $1.planned }
-        let protected = each.reduce(0) { $0 + $1.protected }
-        if protected > 0 { return .weighed(planned: planned, protected: protected) }
-        return planned > 0 || totalTasks(column) > 0 ? .noTime(planned: planned) : .none
+        return .across(data.goals.compactMap { capacity(column, of: $0) }, hasTasks: totalTasks(column) > 0)
     }
 
     // MARK: Columns
@@ -709,16 +705,37 @@ enum PlanTime: Equatable {
     /// Nothing to say: "—".
     case none
 
-    /// Over what's protected.
+    /// A column head's time, from each goal's capacity in it. A goal's protected time is only for
+    /// its own tasks, so one goal's spare time never makes up for another's overage: when any goal
+    /// is over, the head is over by the sum of their overages, and only when none is does it say
+    /// what's free (or that it just fits).
+    static func across(_ each: [Capacity], hasTasks: Bool) -> PlanTime {
+        guard !each.isEmpty else { return .none }
+        let protected = each.reduce(0) { $0 + $1.protected }
+        let over = each.reduce(0) { $0 + max(0, $1.planned - $1.protected) }
+        if protected == 0 {
+            let planned = each.reduce(0) { $0 + $1.planned }
+            return planned > 0 || hasTasks ? .noTime(planned: planned) : .none
+        }
+        // Over: weighed as the protected time plus what runs past it, so it reads "X over".
+        if over > 0 { return .weighed(planned: protected + over, protected: protected) }
+        return .weighed(planned: each.reduce(0) { $0 + $1.planned }, protected: protected)
+    }
+
+    /// Over what's protected, or time planned with nothing protected for it.
     var isOver: Bool {
-        if case .weighed(let planned, let protected) = self { return planned > protected }
-        return false
+        switch self {
+        case .weighed(let planned, let protected): planned > protected
+        case .noTime(let planned): planned > 0
+        case .total, .none: false
+        }
     }
 }
 
 /// Tasks and time as icons with their figures, on one muted line: the checklist and the open tasks
 /// (left out for none), then the clock and what's free, Just fits, Unplanned's total or "X, no
-/// time". Over, the clock becomes the ring, and by how much is in amber.
+/// time". Over, the clock becomes the ring, and by how much is in amber; time planned with no time
+/// protected is amber too, by its clock.
 private struct PlanFigures: View {
     let tasks: Int
     let time: PlanTime
@@ -743,8 +760,12 @@ private struct PlanFigures: View {
                     figure(.clock, planned == protected ? "Just fits" : "\(BoardDuration.text(protected - planned)) free")
                 case .total(let minutes):
                     figure(.clock, BoardDuration.text(minutes))
-                case .noTime(let planned):
-                    figure(.clock, planned > 0 ? "\(BoardDuration.text(planned)), no time" : "No time")
+                case .noTime(let planned) where planned > 0:
+                    figure(.clock, "\(BoardDuration.text(planned)), no time")
+                        .appText(.xs, .medium)
+                        .foregroundStyle(Theme.amber)
+                case .noTime:
+                    figure(.clock, "No time")
                 case .none:
                     EmptyView()
                 }

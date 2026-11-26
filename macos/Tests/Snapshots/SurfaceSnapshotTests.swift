@@ -538,6 +538,27 @@ final class SurfaceSnapshotTests: XCTestCase {
         assertAppearances(board(PlanningBoard(data: Fixtures.board, now: now)), width: 1500, height: 760)
     }
 
+    /// The housing playbook with an hour planned today and no session for it.
+    private var boardWithNoTime: BoardData {
+        var data = Fixtures.board
+        let index = data.goals.firstIndex { $0.id == "3" }!
+        data.goals[index].tasks.append(TaskItem(id: "no-time", title: "Call the agency about deposits", minutes: 60, plannedFor: "2026-11-18"))
+        return data
+    }
+
+    func testPlanningBoardAllGoalsNoTime() {
+        // Time planned with none protected is over: the cell amber, "1 h, no time".
+        assertAppearances(board(PlanningBoard(data: boardWithNoTime, now: now)), width: 1500, height: 760)
+    }
+
+    func testPlanningBoardAllGoalsNoTimeCapacity() {
+        // Its lane open: the chip amber, its popover on "No time protected".
+        assertAppearances(
+            board(PlanningBoard(data: boardWithNoTime, now: now, initialCapacity: .day("2026-11-18"), initiallyExpanded: ["3"])),
+            width: 1500, height: 1000
+        )
+    }
+
     func testPlanningBoardAllGoalsDayCapacity() {
         // The housing playbook open, its tomorrow over: 3 h planned in a 1 h 30 min session.
         assertAppearances(

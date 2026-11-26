@@ -32,6 +32,29 @@ final class CapacityTests: XCTestCase {
         XCTAssertEqual(CapacityPopover.status(thursday), "No time protected")
     }
 
+    func testTimePlannedWithNothingProtectedIsOver() {
+        let thursday = Capacity.day("2026-11-19", open: 60, blocks: blocks, now: now, calendar: madrid)
+        XCTAssertEqual(thursday.protected, 0)
+        XCTAssertTrue(thursday.isOver)
+        XCTAssertEqual(CapacityPopover.status(thursday), "No time protected")
+        XCTAssertTrue(PlanTime.noTime(planned: 60).isOver)
+        XCTAssertFalse(PlanTime.noTime(planned: 0).isOver)
+    }
+
+    func testColumnTotalsAddUpOveragesWithoutNettingSpareTime() {
+        let over = Capacity(planned: 240, protected: 120)     // 2 h over
+        let noTime = Capacity(planned: 60, protected: 0)      // 1 h, nothing protected
+        let spare = Capacity(planned: 0, protected: 60)       // 1 h free
+        let fits = Capacity(planned: 30, protected: 30)
+        // Another goal's free hour doesn't make up for any of it: 3 h over.
+        XCTAssertEqual(PlanTime.across([over, noTime, spare, fits], hasTasks: true), .weighed(planned: 390, protected: 210))
+        // None over: what's free, added up.
+        XCTAssertEqual(PlanTime.across([spare, fits], hasTasks: true), .weighed(planned: 30, protected: 90))
+        // Nothing protected anywhere.
+        XCTAssertEqual(PlanTime.across([noTime], hasTasks: true), .noTime(planned: 60))
+        XCTAssertEqual(PlanTime.across([Capacity(planned: 0, protected: 0)], hasTasks: false), PlanTime.none)
+    }
+
     func testWeeks() {
         // 7 h open this week, plus Monday's, Tuesday's and this morning's 6 h gone by, against 14 h.
         let thisWeek = Capacity.week("2026-11-16", open: 420, blocks: blocks, now: now, calendar: madrid)

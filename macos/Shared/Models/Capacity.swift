@@ -32,7 +32,8 @@ struct Capacity: Hashable, Sendable {
     var isDay = false
 
     var remaining: Int { protected - planned }
-    var isOver: Bool { protected > 0 && planned > protected }
+    /// More planned than protected, including time planned with nothing protected for it.
+    var isOver: Bool { planned > protected }
     /// How far round the ring goes: planned ÷ protected (0 with nothing protected).
     var share: Double { protected > 0 ? Double(planned) / Double(protected) : 0 }
 
