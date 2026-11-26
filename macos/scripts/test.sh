@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the test suite. Extra arguments go to xcodebuild, e.g.:
-#   scripts/test.sh -only-testing:SupervibesTests/SurfaceSnapshotTests/testMenuBarDuringBlock
+#   scripts/test.sh -only-testing:SupervibesTests/MenuBarTests/testMenuBarDuringBlock
 source "$(dirname "$0")/_common.sh"
 
 generate

@@ -147,7 +147,9 @@ schemes:
   Supervibes:
     build:
       targets:
-        Supervibes: all
+        # Not for test: the tests compile Shared themselves and have no host app, so building the
+        # app (and its widget, Shared twice more) only slowed every test run.
+        Supervibes: [run, profile, analyze, archive]
         SupervibesTests: [test]
     run:
       config: Debug
@@ -155,6 +157,8 @@ schemes:
       config: Debug
       gatherCoverageData: false
       targets:
-        - SupervibesTests
+        # Classes run side by side in separate test processes, one per core.
+        - name: SupervibesTests
+          parallelizable: true
     archive:
       config: Release
