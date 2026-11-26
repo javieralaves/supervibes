@@ -239,6 +239,13 @@
       "when": 1795631838214,
       "tag": "0033_practices",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795653431266,
+      "tag": "0034_seasons",
+      "breakpoints": true
     }
   ]
 }

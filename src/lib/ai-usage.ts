@@ -13,7 +13,16 @@ import { costMicros, type TokenCounts } from "@/lib/ai-pricing";
  * is logged and the feature carries on.
  */
 
-export type AiFeature = "progress_read" | "area_read" | "recap" | "agenda";
+export type AiFeature =
+  | "progress_read"
+  | "area_read"
+  | "recap"
+  | "agenda"
+  | "gap_read"
+  | "stand_read"
+  | "quest_suggest"
+  | "season_read"
+  | "quest_read";
 export type AiTrigger = "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto";
 
 /** Who and what a call is for; passed down to whatever makes the call. */

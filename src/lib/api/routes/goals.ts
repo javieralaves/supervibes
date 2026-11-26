@@ -4,6 +4,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
+import { seasonLinks } from "@/lib/api/routes/seasons";
 import { asNote, NoteSchema } from "@/lib/api/routes/notes";
 import { asSource, SourceSchema } from "@/lib/api/routes/sources";
 import { listBlocks } from "@/lib/blocks";
@@ -107,6 +108,7 @@ export const GoalSchema = z
     kind: z.enum(GOAL_KINDS).openapi({ description: "A project (it has a finish line), or a practice kept up a number of times a week." }),
     autoRecaps: z.boolean().openapi({ description: "Its sessions get a recap drafted on their own once they're over." }),
     practice: PracticeSchema.nullable().openapi({ description: "For a practice: its rhythm, this week and its status. Null for a project." }),
+    questId: z.string().nullable().optional().openapi({ description: "The quest it moves in the season running; null when none." }),
   })
   .openapi("Goal");
 
@@ -425,6 +427,7 @@ export const asGoal = (
   trajectory: z.infer<typeof TrajectoryDaySchema>[],
   updatedAt: Date | undefined,
   practice?: PracticeState,
+  questId?: string | null,
 ) => ({
   id: goal.id,
   title: goal.title,
@@ -438,6 +441,7 @@ export const asGoal = (
   kind: goal.kind,
   autoRecaps: goal.autoRecaps,
   practice: asPractice(goal, practice),
+  questId: questId ?? null,
 });
 
 /**
@@ -451,7 +455,7 @@ export async function loadGoals(userId: string, timeZone: string | null, only?: 
   const weekBounds = { start: startOfDayIn(weekStart, zone), end: startOfDayIn(addDays(weekStart, 7), zone) };
   const list = (await listGoals(userId)).filter((goal) => !only || only(goal));
   const ids = list.map((goal) => goal.id);
-  const [trajectories, updated, tasks, blocks, objectives, practices] = await Promise.all([
+  const [trajectories, updated, tasks, blocks, objectives, practices, { goalQuest }] = await Promise.all([
     listTrajectories(userId, ids, timeZone),
     listGoalUpdatedAt(userId, ids),
     listOpenTasks(userId),
@@ -462,13 +466,20 @@ export async function loadGoals(userId: string, timeZone: string | null, only?: 
       list.filter((goal) => goal.kind === "practice"),
       timeZone,
     ),
+    seasonLinks(userId, timeZone),
   ]);
   const loads = goalWeekLoads(ids, tasks, blocks, weekBounds, today, new Date());
   const objectiveOf = new Map(objectives.map((row) => [row.goalId, row.objective]));
   return {
     today,
     goals: list.map((goal) =>
-      asGoal(goal, trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today), updated.get(goal.id), practices.get(goal.id)),
+      asGoal(
+        goal,
+        trajectories.get(goal.id)?.days ?? buildTrajectory([], null, today),
+        updated.get(goal.id),
+        practices.get(goal.id),
+        goalQuest.get(goal.id),
+      ),
     ),
     week: {
       start: weekStart,

@@ -347,11 +347,12 @@ private struct DailyChart: View {
 
     private static let height: CGFloat = 160
 
-    /// The features in the key: the ones every account has, and area reads once there are some.
+    /// The features in the key: the ones every account has, and the rest (area reads, the season's reads) once there are some.
     private var legend: [UsageCall.Feature] {
         // Every day lists every feature, so only the ones with calls count as used.
         let used = Set(days.flatMap { $0.parts.filter { $0.calls > 0 }.map(\.feature) })
-        return UsageCall.Feature.allCases.filter { $0 != .areaRead || used.contains($0) }
+        let always: Set<UsageCall.Feature> = [.progressRead, .recap, .agenda]
+        return UsageCall.Feature.allCases.filter { always.contains($0) || used.contains($0) }
     }
 
     var body: some View {

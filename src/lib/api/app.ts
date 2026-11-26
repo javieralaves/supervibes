@@ -6,6 +6,7 @@ import { requireApiUser, type ApiEnv } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { areas } from "@/lib/api/routes/areas";
 import { practices } from "@/lib/api/routes/practices";
+import { seasonRoutes } from "@/lib/api/routes/seasons";
 import { PracticeError } from "@/lib/goals";
 import { blocks } from "@/lib/api/routes/blocks";
 import { calendar } from "@/lib/api/routes/calendar";
@@ -73,6 +74,7 @@ api.route("/", usage);
 // Last, so its schemas follow the others in the OpenAPI document rather than reshuffling it.
 api.route("/", areas);
 api.route("/", practices);
+api.route("/", seasonRoutes);
 
 api.notFound((c) => c.json(apiError("not_found", "There's nothing here."), 404));
 
