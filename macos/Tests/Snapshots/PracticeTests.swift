@@ -9,7 +9,8 @@ import XCTest
 final class PracticeTests: XCTestCase {
     private let now = Fixtures.referenceNow
     private let areaActions = AreaEditActions(create: { _ in true }, update: { _, _ in }, remove: { _ in })
-    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in })
+    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in },
+                                                  nameGap: {}, writeGap: { _ in true })
 
     /// Projects, then practices (round badges, rhythm, this week's pips), then areas counting both.
     func testLifeWithPractices() {

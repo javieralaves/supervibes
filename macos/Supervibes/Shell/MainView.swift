@@ -280,11 +280,15 @@ private struct AreaScreen: View {
                             remove: { Task { if await model.remove() { shell.open(.life) } } },
                             takeOut: { model.takeOut($0) },
                             moveIn: { model.moveIn($0) },
-                            newGoal: { newGoal($0, today: detail.today) }
+                            newGoal: { newGoal($0, today: detail.today) },
+                            nameGap: { Task { await model.nameGap() } },
+                            writeGap: { await model.writeGap($0) }
                         ),
                         reading: model.reading,
                         readError: model.readError,
-                        onRead: { Task { await model.read() } }
+                        onRead: { Task { await model.read() } },
+                        namingGap: model.namingGap,
+                        gapError: model.gapError
                     )
                 }
             }
