@@ -166,6 +166,8 @@ enum Icon: String {
     case refresh = "Refresh01-1_5"
     /// Name the gap, on an area's page.
     case route = "Route01-1_5"
+    /// A season: the navigational compass.
+    case season = "Compass-1_5"
     case unlink = "Unlink04-1_5"
     /// Calendar import: the events button, and a block that came from a calendar.
     case calendarImport = "CalendarDownload01-1_5"

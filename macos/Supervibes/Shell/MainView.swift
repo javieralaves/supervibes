@@ -9,6 +9,8 @@ enum Route: Hashable {
     case goal(String)
     /// An area's own page.
     case area(String)
+    /// Starting a season, a full page per step.
+    case startSeason
     case settings
     case connections
     /// Planning a day across goals.
@@ -69,6 +71,11 @@ struct MainView: View {
                             AreaScreen(id: id, auth: auth, shell: shell)
                         }
                         .id(id)
+                    case .startSeason:
+                        ZStack {
+                            Backdrop()
+                            SeasonSetupScreen(auth: auth, shell: shell)
+                        }
                     case .goal(let id):
                         ZStack {
                             Backdrop()
@@ -167,7 +174,9 @@ private struct LifeScreen: View {
                         update: { model.updateArea($0, $1) },
                         remove: { model.deleteArea($0) }
                     ),
-                    areaError: model.areaError
+                    areaError: model.areaError,
+                    seasons: model.seasons,
+                    onStartSeason: { shell.openStartSeason() }
                 )
             }
         }
@@ -216,6 +225,100 @@ private struct LifeScreen: View {
                 onSave: { saved in
                     overlays.dismiss()
                     model.create(saved)
+                }
+            )
+        }
+    }
+}
+
+/// Starting a season, with its data, in the app's window.
+private struct SeasonSetupScreen: View {
+    let shell: ShellModel
+    @State private var model: SeasonSetupModel
+    @Environment(\.overlays) private var overlays
+
+    init(auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: SeasonSetupModel(auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't start a season", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Life") { shell.open(.life) }
+                    Button("Try Again") { Task { await model.start() } }
+                }
+            case .loaded:
+                if let state = model.state {
+                    SeasonSetupView(state: state, actions: actions(state))
+                }
+            }
+        }
+        .task { await model.start() }
+    }
+
+    private func actions(_ state: SeasonSetupState) -> SeasonSetupActions {
+        SeasonSetupActions(
+            close: { shell.open(.life) },
+            back: { model.back() },
+            togglePick: { model.togglePick($0) },
+            addCustom: { model.addCustom($0) },
+            continueAreas: { Task { await model.continueAreas() } },
+            read: { area, now, want in Task { await model.read(areaId: area, now: now, want: want) } },
+            editQuest: { await model.editQuest($0, title: $1, fromText: $2) },
+            next: { Task { await model.next() } },
+            choose: { id, chosen in Task { await model.choose(id, chosen) } },
+            toggleLink: { model.toggleLink(quest: $0, goal: $1) },
+            addSuggestion: { model.addSuggestion(quest: $0, $1) },
+            removeSuggestion: { model.removeSuggestion(quest: $0, $1) },
+            findSuggestions: { id in Task { await model.findSuggestions(id) } },
+            newGoal: { quest, kind in newGoal(quest: quest, kind: kind, state: state) },
+            editSeason: { editSeason(state.season) },
+            start: {
+                Task {
+                    if await model.startSeason() { shell.open(.life) }
+                }
+            }
+        )
+    }
+
+    /// A project or practice of the person's own for a quest, started in its area.
+    private func newGoal(quest id: String, kind: GoalKind, state: SeasonSetupState) {
+        guard let overlays, let quest = state.season.quests.first(where: { $0.id == id }) else { return }
+        var input = GoalInput(kind: kind)
+        input.areaId = quest.areaId
+        overlays.showDialog {
+            GoalDialog(
+                input: input,
+                today: state.today,
+                areas: state.areas,
+                onCancel: { overlays.dismiss() },
+                onSave: { saved in
+                    overlays.dismiss()
+                    Task { await model.createGoal(quest: id, saved) }
+                }
+            )
+        }
+    }
+
+    private func editSeason(_ season: Season) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            SeasonDialog(
+                input: SeasonInput(editing: season),
+                onCancel: { overlays.dismiss() },
+                onSave: { input in
+                    Task {
+                        if await model.updateSeason(input) { overlays.dismiss() }
+                    }
                 }
             )
         }

@@ -26,6 +26,8 @@ const ICONS = {
   Refresh01Icon: [1.5],
   // Name the gap, on an area's page.
   Route01Icon: [1.5],
+  // A season: the navigational compass (Life keeps the drafting one, Compass01Icon).
+  CompassIcon: [1.5],
   Unlink04Icon: [1.5],
   CalendarDownload01Icon: [1.5],
   CalendarRemove01Icon: [1.5],
