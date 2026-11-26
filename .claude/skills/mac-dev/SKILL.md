@@ -50,8 +50,9 @@ The Mac app lives in `macos/`. Its Xcode project is generated from `macos/projec
 | Build the Release app (talks to production) | `scripts/release.sh` |
 | Build Release and install it in /Applications, replacing and reopening it | `scripts/release.sh --install` (only when the user asks: it replaces the copy they use every day) |
 | All tests | `scripts/test.sh` (extra args go to xcodebuild, e.g. `-only-testing:...`) |
-| Snapshot tests, compare | `scripts/snapshot.sh` |
-| Snapshot tests, re-record after an intended UI change | `scripts/snapshot.sh --record` |
+| Snapshot tests, compare (every class with references) | `scripts/snapshot.sh` |
+| Snapshot tests, re-record only what a UI change touched | `scripts/snapshot.sh --record testWeekView testLifeNoSeason` (names are tests, classes like `SeasonTests`, or `Class/test`) |
+| Snapshot tests, re-record everything | `scripts/snapshot.sh --record` (rarely: it re-renders every reference, render noise included) |
 | App logs, last N minutes | `scripts/logs.sh 2m` |
 | App logs, live | `scripts/logs.sh` (streams; run in the background) |
 
@@ -71,7 +72,7 @@ Debug and Release are separate apps: Debug is "Supervibes Dev" (`Supervibes Dev.
 
 ## Verifying a change
 
-1. **Views:** add or update a test in `Tests/Snapshots/` using `assertAppearances(view, width:)`, which renders light and dark. Run `scripts/snapshot.sh --record`, then **open the PNGs it lists with the Read tool and look at them.** Re-run without `--record` to confirm the run is green. On a failed comparison, the new image and a diff are in `build/snapshot-failures/`.
+1. **Views:** add or update a test in `Tests/Snapshots/` using `assertAppearances(view, width:)`, which renders light and dark. Run `scripts/snapshot.sh --record` with the tests the change touches (only those are re-recorded), then **open the PNGs it lists with the Read tool and look at them.** Then run `scripts/snapshot.sh` with no names to confirm every snapshot is green, which also shows what else the change touched. A logic-only change needs no recording: `scripts/test.sh` compares every snapshot anyway. On a failed comparison, the new image and a diff are in `build/snapshot-failures/`.
 2. **Runtime behaviour:** log through `Log.app` / `Log.auth` / `Log.widgets` (subsystem `com.supervibes.mac`) at `.info` or higher. `.debug` is not persisted, so `logs.sh 2m` won't show it. Launch with `scripts/run.sh`, then read `scripts/logs.sh 1m`.
 3. **Real menu bar, widgets, notifications, permission prompts:** these can't be seen from the shell (`screencapture` has no Screen Recording permission here). Say what you couldn't check, and ask the user to look.
 
