@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "design",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/javi/supervibes-design", "run", "dev"],
+      "port": 3003
     }
   ]
 }
