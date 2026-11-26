@@ -144,6 +144,79 @@ struct SeasonAPI {
         }
     }
 
+    /// A season's page: the season, counted today, and its read.
+    func season(_ id: String) async throws -> (season: Season, read: AreaRead?) {
+        try await call("Couldn’t load the season") {
+            switch try await client.getSeason(path: .init(id: id), query: .init(timeZone: timeZone)) {
+            case .ok(let ok):
+                let body = try ok.body.json
+                guard let season = body.season else { throw AreaAPIError("That season doesn’t exist anymore.") }
+                return (Season(api: season), body.read.map(AreaRead.init(api:)))
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t load the season.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t load the season (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// A quest's page: the quest, its season, its area's gap and its read.
+    func quest(_ id: String) async throws -> (quest: Quest, season: Season, gap: AreaGap?, read: AreaRead?) {
+        try await call("Couldn’t load the quest") {
+            switch try await client.getQuest(path: .init(id: id), query: .init(timeZone: timeZone)) {
+            case .ok(let ok):
+                let body = try ok.body.json
+                guard let season = body.season else { throw AreaAPIError("That quest’s season doesn’t exist anymore.") }
+                return (Quest(api: body.quest), Season(api: season), body.gap.map(AreaGap.init(api:)), body.read.map(AreaRead.init(api:)))
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That quest doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t load the quest.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t load the quest (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Writes a season's read from its quests' projects and practices and the calendar; takes a few seconds.
+    func readSeason(_ id: String) async throws -> AreaRead {
+        try await call("Couldn’t read the season") {
+            switch try await client.readSeason(path: .init(id: id)) {
+            case .ok(let ok): return AreaRead(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t read the season. Try again.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t read the season (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Writes a quest's read; takes a few seconds.
+    func readQuest(_ id: String) async throws -> AreaRead {
+        try await call("Couldn’t read the quest") {
+            switch try await client.readQuest(path: .init(id: id)) {
+            case .ok(let ok): return AreaRead(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That quest doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t read the quest. Try again.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t read the quest (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Every goal and each one's week, by goal id.
+    func goalsWithWeeks() async throws -> (goals: [Goal], weeks: [String: GoalWeek], today: String) {
+        try await call("Couldn’t load your projects and practices") {
+            switch try await client.listGoals(query: .init(timeZone: timeZone)) {
+            case .ok(let ok):
+                let body = try ok.body.json
+                let weeks = Dictionary(body.week.goals.map { ($0.goalId, GoalWeek(api: $0)) }, uniquingKeysWith: { first, _ in first })
+                return (body.goals.map(Goal.init(api:)), weeks, body.today)
+            case .unauthorized: throw await signedOut()
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t load your projects and practices.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t load your projects and practices (the server answered \(status)).")
+            }
+        }
+    }
+
     // MARK: Helpers
 
     /// Runs a call, turning a dropped connection into a message.
@@ -196,6 +269,12 @@ extension Quest {
             goalIds: quest.goalIds,
             effort: quest.effort.flatMap { GoalStatus(rawValue: $0.rawValue) }
         )
+    }
+}
+
+extension AreaRead {
+    init(api read: Components.Schemas.SeasonRead) {
+        self.init(headline: read.headline, summary: read.summary, goalIds: read.goalIds, usedCalendar: read.usedCalendar, createdAt: read.createdAt)
     }
 }
 

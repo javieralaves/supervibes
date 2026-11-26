@@ -16,6 +16,8 @@ struct Area: Identifiable, Hashable, Sendable {
     var goalIds: [String]
     /// What stands between where it is and where they want it; nil until named or written.
     var gap: AreaGap? = nil
+    /// Its quest in the running season, if it has one.
+    var questId: String? = nil
 }
 
 /// The gap between where an area is and where the person wants it (src/lib/seasons.ts): a headline and a line or
@@ -89,6 +91,9 @@ struct AreaDetail: Hashable, Sendable {
     var weeks: [String: GoalWeek]
     /// Its latest read; nil until the person asks for one.
     var read: AreaRead? = nil
+    /// Its quest in the running season, and that season; nil without one.
+    var quest: Quest? = nil
+    var season: Season? = nil
 }
 
 /// An area's read (src/lib/area-read.ts): a few lines on how it's going, from its goals' reads and the calendar.

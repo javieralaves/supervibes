@@ -75,6 +75,8 @@ struct PracticeStatusText: View {
 struct PracticeCard: View {
     let goal: Goal
     var area: Area?
+    /// Whether it moves the running season: marked if so, a step dimmer if not.
+    var season: InSeason = .none
     let action: () -> Void
     @State private var isHovered = false
     @Environment(\.overlays) private var overlays
@@ -87,7 +89,7 @@ struct PracticeCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center) {
-                    GoalBadge(goal: goal, size: .card)
+                    GoalBadge(goal: goal, size: .card).seasonMark(season == .moving)
                     Spacer(minLength: 12)
                     if let practice = goal.practice {
                         PracticeStatusText(practice: practice)
@@ -128,7 +130,7 @@ struct PracticeCard: View {
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .frame(minHeight: 148)
-            .background(Theme.card, in: .rect(cornerRadius: 16))
+            .background(season.cardFill, in: .rect(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isEngaged ? Theme.lineStrong : Theme.cardBorder))
             .contentShape(.rect(cornerRadius: 16))
         }

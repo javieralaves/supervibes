@@ -175,9 +175,12 @@ struct AreaGapView: View {
     }
 
     @ViewBuilder private var unnamed: some View {
+        let bothSaid = !(area.now ?? "").isEmpty && !(area.want ?? "").isEmpty
         Text(canName
             ? "What stands between the two? Supervibes can name it from your words\(hasGoals ? " and \(area.name)’s projects and practices" : "")."
-            : "Once you’ve said where \(area.name) is and where you want it to be, Supervibes can name what stands between them.")
+            : bothSaid
+                ? "What stands between the two? Not named yet."
+                : "Once you’ve said where \(area.name) is and where you want it to be, Supervibes can name what stands between them.")
             .font(.app(15))
             .lineSpacing(15 * 0.55 - 15 * 0.2)
             .foregroundStyle(Theme.muted)

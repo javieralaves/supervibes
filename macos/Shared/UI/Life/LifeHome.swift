@@ -34,6 +34,9 @@ struct LifeHome: View {
     var seasons: CurrentSeasons?
     /// Opens starting a season, or picks up the one being set up.
     var onStartSeason: (() -> Void)?
+    /// Opens the running season's page, or one of its quests'.
+    var onOpenSeason: ((Season) -> Void)?
+    var onOpenQuest: ((Quest) -> Void)?
 
     @State private var width: CGFloat = 1024
     /// Editing the areas; nil until the pencil or Done is pressed, then it follows them.
@@ -61,14 +64,21 @@ struct LifeHome: View {
                     .tracking(-0.035 * 48)
                     .foregroundStyle(Theme.foreground)
 
-                // The season's place: with none running, an invitation to start one. (A running season's panel
-                // comes with the season's own pages.)
-                if let seasons, seasons.active == nil, let onStartSeason {
-                    NoSeasonPanel(draft: seasons.draft, ended: seasons.ended, onStart: onStartSeason)
-                        .padding(.top, 40)
-                        .opacity(isEditingAreas ? 0.4 : 1)
-                        .allowsHitTesting(!isEditingAreas)
+                // The season's place: the running one leads the page; with none, an invitation to start one.
+                Group {
+                    if let active = seasons?.active {
+                        SeasonPanel(
+                            season: active, areas: areas, goals: goals,
+                            onOpenSeason: { onOpenSeason?(active) },
+                            onOpenQuest: { onOpenQuest?($0) }
+                        )
+                    } else if let seasons, let onStartSeason {
+                        NoSeasonPanel(draft: seasons.draft, ended: seasons.ended, onStart: onStartSeason)
+                    }
                 }
+                .padding(.top, 40)
+                .opacity(isEditingAreas ? 0.4 : 1)
+                .allowsHitTesting(!isEditingAreas)
 
                 Group {
                     projectsSection.padding(.top, 48)
@@ -99,8 +109,29 @@ struct LifeHome: View {
 
     // MARK: Projects and practices
 
-    private var projects: [Goal] { goals.filter { !$0.isPractice } }
-    private var practices: [Goal] { goals.filter(\.isPractice) }
+    private var projects: [Goal] { seasonFirst(goals.filter { !$0.isPractice }) }
+    private var practices: [Goal] { seasonFirst(goals.filter(\.isPractice)) }
+
+    /// The goals the running season's quests move.
+    private var seasonGoalIds: Set<String>? {
+        seasons?.active.map { Set($0.chosen.flatMap(\.goalIds)) }
+    }
+
+    /// The season's own first, in their usual order, then the rest, in theirs.
+    private func seasonFirst(_ list: [Goal]) -> [Goal] {
+        guard let ids = seasonGoalIds else { return list }
+        return list.filter { ids.contains($0.id) } + list.filter { !ids.contains($0.id) }
+    }
+
+    private func season(of goal: Goal) -> InSeason {
+        guard let ids = seasonGoalIds else { return .none }
+        return ids.contains(goal.id) ? .moving : .outside
+    }
+
+    private func season(of area: Area) -> InSeason {
+        guard let active = seasons?.active else { return .none }
+        return active.chosen.contains { $0.areaId == area.id } ? .moving : .outside
+    }
 
     /// "morning" from 5:00 to 11:59, "afternoon" from 12:00 to 17:59, "evening" the rest of the night.
     static func partOfDay(at date: Date, calendar: Calendar = .current) -> String {
@@ -161,7 +192,7 @@ struct LifeHome: View {
 
     @ViewBuilder private func cell(_ goal: Goal) -> some View {
         if goal.isPractice {
-            PracticeCard(goal: goal, area: areas.first { $0.id == goal.areaId }) { onOpen(goal) }
+            PracticeCard(goal: goal, area: areas.first { $0.id == goal.areaId }, season: season(of: goal)) { onOpen(goal) }
                 .contextPanel(owner: PracticeCard.menuOwner(goal), isEnabled: !goal.isPending) {
                     GoalCardMenu(goal: goal, actions: actions) { onOpen(goal) }
                 }
@@ -170,6 +201,7 @@ struct LifeHome: View {
                 goal: goal,
                 week: weeks[goal.id],
                 area: areas.first { $0.id == goal.areaId },
+                season: season(of: goal),
                 onSetObjective: actions.setObjective
             ) { onOpen(goal) }
                 .contextPanel(owner: GoalCard.menuOwner(goal), isEnabled: !goal.isPending) {
@@ -205,7 +237,7 @@ struct LifeHome: View {
             } else {
                 CardGrid(count: areas.count, columns: columns) { index in
                     let area = areas[index]
-                    AreaCard(area: area, goals: goals(in: area)) { onOpenArea(area) }
+                    AreaCard(area: area, goals: goals(in: area), season: season(of: area)) { onOpenArea(area) }
                 }
             }
         }
@@ -558,12 +590,14 @@ struct GoalCardMenu: View {
 /// `rounded-2xl border bg-card p-5`, hover `border-line-strong`. Its badge with its status at the top right, the
 /// title with this week's objective under it; pinned to the bottom, one footer line: its week's ring and what's free
 /// or over, then its area at the right, so footers line up across a row.
-private struct GoalCard: View {
+struct GoalCard: View {
     let goal: Goal
     /// Its week; nil shows none.
     var week: GoalWeek?
     /// The area it sits in, if any.
     var area: Area?
+    /// Whether it moves the running season: marked if so, a step dimmer if not.
+    var season: InSeason = .none
     var onSetObjective: ((Goal) -> Void)?
     let action: () -> Void
     @State private var isHovered = false
@@ -578,7 +612,7 @@ private struct GoalCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center) {
-                    GoalBadge(icon: goal.icon, color: goal.color, size: .card)
+                    GoalBadge(icon: goal.icon, color: goal.color, size: .card).seasonMark(season == .moving)
                     Spacer(minLength: 12)
                     if let latest = goal.latest, let status = latest.status, let basis = latest.basis {
                         StatusText(status: status, basis: basis)
@@ -619,7 +653,7 @@ private struct GoalCard: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Theme.card, in: .rect(cornerRadius: 16))
+            .background(season.cardFill, in: .rect(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(isEngaged ? Theme.lineStrong : Theme.cardBorder))
             .contentShape(.rect(cornerRadius: 16))
         }
@@ -637,6 +671,8 @@ private struct AreaCard: View {
     let area: Area
     /// Its goals, in order.
     let goals: [Goal]
+    /// With a season running: whether one of its quests is this area's.
+    var season: InSeason = .none
     let action: () -> Void
     @State private var isHovered = false
 
@@ -654,6 +690,15 @@ private struct AreaCard: View {
                     .foregroundStyle(Theme.foreground)
                     .lineLimit(1)
                     .padding(.top, 12)
+                if season == .moving {
+                    HStack(spacing: 6) {
+                        Icon.season.image(size: 11)
+                        Text("In season")
+                    }
+                    .font(.app(12.5))
+                    .foregroundStyle(Theme.muted)
+                    .padding(.top, 2)
+                }
 
                 Spacer(minLength: 20)
 

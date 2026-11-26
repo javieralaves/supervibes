@@ -11,6 +11,10 @@ enum Route: Hashable {
     case area(String)
     /// Starting a season, a full page per step.
     case startSeason
+    /// A season's own page.
+    case season(String)
+    /// A quest's own page.
+    case quest(String)
     case settings
     case connections
     /// Planning a day across goals.
@@ -76,6 +80,18 @@ struct MainView: View {
                             Backdrop()
                             SeasonSetupScreen(auth: auth, shell: shell)
                         }
+                    case .season(let id):
+                        ZStack {
+                            Backdrop()
+                            SeasonScreen(id: id, auth: auth, shell: shell)
+                        }
+                        .id(id)
+                    case .quest(let id):
+                        ZStack {
+                            Backdrop()
+                            QuestScreen(id: id, auth: auth, shell: shell)
+                        }
+                        .id(id)
                     case .goal(let id):
                         ZStack {
                             Backdrop()
@@ -176,7 +192,9 @@ private struct LifeScreen: View {
                     ),
                     areaError: model.areaError,
                     seasons: model.seasons,
-                    onStartSeason: { shell.openStartSeason() }
+                    onStartSeason: { shell.openStartSeason() },
+                    onOpenSeason: { shell.openSeason($0.id) },
+                    onOpenQuest: { shell.openQuest($0.id) }
                 )
             }
         }
@@ -228,6 +246,124 @@ private struct LifeScreen: View {
                 }
             )
         }
+    }
+}
+
+/// A season's own page, with its data, in the app's window.
+private struct SeasonScreen: View {
+    let shell: ShellModel
+    @State private var model: SeasonPageModel
+    @Environment(\.overlays) private var overlays
+
+    init(id: String, auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: SeasonPageModel(id: id, auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .gone:
+                ContentUnavailableView {
+                    Label("This season is gone", systemImage: "square.dashed")
+                } actions: {
+                    Button("Life") { shell.open(.life) }
+                }
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load the season", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                if let data = model.data {
+                    SeasonPage(
+                        data: data,
+                        reading: model.reading,
+                        readError: model.readError,
+                        actions: SeasonPageActions(
+                            back: { shell.open(.life) },
+                            openQuest: { shell.openQuest($0.id) },
+                            openGoal: { shell.openGoal($0.id) },
+                            openArea: { shell.openArea($0) },
+                            read: { Task { await model.read() } },
+                            editSeason: data.season.state == .active ? { edit(data.season) } : nil
+                        )
+                    )
+                }
+            }
+        }
+        .task { await model.refresh() }
+    }
+
+    private func edit(_ season: Season) {
+        guard let overlays else { return }
+        overlays.showDialog {
+            SeasonDialog(
+                input: SeasonInput(editing: season),
+                lockStart: true,
+                onCancel: { overlays.dismiss() },
+                onSave: { input in
+                    Task {
+                        if await model.update(input) { overlays.dismiss() }
+                    }
+                }
+            )
+        }
+    }
+}
+
+/// A quest's own page, with its data, in the app's window.
+private struct QuestScreen: View {
+    let shell: ShellModel
+    @State private var model: QuestPageModel
+
+    init(id: String, auth: AuthModel, shell: ShellModel) {
+        self.shell = shell
+        _model = State(initialValue: QuestPageModel(id: id, auth: auth))
+    }
+
+    var body: some View {
+        Group {
+            switch model.load {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .gone:
+                ContentUnavailableView {
+                    Label("This quest is gone", systemImage: "square.dashed")
+                } actions: {
+                    Button("Life") { shell.open(.life) }
+                }
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't load the quest", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try Again") { Task { await model.refresh() } }
+                }
+            case .loaded:
+                if let data = model.data {
+                    QuestPage(
+                        data: data,
+                        reading: model.reading,
+                        readError: model.readError,
+                        actions: SeasonPageActions(
+                            back: { shell.openSeason(data.season.id) },
+                            openGoal: { shell.openGoal($0.id) },
+                            openArea: { shell.openArea($0) },
+                            read: { Task { await model.read() } },
+                            toggleGoal: data.season.state == .active ? { goal in Task { await model.toggle(goal) } } : nil
+                        )
+                    )
+                }
+            }
+        }
+        .task { await model.refresh() }
     }
 }
 
@@ -378,6 +514,7 @@ private struct AreaScreen: View {
                         error: model.error,
                         onBack: { shell.open(.life) },
                         onOpenGoal: { shell.openGoal($0.id) },
+                        onOpenQuest: { shell.openQuest($0.id) },
                         actions: AreaPageActions(
                             save: { await model.save($0) },
                             remove: { Task { if await model.remove() { shell.open(.life) } } },
