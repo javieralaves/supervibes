@@ -1039,6 +1039,11 @@
           },
           "practice": {
             "$ref": "#/components/schemas/Practice"
+          },
+          "questId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The quest it moves in the season running; null when none."
           }
         },
         "required": [
@@ -2758,7 +2763,12 @@
               "progress_read",
               "area_read",
               "recap",
-              "agenda"
+              "agenda",
+              "gap_read",
+              "stand_read",
+              "quest_suggest",
+              "season_read",
+              "quest_read"
             ]
           },
           "trigger": {
@@ -2881,6 +2891,14 @@
               "type": "string"
             },
             "description": "Its goals, in the goals' order."
+          },
+          "gap": {
+            "$ref": "#/components/schemas/AreaGap"
+          },
+          "questId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Its quest in the season running; null when it has none."
           }
         },
         "required": [
@@ -2891,6 +2909,39 @@
           "want",
           "status",
           "goalIds"
+        ]
+      },
+      "AreaGap": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The gap in a headline, e.g. From rituals you plan to rituals you keep."
+          },
+          "body": {
+            "type": "string",
+            "description": "A line or two on what closing it takes; may be empty."
+          },
+          "by": {
+            "type": "string",
+            "enum": [
+              "supervibes",
+              "you"
+            ],
+            "description": "Named by Supervibes when asked, or written by the person."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last named or written."
+          }
+        },
+        "required": [
+          "title",
+          "body",
+          "by",
+          "at"
         ]
       },
       "AreaInput": {
@@ -3125,6 +3176,21 @@
           "carried"
         ]
       },
+      "AreaGapInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "Left out: no second line."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
       "OffCalendarSession": {
         "type": "object",
         "properties": {
@@ -3201,6 +3267,369 @@
         },
         "required": [
           "missed"
+        ]
+      },
+      "CurrentSeasons": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "active": {
+            "$ref": "#/components/schemas/Season"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/Season"
+          },
+          "ended": {
+            "$ref": "#/components/schemas/Season"
+          },
+          "popularAreas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PopularArea"
+            },
+            "description": "The usual life areas the person doesn't have yet."
+          }
+        },
+        "required": [
+          "today",
+          "active",
+          "draft",
+          "ended",
+          "popularAreas"
+        ]
+      },
+      "Season": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "startsOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "endsOn": {
+            "type": "string",
+            "format": "date",
+            "description": "Its last day, included."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "ended"
+            ]
+          },
+          "week": {
+            "type": "integer",
+            "description": "The week of the season today falls in, 1 first; 0 before it starts."
+          },
+          "weeks": {
+            "type": "integer",
+            "description": "How many weeks it runs."
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "on_track",
+              "at_risk",
+              "off_track",
+              "unclear",
+              null
+            ],
+            "description": "The worst of its chosen quests' efforts; null with none."
+          },
+          "quests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Quest"
+            },
+            "description": "Chosen first, in order; then a draft's other candidates."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "startsOn",
+          "endsOn",
+          "state",
+          "week",
+          "weeks",
+          "status",
+          "quests"
+        ]
+      },
+      "Quest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "seasonId": {
+            "type": "string"
+          },
+          "areaId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Where it's headed by the season's end; also its name."
+          },
+          "fromText": {
+            "type": "string",
+            "description": "Where it starts."
+          },
+          "reach": {
+            "type": "integer",
+            "description": "0–100: how much of the area's gap the season would close."
+          },
+          "chosen": {
+            "type": "boolean",
+            "description": "Chosen for the season. A started season only has chosen quests."
+          },
+          "position": {
+            "type": "integer",
+            "description": "Its place among the chosen, 1 first; 0 while not chosen."
+          },
+          "goalIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The projects and practices that move it."
+          },
+          "effort": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "on_track",
+              "at_risk",
+              "off_track",
+              "unclear",
+              null
+            ],
+            "description": "The worst of its goals' statuses today; null with none."
+          }
+        },
+        "required": [
+          "id",
+          "seasonId",
+          "areaId",
+          "title",
+          "fromText",
+          "reach",
+          "chosen",
+          "position",
+          "goalIds",
+          "effort"
+        ]
+      },
+      "PopularArea": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "description": "A Hugeicons name from lib/goal-icons.ts."
+          },
+          "line": {
+            "type": "string",
+            "description": "What the area covers, in a line."
+          }
+        },
+        "required": [
+          "name",
+          "icon",
+          "line"
+        ]
+      },
+      "SeasonDays": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "startsOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "endsOn": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "SeasonDetail": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/Season"
+          },
+          "read": {
+            "$ref": "#/components/schemas/SeasonRead"
+          }
+        },
+        "required": [
+          "season",
+          "read"
+        ]
+      },
+      "SeasonRead": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "goalIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The goals it drew on."
+          },
+          "usedCalendar": {
+            "type": "boolean",
+            "description": "It drew on the person's time on the calendar."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "headline",
+          "summary",
+          "goalIds",
+          "usedCalendar",
+          "createdAt"
+        ]
+      },
+      "AreaStand": {
+        "type": "object",
+        "properties": {
+          "gap": {
+            "$ref": "#/components/schemas/AreaGap"
+          },
+          "quest": {
+            "$ref": "#/components/schemas/Quest"
+          }
+        },
+        "required": [
+          "gap",
+          "quest"
+        ]
+      },
+      "QuestDetail": {
+        "type": "object",
+        "properties": {
+          "quest": {
+            "$ref": "#/components/schemas/Quest"
+          },
+          "season": {
+            "$ref": "#/components/schemas/Season"
+          },
+          "gap": {
+            "$ref": "#/components/schemas/AreaGap"
+          },
+          "read": {
+            "$ref": "#/components/schemas/SeasonRead"
+          }
+        },
+        "required": [
+          "quest",
+          "season",
+          "gap",
+          "read"
+        ]
+      },
+      "QuestChange": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "fromText": {
+            "type": "string"
+          },
+          "chosen": {
+            "type": "boolean",
+            "description": "Choose it for a draft season, or take it out. Up to three."
+          }
+        }
+      },
+      "QuestGoals": {
+        "type": "object",
+        "properties": {
+          "goalIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Every goal that moves the quest. Each leaves any other quest of the season."
+          }
+        },
+        "required": [
+          "goalIds"
+        ]
+      },
+      "QuestSuggestions": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestSuggestion"
+            }
+          }
+        },
+        "required": [
+          "suggestions"
+        ]
+      },
+      "QuestSuggestion": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string",
+            "description": "For a project, what done looks like; for a practice, how often and why."
+          },
+          "perWeek": {
+            "type": "integer",
+            "nullable": true,
+            "description": "For a practice, how many times a week; null for a project."
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "line",
+          "perWeek"
         ]
       }
     },
@@ -6679,6 +7108,142 @@
         }
       }
     },
+    "/api/v1/areas/{id}/gap": {
+      "post": {
+        "operationId": "nameAreaGap",
+        "summary": "Name the gap between where the area is and where they want it, replacing any; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Named",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaGap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "writeAreaGap",
+        "summary": "Write the area's gap by hand, replacing any",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AreaGapInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaGap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/goals/{id}/sessions": {
       "post": {
         "operationId": "addPracticeSession",
@@ -7037,6 +7602,860 @@
         "responses": {
           "204": {
             "description": "Saved"
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/current": {
+      "get": {
+        "operationId": "getCurrentSeasons",
+        "summary": "The season running, the one being set up, one that just ended, and the popular areas to offer",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The device's time zone; defaults to the stored one."
+            },
+            "required": false,
+            "description": "The device's time zone; defaults to the stored one.",
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentSeasons"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons": {
+      "post": {
+        "operationId": "createSeason",
+        "summary": "Start setting up a season: a draft, by default 13 weeks from the next Monday",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeasonDays"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Season"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/{id}": {
+      "get": {
+        "operationId": "getSeason",
+        "summary": "A season's page: the season, its quests and its read",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The device's time zone; defaults to the stored one."
+            },
+            "required": false,
+            "description": "The device's time zone; defaults to the stored one.",
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSeason",
+        "summary": "Rename a season or move its days. A running season keeps its first day",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeasonDays"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Season"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSeason",
+        "summary": "Drop a draft season and what was set up in it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Dropped"
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/{id}/start": {
+      "post": {
+        "operationId": "startSeason",
+        "summary": "Start a draft: one to three chosen quests, each moved by a project or practice",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Season"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/{id}/read": {
+      "post": {
+        "operationId": "readSeason",
+        "summary": "Write the season's read from its quests and the calendar, replacing the last; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/{id}/areas/{areaId}/stand": {
+      "post": {
+        "operationId": "readAreaStand",
+        "summary": "For a draft: name the area's gap if it has none, and write its candidate quest; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "areaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AreaStand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quests/{id}": {
+      "get": {
+        "operationId": "getQuest",
+        "summary": "A quest's page: the quest, its season, its area's gap and its read",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "The device's time zone; defaults to the stored one."
+            },
+            "required": false,
+            "description": "The device's time zone; defaults to the stored one.",
+            "name": "timeZone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateQuest",
+        "summary": "Edit a quest's words, or choose it for a draft season",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quests/{id}/goals": {
+      "put": {
+        "operationId": "setQuestGoals",
+        "summary": "Set the projects and practices that move a quest",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestGoals"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quests/{id}/suggestions": {
+      "post": {
+        "operationId": "suggestForQuest",
+        "summary": "Suggest projects and practices that would move a quest; nothing is saved; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestSuggestions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quests/{id}/read": {
+      "post": {
+        "operationId": "readQuest",
+        "summary": "Write the quest's read from its projects, practices and the calendar, replacing the last; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonRead"
+                }
+              }
+            }
           },
           "400": {
             "description": "The request didn't make sense.",

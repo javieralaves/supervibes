@@ -7,6 +7,11 @@ struct UsageCall: Identifiable, Hashable, Sendable {
         case recap
         case agenda
         case areaRead = "area_read"
+        case gapRead = "gap_read"
+        case standRead = "stand_read"
+        case questSuggest = "quest_suggest"
+        case seasonRead = "season_read"
+        case questRead = "quest_read"
 
         var label: String {
             switch self {
@@ -14,6 +19,11 @@ struct UsageCall: Identifiable, Hashable, Sendable {
             case .recap: "Session recaps"
             case .agenda: "Agendas"
             case .areaRead: "Area reads"
+            case .gapRead: "Gaps named"
+            case .standRead: "Season setup reads"
+            case .questSuggest: "Quest suggestions"
+            case .seasonRead: "Season reads"
+            case .questRead: "Quest reads"
             }
         }
     }

@@ -5,12 +5,16 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
 import { GoalSchema, GoalWeekSchema, loadGoals } from "@/lib/api/routes/goals";
+import { asGapView, GapSchema, seasonLinks } from "@/lib/api/routes/seasons";
 import { AreaReadError, getAreaRead, readArea, type AreaReadDTO } from "@/lib/area-read";
 import { areaInputSchema, combineTrajectories, MAX_AREAS, worstStatus } from "@/lib/area-schema";
 import { AreaLimitError, createArea, deleteArea, getArea, listAreas, reorderAreas, updateArea, type AreaDTO } from "@/lib/areas";
 import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 import { listGoals } from "@/lib/goals";
 import { listTrajectories } from "@/lib/goal-statuses";
+import { nameGap, SeasonReadError } from "@/lib/season-reads";
+import { gapSchema } from "@/lib/season-schema";
+import { listGaps, setGap, type GapDTO } from "@/lib/seasons";
 import { getTimeZone } from "@/lib/settings";
 import { timeZoneSchema } from "@/lib/settings-schema";
 import { buildTrajectory, STATUSES } from "@/lib/status-schema";
@@ -31,6 +35,9 @@ const AreaSchema = z
       description: "The worst of its goals' latest statuses; null with no goals, or none with a status yet.",
     }),
     goalIds: z.array(z.string()).openapi({ description: "Its goals, in the goals' order." }),
+    // The gap between where it is and where they want it; null until named. Optional, so older clients still decode.
+    gap: GapSchema.nullable().optional(),
+    questId: z.string().nullable().optional().openapi({ description: "Its quest in the season running; null when it has none." }),
   })
   .openapi("Area");
 
@@ -86,6 +93,10 @@ const AreaInputSchema = z
     want: z.string().nullable().optional().openapi({ description: "Left out or null: not said yet." }),
   })
   .openapi("AreaInput");
+
+const GapInputSchema = z
+  .object({ title: z.string(), body: z.string().optional().openapi({ description: "Left out: no second line." }) })
+  .openapi("AreaGapInput");
 
 const AreaOrderSchema = z
   .object({ ids: z.array(z.uuid()).openapi({ description: "Every one of the person's areas, each once, in the new order." }) })
@@ -177,6 +188,34 @@ const deleteRoute = createRoute({
   responses: { 204: { description: "Removed" }, 401: errorResponses[401], 404: notFound },
 });
 
+const nameGapRoute = createRoute({
+  method: "post",
+  path: "/areas/{id}/gap",
+  operationId: "nameAreaGap",
+  summary: "Name the gap between where the area is and where they want it, replacing any; takes a few seconds",
+  security: [{ bearerAuth: [] }],
+  request: { params: areaParam },
+  responses: {
+    200: { description: "Named", content: { "application/json": { schema: GapSchema } } },
+    ...errorResponses,
+    404: notFound,
+  },
+});
+
+const writeGapRoute = createRoute({
+  method: "put",
+  path: "/areas/{id}/gap",
+  operationId: "writeAreaGap",
+  summary: "Write the area's gap by hand, replacing any",
+  security: [{ bearerAuth: [] }],
+  request: { params: areaParam, body: { required: true, content: { "application/json": { schema: GapInputSchema } } } },
+  responses: {
+    200: { description: "Saved", content: { "application/json": { schema: GapSchema } } },
+    ...errorResponses,
+    404: notFound,
+  },
+});
+
 const orderRoute = createRoute({
   method: "put",
   path: "/areas/order",
@@ -193,11 +232,15 @@ const orderRoute = createRoute({
  */
 async function asAreas(userId: string, list: AreaDTO[], timeZone: string | null) {
   const goals = (await listGoals(userId)).filter((goal) => goal.areaId);
-  const trajectories = await listTrajectories(
-    userId,
-    goals.map((goal) => goal.id),
-    timeZone,
-  );
+  const [trajectories, gaps, { areaQuest }] = await Promise.all([
+    listTrajectories(
+      userId,
+      goals.map((goal) => goal.id),
+      timeZone,
+    ),
+    listGaps(userId),
+    seasonLinks(userId, timeZone),
+  ]);
   return list.map((area) => {
     const goalIds = goals.filter((goal) => goal.areaId === area.id).map((goal) => goal.id);
     return {
@@ -208,9 +251,13 @@ async function asAreas(userId: string, list: AreaDTO[], timeZone: string | null)
       want: area.want,
       status: worstStatus(goalIds.map((id) => trajectories.get(id)?.days.at(-1)?.status)),
       goalIds,
+      gap: gapView(gaps.get(area.id)),
+      questId: areaQuest.get(area.id) ?? null,
     };
   });
 }
+
+const gapView = (gap: GapDTO | undefined | null) => (gap ? asGapView(gap) : null);
 
 const asRead = (read: AreaReadDTO) => ({ ...read, createdAt: read.createdAt.toISOString() });
 
@@ -227,7 +274,7 @@ export const areas = new OpenAPIHono<ApiEnv>()
     if (!parsed.success) return c.json(invalid(parsed.error.issues), 400);
     try {
       const area = await createArea(c.var.user.id, parsed.data);
-      return c.json({ ...area, status: null, goalIds: [] }, 201);
+      return c.json({ ...area, status: null, goalIds: [], gap: null, questId: null }, 201);
     } catch (error) {
       if (error instanceof AreaLimitError) {
         return c.json(apiError("area_limit", `You can have up to ${MAX_AREAS} areas.`), 400);
@@ -248,9 +295,11 @@ export const areas = new OpenAPIHono<ApiEnv>()
     const area = await getArea(userId, id);
     if (!area) return c.json(apiError("not_found", AREA_GONE), 404);
     const timeZone = c.req.valid("query").timeZone ?? (await getTimeZone(userId));
-    const [{ today, goals, week }, read] = await Promise.all([
+    const [{ today, goals, week }, read, gaps, { areaQuest }] = await Promise.all([
       loadGoals(userId, timeZone, (goal) => goal.areaId === id),
       getAreaRead(userId, id),
+      listGaps(userId),
+      seasonLinks(userId, timeZone),
     ]);
     const days = buildTrajectory([], null, today).map((d) => d.day);
     const trajectory = combineTrajectories(
@@ -266,6 +315,8 @@ export const areas = new OpenAPIHono<ApiEnv>()
       // Its status today is the trajectory's last day, as asAreas works it out for the list.
       status: trajectory.at(-1)?.status ?? null,
       goalIds: goals.map((goal) => goal.id),
+      gap: gapView(gaps.get(id)),
+      questId: areaQuest.get(id) ?? null,
     };
     return c.json({ area: view, read: read && asRead(read), today, trajectory, goals, week }, 200);
   })
@@ -280,6 +331,25 @@ export const areas = new OpenAPIHono<ApiEnv>()
       console.error("[area-read] failed", error);
       return c.json(apiError("read_failed", "Couldn’t read this area. Try again."), 400);
     }
+  })
+  .openapi(nameGapRoute, async (c) => {
+    const userId = c.var.user.id;
+    const { id } = c.req.valid("param");
+    if (!(await getArea(userId, id))) return c.json(apiError("not_found", AREA_GONE), 404);
+    try {
+      return c.json(asGapView(await nameGap(userId, id)), 200);
+    } catch (error) {
+      if (error instanceof SeasonReadError) return c.json(apiError("read_failed", error.message), 400);
+      console.error("[gap-read] failed", error);
+      return c.json(apiError("read_failed", "Couldn’t name the gap. Try again."), 400);
+    }
+  })
+  .openapi(writeGapRoute, async (c) => {
+    const parsed = gapSchema.safeParse(c.req.valid("json"));
+    if (!parsed.success) return c.json(invalid(parsed.error.issues), 400);
+    const gap = await setGap(c.var.user.id, c.req.valid("param").id, parsed.data, "you");
+    if (!gap) return c.json(apiError("not_found", AREA_GONE), 404);
+    return c.json(asGapView(gap), 200);
   })
   .openapi(updateRoute, async (c) => {
     const parsed = areaInputSchema.safeParse(c.req.valid("json"));

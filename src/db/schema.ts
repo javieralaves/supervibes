@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -43,6 +44,14 @@ export const areas = pgTable(
     now: text(),
     /** Where they want it to go, in their words; null until they say. */
     want: text(),
+    /** The gap between where it is and where they want it, in a headline; null until named. */
+    gapTitle: text(),
+    /** A line or two on what closing the gap takes; null until named. */
+    gapBody: text(),
+    /** Who named the gap: "supervibes" (asked for) or "you" (written by hand); null until named. */
+    gapBy: text().$type<GapAuthor>(),
+    /** When the gap was last named or written. */
+    gapAt: timestamp({ withTimezone: true }),
     /** Manual sort order within a user's areas, ascending. */
     position: integer().notNull().default(0),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -55,6 +64,7 @@ export const areas = pgTable(
 );
 
 export type Area = typeof areas.$inferSelect;
+export type GapAuthor = "supervibes" | "you";
 
 /**
  * An area's read: a few lines on how that part of life is going, written by Claude from its goals' latest reads and
@@ -531,7 +541,7 @@ export const aiCalls = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** The goal it was about, while that goal exists. */
     goalId: uuid().references(() => goals.id, { onDelete: "set null" }),
-    /** "progress_read" | "area_read" | "recap" | "agenda". */
+    /** "progress_read" | "area_read" | "recap" | "agenda" | "gap_read" | "stand_read" | "quest_suggest" | "season_read" | "quest_read". */
     feature: text().notNull(),
     /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto". */
     trigger: text().notNull(),
@@ -558,3 +568,145 @@ export const aiCalls = pgTable(
 );
 
 export type AiCall = typeof aiCalls.$inferSelect;
+
+/**
+ * A season: a stretch of time (13 weeks by default) in which the person picks a few of their areas' gaps to close,
+ * each as a quest. A "draft" is being set up; "active" has started; "ended" is past its last day (set on read, see
+ * src/lib/seasons.ts). At most one draft and one active per person, and no two seasons' days overlap.
+ */
+export const seasons = pgTable(
+  "seasons",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    /** Its first day, "YYYY-MM-DD" in the person's own calendar. */
+    startsOn: date({ mode: "string" }).notNull(),
+    /** Its last day, "YYYY-MM-DD", included. */
+    endsOn: date({ mode: "string" }).notNull(),
+    state: text().$type<SeasonState>().notNull().default("draft"),
+    /** When it was started; null while a draft. */
+    startedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("seasons_user_starts_idx").on(t.userId, t.startsOn),
+    uniqueIndex("seasons_one_draft_idx").on(t.userId).where(sql`${t.state} = 'draft'`),
+    uniqueIndex("seasons_one_active_idx").on(t.userId).where(sql`${t.state} = 'active'`),
+  ],
+);
+
+export type Season = typeof seasons.$inferSelect;
+export type SeasonState = "draft" | "active" | "ended";
+
+/**
+ * A quest: the part of one area's gap a season means to close. Named after where it's headed (`title`), from where it
+ * starts (`fromText`), with `reach` the share of the gap the season covers, as Supervibes read it. While the season is
+ * a draft, each area it reads gets a candidate; the person chooses up to three, and starting the season drops the rest.
+ */
+export const quests = pgTable(
+  "quests",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    seasonId: uuid()
+      .notNull()
+      .references(() => seasons.id, { onDelete: "cascade" }),
+    areaId: uuid()
+      .notNull()
+      .references(() => areas.id, { onDelete: "cascade" }),
+    title: text().notNull(),
+    fromText: text().notNull(),
+    /** 0–100: how much of the area's gap the season would close. */
+    reach: integer().notNull(),
+    chosen: boolean().notNull().default(false),
+    /** Order among the season's chosen quests, 1 first; 0 until chosen. */
+    position: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("quests_season_area_idx").on(t.seasonId, t.areaId)],
+);
+
+export type Quest = typeof quests.$inferSelect;
+
+/**
+ * The projects and practices that move a quest. A goal moves at most one quest in a season; kept after the season
+ * ends, so past seasons remember what moved them.
+ */
+export const questGoals = pgTable(
+  "quest_goals",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    seasonId: uuid()
+      .notNull()
+      .references(() => seasons.id, { onDelete: "cascade" }),
+    questId: uuid()
+      .notNull()
+      .references(() => quests.id, { onDelete: "cascade" }),
+    goalId: uuid()
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("quest_goals_season_goal_idx").on(t.seasonId, t.goalId), index("quest_goals_quest_idx").on(t.questId)],
+);
+
+/**
+ * A season's read: a few lines on how it's going across its quests, written when the person asks. Each replaces the
+ * last. It has no status of its own: a season's status is its quests' worst.
+ */
+export const seasonReads = pgTable(
+  "season_reads",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    seasonId: uuid()
+      .notNull()
+      .references(() => seasons.id, { onDelete: "cascade" }),
+    headline: text().notNull(),
+    summary: text().notNull(),
+    /** The goals it drew on. */
+    goalIds: jsonb().$type<string[]>().notNull().default([]),
+    /** Whether it drew on the person's time on the calendar. */
+    usedCalendar: boolean().notNull().default(false),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("season_reads_season_idx").on(t.seasonId)],
+);
+
+/** A quest's read, as a season's: words only, written when asked, each replacing the last. */
+export const questReads = pgTable(
+  "quest_reads",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    questId: uuid()
+      .notNull()
+      .references(() => quests.id, { onDelete: "cascade" }),
+    headline: text().notNull(),
+    summary: text().notNull(),
+    goalIds: jsonb().$type<string[]>().notNull().default([]),
+    usedCalendar: boolean().notNull().default(false),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("quest_reads_quest_idx").on(t.questId)],
+);
