@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// An area's read, shaped like a goal's progress card: its status pill, a headline and a few lines, its last 4 weeks,
-/// and what the read drew on (its goals and the calendar), with a way to update it. The status is the area's own,
-/// its goals' worst: the read only writes words, and only when asked.
+/// An area's read, under How it's going on its page: a headline and a few lines, its last 4 weeks, and what the read
+/// drew on (its goals and the calendar), with a way to update it. The area's status, its goals' worst, is in the page's
+/// header, so the card doesn't repeat it: the read only writes words, and only when asked.
 ///
 /// Before the first read it says what will fill it: with no goals, how to give it something to read; with goals, a
 /// button for the first read.
@@ -33,7 +33,6 @@ struct AreaReadCard: View {
 
     @ViewBuilder private func withRead(_ read: AreaRead) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            pill.padding(.bottom, 12)
             Text(read.headline)
                 .appText(.xl, .semibold, tracking: -0.02)
                 .foregroundStyle(Theme.foreground)
@@ -68,7 +67,6 @@ struct AreaReadCard: View {
     }
 
     @ViewBuilder private var firstRead: some View {
-        pill.padding(.bottom, 12)
         Text("Ready for a first read")
             .appText(.xl, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
         Text("Supervibes will read where its projects and practices stand and your time on the calendar, and tell you here, in a few lines, how \(area.name) is going.")
@@ -89,7 +87,6 @@ struct AreaReadCard: View {
 
     /// The design's empty read: each part in its empty form, saying what will fill it.
     @ViewBuilder private var nothingToRead: some View {
-        NeutralPill(title: "No read yet").padding(.bottom, 12)
         Text("Nothing to read in this area yet")
             .appText(.xl, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
         Text("\(area.now == nil ? "Say where it stands and give it a project or a practice." : "Give it a project or a practice.") Supervibes will read them and your time on the calendar, and tell you here, in a few lines, how it’s going.")
@@ -115,15 +112,6 @@ struct AreaReadCard: View {
 
     // MARK: Parts
 
-    /// The area's status, its goals' worst; "No status yet" until one of them has one.
-    @ViewBuilder private var pill: some View {
-        if let status = area.status {
-            StatusPill(status: status, basis: .target, help: "The most pressing of its projects’ and practices’ statuses")
-        } else {
-            NeutralPill(title: "No status yet")
-        }
-    }
-
     private var weeks: some View {
         let started = detail.trajectory.contains { $0.status != nil }
         return VStack(alignment: .leading, spacing: 8) {
@@ -148,22 +136,6 @@ struct AreaReadCard: View {
         } else if let error {
             Text(error).appText(.xs).foregroundStyle(Theme.danger)
         }
-    }
-}
-
-/// A pill with no status: a ringed dot and a word, on a wash.
-private struct NeutralPill: View {
-    let title: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle().strokeBorder(Theme.muted, lineWidth: 1).frame(width: 6, height: 6)
-            Text(title).appText(.xs, .medium)
-        }
-        .foregroundStyle(Theme.muted)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .background(Theme.foreground(0.06), in: .capsule)
     }
 }
 

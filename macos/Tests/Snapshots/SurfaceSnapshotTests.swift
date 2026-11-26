@@ -9,7 +9,8 @@ import XCTest
 final class SurfaceSnapshotTests: XCTestCase {
     private let now = Fixtures.referenceNow
     private let areaActions = AreaEditActions(create: { _ in true }, update: { _, _ in }, remove: { _ in })
-    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in })
+    private let areaPageActions = AreaPageActions(save: { _ in true }, remove: {}, takeOut: { _ in }, moveIn: { _ in }, newGoal: { _ in },
+                                                  nameGap: {}, writeGap: { _ in true })
 
     func testMenuBarDuringBlock() {
         assertAppearances(
@@ -287,12 +288,54 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    /// Madrid's page: its read, its words, and its two goals with their objectives and statuses.
+    /// Madrid's page: its status in the header, where it is and where it's going with the gap Supervibes named, its
+    /// read, and its two goals in one list.
     func testAreaPage() {
         assertAppearances(
             AreaPage(detail: Fixtures.areaDetail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
                 .background(Theme.background),
-            width: 900, height: 1220
+            width: 900, height: 1320
+        )
+    }
+
+    /// Madrid before its gap is named: what it'll be, Name the gap and Write it yourself; and before its first read.
+    func testAreaPageGapUnnamed() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.unreadAreaDetail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 1180
+        )
+    }
+
+    /// Madrid's gap while Supervibes names it again: the gap dimmed and its button turning.
+    func testAreaPageNamingGap() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.areaDetail, actions: areaPageActions, onRead: {}, namingGap: true, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 640
+        )
+    }
+
+    /// A gap the person wrote, said so under it; and a goal whose name runs long, cut short before its status.
+    func testAreaPageGapWritten() {
+        var detail = Fixtures.areaDetail
+        detail.area.gap = AreaGap(title: "From tools that work to people who use them.", body: "",
+                                  by: .you, at: Fixtures.referenceNow.addingTimeInterval(-2 * 86400))
+        detail.goals[0].title = "Publish the housing playbook for Madrid’s institutions and the groups that work with them"
+        assertAppearances(
+            AreaPage(detail: detail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 1240
+        )
+    }
+
+    /// The gap being written: two fields in its place, Save and Cancel, and why it didn't save.
+    func testAreaPageWritingGap() {
+        assertAppearances(
+            AreaPage(detail: Fixtures.unreadAreaDetail, actions: areaPageActions, onRead: {},
+                     gapError: "Name the gap in a few words.", startsWritingGap: true, now: Fixtures.referenceNow)
+                .background(Theme.background),
+            width: 900, height: 700
         )
     }
 
@@ -320,18 +363,19 @@ final class SurfaceSnapshotTests: XCTestCase {
     func testAreaPageEditing() {
         assertAppearances(
             AreaPage(detail: Fixtures.areaDetail, otherGoals: Fixtures.lifeGoals.filter { $0.areaId != "madrid" },
-                     actions: areaPageActions, startsEditing: true)
+                     actions: areaPageActions, startsEditing: true, now: Fixtures.referenceNow)
                 .background(Theme.background),
-            width: 900, height: 1000
+            width: 900, height: 1080
         )
     }
 
-    /// An area just made: its read in its empty form, prompts for its words, and two ways to give it goals.
+    /// An area just made: prompts for its words, a gap that waits for them, its read in its empty form, and a list
+    /// with nothing in it yet but ways to give it goals.
     func testAreaPageNew() {
         assertAppearances(
             AreaPage(detail: Fixtures.newAreaDetail, actions: areaPageActions, onRead: {}, now: Fixtures.referenceNow)
                 .background(Theme.background),
-            width: 900, height: 1040
+            width: 900, height: 1120
         )
     }
 

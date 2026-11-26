@@ -22,6 +22,10 @@ final class AreaPageModel {
     private(set) var reading = false
     /// Why the last read didn't come back.
     private(set) var readError: String?
+    /// Supervibes is naming the area's gap.
+    private(set) var namingGap = false
+    /// Why the gap couldn't be named or saved.
+    private(set) var gapError: String?
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -84,6 +88,67 @@ final class AreaPageModel {
             Log.app.error("Area read: \(error.localizedDescription, privacy: .public)")
             readError = "Couldn’t read this area. Check your connection and try again."
         }
+    }
+
+    // MARK: The gap
+
+    /// Has Supervibes name the gap between where the area is and where the person wants it, replacing any. It takes a
+    /// few seconds, and needs both said.
+    func nameGap() async {
+        guard !namingGap else { return }
+        namingGap = true
+        gapError = nil
+        defer { namingGap = false }
+        do {
+            switch try await client.nameAreaGap(path: .init(id: id)) {
+            case .ok(let ok):
+                detail?.area.gap = AreaGap(api: try ok.body.json)
+            case .badRequest(let bad):
+                gapError = (try? bad.body.json.error.message) ?? "Couldn’t name the gap. Try again."
+            case .notFound:
+                detail = nil
+                load = .gone
+            case .unauthorized:
+                await auth.sessionEnded()
+            case .undocumented(let status, _):
+                gapError = "Couldn’t name the gap (the server answered \(status))."
+            }
+        } catch {
+            Log.app.error("Area gap: \(error.localizedDescription, privacy: .public)")
+            gapError = "Couldn’t name the gap. Check your connection and try again."
+        }
+    }
+
+    /// Saves the gap as the person wrote it, replacing any; true once saved.
+    func writeGap(_ input: GapInput) async -> Bool {
+        gapError = nil
+        if let problem = input.problem {
+            gapError = problem
+            return false
+        }
+        if let gap = detail?.area.gap, GapInput(editing: gap) == input { return true }
+        let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = input.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            switch try await client.writeAreaGap(path: .init(id: id), body: .json(.init(title: title, body: body))) {
+            case .ok(let ok):
+                detail?.area.gap = AreaGap(api: try ok.body.json)
+                return true
+            case .badRequest(let bad):
+                gapError = (try? bad.body.json.error.message) ?? "Couldn’t save the gap."
+            case .notFound:
+                detail = nil
+                load = .gone
+            case .unauthorized:
+                await auth.sessionEnded()
+            case .undocumented(let status, _):
+                gapError = "Couldn’t save the gap (the server answered \(status))."
+            }
+        } catch {
+            Log.app.error("Area gap: \(error.localizedDescription, privacy: .public)")
+            gapError = "Couldn’t save the gap. Check your connection and try again."
+        }
+        return false
     }
 
     // MARK: Changes
@@ -188,8 +253,15 @@ extension Area {
             now: area.now,
             want: area.want,
             status: area.status.flatMap { GoalStatus(rawValue: $0.rawValue) },
-            goalIds: area.goalIds
+            goalIds: area.goalIds,
+            gap: area.gap.map(AreaGap.init(api:))
         )
+    }
+}
+
+extension AreaGap {
+    init(api gap: Components.Schemas.AreaGap) {
+        self.init(title: gap.title, body: gap.body, by: gap.by == .you ? .you : .supervibes, at: gap.at)
     }
 }
 

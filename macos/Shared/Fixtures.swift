@@ -174,9 +174,21 @@ enum Fixtures {
         ]
     }
 
-    /// Madrid's page: its two goals, its last weeks as the worse of theirs each day, and its read from this morning.
+    /// Madrid's gap, as Supervibes named it this morning.
+    static var madridGap: AreaGap {
+        AreaGap(
+            title: "From a playbook people read to homes people find.",
+            body: "The playbook is out and the rent app works for one person. What’s missing is the step from tools to outcomes: institutions acting on the playbook, and friends landing a home through the app.",
+            by: .supervibes,
+            at: referenceNow.addingTimeInterval(-6 * 3600)
+        )
+    }
+
+    /// Madrid's page: its two goals, its last weeks as the worse of theirs each day, its gap and its read from this
+    /// morning.
     static var areaDetail: AreaDetail {
         var detail = unreadAreaDetail
+        detail.area.gap = madridGap
         detail.read = AreaRead(
             headline: "The playbook is live, but nobody has a home yet",
             summary: "The playbook went up on the 18th, and only refinement is left before it’s due Monday. The rent app is the gap: Jacob finds it useful, but there are no visits yet and Idealista access is unresolved. Madrid got 4 h of your last 7 days, for an area you’re growing.",

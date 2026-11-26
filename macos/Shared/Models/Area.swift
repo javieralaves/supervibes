@@ -14,6 +14,51 @@ struct Area: Identifiable, Hashable, Sendable {
     var status: GoalStatus?
     /// Its goals, in the goals' order.
     var goalIds: [String]
+    /// What stands between where it is and where they want it; nil until named or written.
+    var gap: AreaGap? = nil
+}
+
+/// The gap between where an area is and where the person wants it (src/lib/seasons.ts): a headline and a line or
+/// two on what closing it takes. One per area; Supervibes names it when asked, or the person writes it.
+struct AreaGap: Hashable, Sendable {
+    enum Author: String, Sendable { case supervibes, you }
+
+    var title: String
+    /// May be empty.
+    var body: String
+    var by: Author
+    /// When it was last named or written.
+    var at: Date
+}
+
+/// A gap as the person writes it (gapSchema in src/lib/season-schema.ts).
+struct GapInput: Hashable, Sendable {
+    var title = ""
+    var body = ""
+
+    static let maxTitle = 160
+    static let maxBody = 600
+
+    init(title: String = "", body: String = "") {
+        self.title = title
+        self.body = body
+    }
+
+    /// A gap as it is, for editing.
+    init(editing gap: AreaGap?) {
+        self.init(title: gap?.title ?? "", body: gap?.body ?? "")
+    }
+
+    /// The server's checks, with its messages, so they show before anything is sent.
+    var problem: String? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty { return "Name the gap in a few words." }
+        if title.count > Self.maxTitle { return "Keep it under \(Self.maxTitle) characters." }
+        if body.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxBody {
+            return "Keep it under \(Self.maxBody) characters."
+        }
+        return nil
+    }
 }
 
 /// A goal's area as its page shows it: enough to name it and link to it.
@@ -98,7 +143,7 @@ struct AreaInput: Hashable, Sendable {
             return "Keep where you are under \(Self.maxWords) characters."
         }
         if want.trimmingCharacters(in: .whitespacesAndNewlines).count > Self.maxWords {
-            return "Keep where you’re going under \(Self.maxWords) characters."
+            return "Keep where you want to be under \(Self.maxWords) characters."
         }
         return nil
     }
