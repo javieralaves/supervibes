@@ -236,7 +236,7 @@ struct AreaGapView: View {
             .padding(.vertical, 10)
             .background(Theme.card, in: .rect(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(focus == field ? Theme.foreground(0.6) : Theme.cardBorder, lineWidth: focus == field ? 1.5 : 1))
-            .onExitCommand { cancel() }
+            .onEscape { cancel() }
     }
 
     // MARK: Writing

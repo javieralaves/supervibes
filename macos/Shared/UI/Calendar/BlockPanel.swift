@@ -301,7 +301,7 @@ private struct TitleField: View {
                 isFocused = false
                 return .handled
             }
-            .onExitCommand {
+            .onEscape {
                 draft = block.title ?? ""
                 isFocused = false
             }
@@ -446,7 +446,7 @@ private struct DescriptionField: View {
                         isFocused = false
                         return .handled
                     }
-                    .onExitCommand {
+                    .onEscape {
                         if shown != nil {
                             onDropSuggestion()
                             return
@@ -1174,7 +1174,7 @@ private struct RecapDraftView: View {
                 Toggle(isOn: $markDone) {
                     Text("Also mark the task done").font(.app(13)).foregroundStyle(Theme.foreground)
                 }
-                .toggleStyle(.checkbox)
+                .checkboxToggleStyle()
                 .tint(Theme.foreground)
                 .padding(.top, 12)
             }

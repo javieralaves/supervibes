@@ -55,7 +55,7 @@ struct SessionPlanView: View {
                         .textFieldStyle(.plain)
                         .font(.callout)
                         .lineLimit(1...4)
-                        .placeholder("Add an aim", when: draft.isEmpty, font: .callout, color: Color(nsColor: .placeholderTextColor))
+                        .placeholder("Add an aim", when: draft.isEmpty, font: .callout, color: .systemPlaceholder)
                         .focused($aimFocused)
                         .onSubmit(saveAim)
                         .onChange(of: aimFocused) { if !aimFocused { saveAim() } }
@@ -78,7 +78,7 @@ struct SessionPlanView: View {
                     // About four lines at this width; shorter agendas show whole.
                     if agenda.text.count > 180 {
                         Button(isExpanded ? "Show less" : "Show more") { isExpanded.toggle() }
-                            .buttonStyle(.link)
+                            .linkButtonStyle()
                             .font(.caption)
                     }
                 }

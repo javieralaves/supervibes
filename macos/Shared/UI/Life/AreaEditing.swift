@@ -299,7 +299,7 @@ struct NewAreaDialog: View {
         }
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
         .onAppear { nameFocused = true }
-        .onExitCommand(perform: onCancel)
+        .onEscape(perform: onCancel)
     }
 
     private func save() {

@@ -326,7 +326,7 @@ private struct WeekObjective: View {
                     isFocused = false
                     return .handled
                 }
-                .onExitCommand {
+                .onEscape {
                     draft = week.objective ?? ""
                     isFocused = false
                 }

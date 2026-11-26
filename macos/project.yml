@@ -126,6 +126,44 @@ targets:
         Release:
           ENABLE_HARDENED_RUNTIME: YES
 
+  # Spike: the iPhone app. Shared, the API client, sign-in and the calendar model, with its own shell in iOS/.
+  SupervibesiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    sources:
+      - iOS
+      - Shared
+      - Supervibes/API
+      - Supervibes/Auth
+      - Supervibes/Calendar/CalendarModel.swift
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: $(SUPERVIBES_DISPLAY_NAME)
+        SupervibesBaseURL: $(SUPERVIBES_BASE_URL)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_NAME: $(SUPERVIBES_DISPLAY_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: $(SUPERVIBES_BUNDLE_ID).ios
+        TARGETED_DEVICE_FAMILY: "1"
+        # No iOS app icon yet.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: OpenAPIRuntime
+      - package: OpenAPIURLSession
+    buildToolPlugins:
+      - plugin: OpenAPIGenerator
+        package: OpenAPIGenerator
+
   # Runs without a host app, so tests never launch Supervibes itself.
   SupervibesTests:
     type: bundle.unit-test
@@ -162,3 +200,9 @@ schemes:
           parallelizable: true
     archive:
       config: Release
+  SupervibesiOS:
+    build:
+      targets:
+        SupervibesiOS: all
+    run:
+      config: Debug

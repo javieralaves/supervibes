@@ -260,7 +260,7 @@ struct TasksSection: View {
                 .placeholder(placeholder, when: title.wrappedValue.isEmpty, font: .app(15.2), color: Theme.muted.opacity(0.8))
                 .accessibilityLabel(placeholder)
                 .onSubmit { addTask(to: group) }
-                .onExitCommand { newTitles[group] = "" }
+                .onEscape { newTitles[group] = "" }
             if !title.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("↵ to add").appText(.xs).foregroundStyle(Theme.muted)
             }

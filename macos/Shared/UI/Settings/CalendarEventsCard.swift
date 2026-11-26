@@ -89,7 +89,7 @@ struct CalendarEventsCard: View {
                         Text(calendar.title).appText(.sm).foregroundStyle(Theme.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .toggleStyle(.checkbox)
+                    .checkboxToggleStyle()
                     .tint(Theme.foreground)
                     .frame(height: 32)
                 }

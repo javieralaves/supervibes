@@ -86,7 +86,7 @@ struct NewBlockPopover: View {
                 .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: 0.18)), radius: 16, y: 12)
         }
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
-        .onExitCommand {
+        .onEscape {
             if showsGoals {
                 back(to: .goal)
             } else if !suggestions.isEmpty {

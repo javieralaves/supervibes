@@ -67,7 +67,7 @@ struct SeasonDialog: View {
                 .shadow(color: .black.opacity(0.25), radius: 24, y: 16)
         }
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
-        .onExitCommand(perform: onCancel)
+        .onEscape(perform: onCancel)
     }
 
     private func dayField(_ label: String, day: String, edge: Edge) -> some View {

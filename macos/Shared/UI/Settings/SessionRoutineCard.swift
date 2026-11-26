@@ -95,7 +95,7 @@ struct SessionRoutineCard: View {
                 )) {
                     Text("Reopen them once it’s over").appText(.sm).foregroundStyle(Theme.foreground)
                 }
-                .toggleStyle(.checkbox)
+                .checkboxToggleStyle()
                 .tint(Theme.foreground)
             }
         }

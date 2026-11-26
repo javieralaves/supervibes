@@ -314,7 +314,7 @@ struct OpenTaskRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.wash.opacity(0.7), in: .rect(cornerRadius: 12))
         .onAppear { focus = .description }
-        .onExitCommand(perform: onClose)
+        .onEscape(perform: onClose)
         .onKeyPress(.return, phases: .down) { press in
             guard press.modifiers.contains(.command) else { return .ignored }
             onClose()

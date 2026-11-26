@@ -441,7 +441,7 @@ private struct NewAreaCard: View {
             try? await Task.sleep(for: .milliseconds(100))
             nameFocused = true
         }
-        .onExitCommand(perform: onDrop)
+        .onEscape(perform: onDrop)
     }
 }
 

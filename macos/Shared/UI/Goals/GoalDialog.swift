@@ -47,7 +47,7 @@ struct GoalDialog: View {
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
         .clipShape(.rect(cornerRadius: 20))
         .onAppear { titleFocused = true }
-        .onExitCommand(perform: onCancel)
+        .onEscape(perform: onCancel)
     }
 
     // MARK: Header: title, live badge, what done looks like, target date

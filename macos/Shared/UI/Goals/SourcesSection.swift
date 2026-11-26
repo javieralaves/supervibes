@@ -316,7 +316,7 @@ struct SourceDialog: View {
         }
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
         .onAppear { focused = true }
-        .onExitCommand(perform: onCancel)
+        .onEscape(perform: onCancel)
     }
 
     private func submit() {

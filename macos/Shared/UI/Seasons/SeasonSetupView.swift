@@ -137,7 +137,7 @@ struct ChooseAreasStep: View {
                     .placeholder("Name it", when: customName.isEmpty, font: .app(15.2, .semibold))
                     .focused($nameFocused)
                     .onSubmit(addCustom)
-                    .onExitCommand { naming = false; customName = "" }
+                    .onEscape { naming = false; customName = "" }
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
                     FlowSmallButton(icon: .add, title: "Add", action: addCustom)

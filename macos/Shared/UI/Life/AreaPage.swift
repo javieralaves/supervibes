@@ -122,7 +122,7 @@ struct AreaPage: View {
         }
         .scrollContentBackground(.hidden)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .onExitCommand { if isEditing { cancel() } }
+        .onEscape { if isEditing { cancel() } }
     }
 
     // MARK: Who it is

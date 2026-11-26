@@ -520,7 +520,9 @@ private struct OverlayHost: ViewModifier {
                 }
             }
             .background {
+#if os(macOS)
                 if !staticRendering { SecondaryClickWatcher(center: center) }
+#endif
             }
             .animation(staticRendering ? nil : .easeOut(duration: 0.14), value: center.presented != nil)
     }
@@ -720,6 +722,7 @@ private struct SubmenuPlacement: View {
     }
 }
 
+#if os(macOS)
 /// Catches right-clicks and Control-clicks in the overlay host's window and hands them to the overlay
 /// layer. Anything it doesn't open a menu for goes on as usual.
 private struct SecondaryClickWatcher: NSViewRepresentable {
@@ -775,6 +778,7 @@ private struct SecondaryClickWatcher: NSViewRepresentable {
         }
     }
 }
+#endif
 
 // MARK: - Placeholders
 

@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import SwiftUI
 
 /// What the Activity section asks of whoever owns the data.
@@ -281,7 +283,7 @@ private struct NoteCard: View {
                     save()
                     return .handled
                 }
-                .onExitCommand(perform: cancel)
+                .onEscape(perform: cancel)
             HStack {
                 Text("⌘↵ to save · Esc to cancel").appText(.xs).foregroundStyle(Theme.muted)
                 Spacer()
@@ -307,8 +309,12 @@ private struct NoteCard: View {
                 }
                 MenuItem(icon: .note, title: "Copy text") {
                     overlays.dismiss()
+                    #if os(macOS)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(note.body, forType: .string)
+                    #else
+                    UIPasteboard.general.string = note.body
+                    #endif
                 }
                 MenuItem(icon: .delete, title: "Delete", isDestructive: true) {
                     overlays.showDialog {
@@ -348,8 +354,13 @@ private struct NoteCard: View {
 /// which lands at the cursor and replaces any selection, and keep ⌘↵ for posting.
 @MainActor
 private func insertLineBreak() -> KeyPress.Result {
+    #if os(macOS)
     let inserted = NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
     return inserted ? .handled : .ignored
+    #else
+    // iOS keyboards insert the line break themselves.
+    return .ignored
+    #endif
 }
 
 /// A finished task or suggestion: a small filled tick before its title.

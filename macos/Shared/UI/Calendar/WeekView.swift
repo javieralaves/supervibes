@@ -177,9 +177,11 @@ struct WeekView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background {
+#if os(macOS)
             if scrolls, onScroll != nil {
                 ScrollWheelMonitor { event, inside in scrollWheel(event, inside: inside) }
             }
+#endif
         }
     }
 
@@ -201,6 +203,7 @@ struct WeekView: View {
     /// Not while time is being drawn or named, or a block dragged.
     private var canScroll: Bool { onScroll != nil && creating == nil && drawing == nil && dragging == nil }
 
+#if os(macOS)
     /// A scroll-wheel event over the week (`inside`), or one continuing a gesture that started
     /// there. Returns true when it moved the days, so the hours don't scroll too.
     private func scrollWheel(_ event: NSEvent, inside: Bool) -> Bool {
@@ -250,6 +253,7 @@ struct WeekView: View {
         }
         return true
     }
+#endif
 
     /// Slide the days by `dx` points (right is earlier). Past half a column the next day becomes
     /// the first, so the title, the overview and where it will settle follow as it goes. Beyond
@@ -857,6 +861,7 @@ private struct DraftOutline: View {
         .frame(width: 1400, height: 760)
 }
 
+#if os(macOS)
 /// Hands the window's scroll-wheel events to `onEvent` before anything else sees them, saying
 /// whether the pointer is over this view; when it returns true, nothing else gets the event.
 private struct ScrollWheelMonitor: NSViewRepresentable {
@@ -904,3 +909,4 @@ private struct ScrollWheelMonitor: NSViewRepresentable {
         coordinator.monitor = nil
     }
 }
+#endif

@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import AuthenticationServices
 import Foundation
 import Observation
@@ -102,7 +106,9 @@ final class AuthModel: NSObject {
         pendingState = nil
         authSession?.cancel()
         authSession = nil
+        #if os(macOS)
         NSApp.activate()
+        #endif
 
         if let error {
             if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
@@ -222,7 +228,13 @@ final class AuthModel: NSObject {
 extension AuthModel: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
+            #if os(macOS)
             NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible } ?? NSWindow()
+            #else
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let windows = scenes.flatMap(\.windows)
+            return windows.first(where: \.isKeyWindow) ?? windows.first ?? UIWindow(windowScene: scenes.first!)
+            #endif
         }
     }
 }

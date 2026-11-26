@@ -928,12 +928,14 @@ private struct BoardDragSource: ViewModifier {
                     .frame(width: 220, alignment: .leading)
                     .background(Theme.card, in: .rect(cornerRadius: 12))
             }
+            #if os(macOS)
             .onDragSessionUpdated { session in
                 switch session.phase {
                 case .initial, .active: onDragging(task.id)
                 default: onDragging(nil)
                 }
             }
+            #endif
     }
 }
 
@@ -1080,6 +1082,8 @@ private struct BoardColumnView<Card: View>: View {
             guard let id = ids.first, accepts(id), let target else { return }
             onDrop(id, target.before)
         }
+        // The live drop line and the forbidden cursor use the Mac's drag-session APIs; iOS drops without them.
+        #if os(macOS)
         .onDropSessionUpdated { session in
             switch session.phase {
             case .entering, .active:
@@ -1091,6 +1095,7 @@ private struct BoardColumnView<Card: View>: View {
             }
         }
         .dropConfiguration { _ in DropConfiguration(operation: canDrop ? .move : .forbidden) }
+        #endif
         .animation(.easeOut(duration: 0.12), value: isTargeted)
     }
 
@@ -1361,7 +1366,7 @@ private struct AddField: View {
                     onAdd(String(title.prefix(TaskItem.maxTitle)))
                     isFocused = true
                 }
-                .onExitCommand {
+                .onEscape {
                     text = ""
                     onClose()
                 }

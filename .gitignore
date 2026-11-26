@@ -45,6 +45,7 @@ next-env.d.ts
 /macos/build
 /macos/Config/Signing.local.xcconfig
 /macos/Supervibes/Info.plist
+/macos/iOS/Info.plist
 /macos/SupervibesWidgets/Info.plist
 /macos/SupervibesWidgets/SupervibesWidgets.entitlements
 /macos/Supervibes/Supervibes.entitlements
