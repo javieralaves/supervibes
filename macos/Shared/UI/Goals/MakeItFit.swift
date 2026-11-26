@@ -152,7 +152,7 @@ struct MakeItFitPanel: View {
 
     @ViewBuilder private var protectMore: some View {
         if sources.isEmpty {
-            Text("No free time left on \(dayName.lowercasedIfRelative), and no other goal has time to spare.")
+            Text("No free time left on \(dayName.lowercasedIfRelative), and no other project has time to spare.")
                 .font(.app(13)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)

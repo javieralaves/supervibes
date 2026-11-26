@@ -66,7 +66,7 @@ struct BlockPopover: View {
                     GoalButton(goal: goal) { showsGoals = true }
                         .focused($focus, equals: .goal)
                 } else {
-                    Text("Add a goal first.").appText(.sm).foregroundStyle(Theme.muted)
+                    Text("Add a project or practice first.").appText(.sm).foregroundStyle(Theme.muted)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text(timeLabel).appText(.xs).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
@@ -162,7 +162,7 @@ private struct GoalButton: View {
         .focusEffectDisabled()
         .onHover { isHovered = $0 }
         .help(goal.title)
-        .accessibilityLabel("Goal: \(goal.title). Change goal")
+        .accessibilityLabel("\(goal.isPractice ? "Practice" : "Project"): \(goal.title). Change it")
     }
 }
 

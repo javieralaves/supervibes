@@ -212,7 +212,7 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
     .select({ id: goals.id, title: goals.title, description: goals.description, targetDate: goals.targetDate })
     .from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.userId, userId)));
-  if (!goal) throw new ProgressError("That goal doesn't exist anymore.");
+  if (!goal) throw new ProgressError("That project doesn't exist anymore.");
 
   const apps = await openGoalApps(userId, goalId);
   // Completed-task entries are covered by the tasks themselves, below.
@@ -224,7 +224,7 @@ export async function assessGoal(userId: string, goalId: string, trigger: AiTrig
   }
 
   if (apps.usable.length === 0 && notes.length === 0 && !hasTasks) {
-    throw new ProgressError("None of this goal's apps could be reached. Reconnect them first.");
+    throw new ProgressError("None of this project's apps could be reached. Reconnect them first.");
   }
 
   const now = new Date();

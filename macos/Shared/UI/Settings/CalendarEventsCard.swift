@@ -62,7 +62,7 @@ struct CalendarEventsCard: View {
     private var description: String {
         switch access {
         case .allowed: "Listed in the Calendar’s events panel, ready to import one at a time. Nothing shows on your calendar until you import it."
-        default: "See your meetings beside your goals’ time, and import the ones that matter, one at a time."
+        default: "See your meetings beside your projects’ and practices’ time, and import the ones that matter, one at a time."
         }
     }
 
@@ -122,7 +122,7 @@ struct CalendarEventsCard: View {
         let selected = settings.goal(among: goals.map(\.id))
         let goal = goals.first { $0.id == selected }
         return Menu {
-            Picker("Goal", selection: Binding(
+            Picker("Project or practice", selection: Binding(
                 get: { selected ?? "" },
                 set: { id in
                     var new = settings

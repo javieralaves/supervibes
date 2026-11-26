@@ -20,7 +20,7 @@ export const goalInputSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give your goal a name.")
+    .min(1, "Give it a name.")
     .max(MAX_GOAL_TITLE, `Keep it under ${MAX_GOAL_TITLE} characters.`),
   icon: z.enum(GOAL_ICON_NAMES),
   color: z.enum(GOAL_COLOR_KEYS),

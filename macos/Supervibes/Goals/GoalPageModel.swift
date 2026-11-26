@@ -57,11 +57,11 @@ final class GoalPageModel {
             case .unauthorized:
                 await auth.sessionEnded()
             case .badRequest, .undocumented:
-                if load != .loaded { load = .failed("Couldn’t load this goal. Try again in a moment.") }
+                if load != .loaded { load = .failed("Couldn’t load this. Try again in a moment.") }
             }
         } catch {
             Log.app.error("Goal: \(error.localizedDescription, privacy: .public)")
-            if load != .loaded { load = .failed("Couldn’t load this goal. Check your connection and try again.") }
+            if load != .loaded { load = .failed("Couldn’t load this. Check your connection and try again.") }
         }
     }
 
@@ -269,7 +269,7 @@ final class GoalPageModel {
             try await areaAPI.setGoalArea(goalId: id, areaId: areaId)
             await refresh()
         } catch {
-            headerError = (error as? AreaAPIError)?.message ?? "Couldn’t change this goal’s area."
+            headerError = (error as? AreaAPIError)?.message ?? "Couldn’t change its area."
         }
     }
 
@@ -295,11 +295,11 @@ final class GoalPageModel {
                 await auth.sessionEnded()
                 return false
             case .undocumented(let status, _):
-                headerError = "Couldn’t delete this goal (the server answered \(status))."
+                headerError = "Couldn’t delete it (the server answered \(status))."
                 return false
             }
         } catch {
-            headerError = "Couldn’t delete this goal. Check your connection."
+            headerError = "Couldn’t delete it. Check your connection."
             return false
         }
     }
@@ -522,7 +522,7 @@ final class GoalPageModel {
                     detail?.sources.append(SourceItem(api: try created.body.json))
                     return nil
                 case .badRequest(let bad): return (try? bad.body.json.error.message) ?? "Check the form."
-                case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore."
+                case .notFound(let gone): return (try? gone.body.json.error.message) ?? "That project or practice doesn’t exist anymore."
                 case .unauthorized:
                     await auth.sessionEnded()
                     return "Sign in again."

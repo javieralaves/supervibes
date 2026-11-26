@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main>
       <h1>Supervibes</h1>
-      <p>Supervibes is a Mac app. Open it on your Mac to see your goals and calendar.</p>
+      <p>Supervibes is a Mac app. Open it on your Mac to see your projects, practices and calendar.</p>
     </main>
   );
 }

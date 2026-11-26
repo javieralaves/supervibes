@@ -621,7 +621,7 @@ struct SourceItem: Identifiable, Hashable, Sendable {
     /// The web's checks, so the same message shows before anything is sent.
     static func problem(_ relation: String) -> String? {
         let trimmed = relation.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count < minRelation { return "Say where to look and how it relates to this goal." }
+        if trimmed.count < minRelation { return "Say where to look and how it relates." }
         if trimmed.count > maxRelation { return "Keep it under 1,500 characters." }
         return nil
     }

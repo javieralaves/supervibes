@@ -216,10 +216,10 @@ final class AreaPageModel {
                 case .unauthorized:
                     await auth.sessionEnded()
                 case .undocumented(let status, _):
-                    error = "Couldn’t add that goal (the server answered \(status))."
+                    error = "Couldn’t add that (the server answered \(status))."
                 }
             } catch {
-                self.error = "Couldn’t add that goal. Check your connection."
+                self.error = "Couldn’t add that. Check your connection."
             }
         }
     }
@@ -234,7 +234,7 @@ final class AreaPageModel {
                 await refresh()
             } catch {
                 detail = before
-                self.error = (error as? AreaAPIError)?.message ?? "Couldn’t move that goal."
+                self.error = (error as? AreaAPIError)?.message ?? "Couldn’t move that."
             }
         }
     }

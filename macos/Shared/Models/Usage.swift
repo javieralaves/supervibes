@@ -153,7 +153,7 @@ struct UsageSummary: Sendable {
             .sorted { $0.total > $1.total }
         }
 
-        byGoal = Dictionary(grouping: calls) { $0.goalTitle ?? "Deleted goals" }
+        byGoal = Dictionary(grouping: calls) { $0.goalTitle ?? "Deleted projects and practices" }
             .map { GoalRow(title: $0.key, calls: $0.value.count, total: $0.value.reduce(0) { $0 + ($1.cost ?? 0) }) }
             // Ties go alphabetically, so the order doesn't shuffle between loads.
             .sorted { ($0.total, $1.title) > ($1.total, $0.title) }

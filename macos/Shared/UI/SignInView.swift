@@ -12,7 +12,7 @@ struct SignInView: View {
                 Text("Supervibes")
                     .font(.system(size: 34, weight: .semibold))
                     .tracking(-0.8)
-                Text("Sign in to see your goals, calendar and sessions.")
+                Text("Sign in to see your projects, practices, calendar and sessions.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

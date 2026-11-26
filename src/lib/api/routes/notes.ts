@@ -108,7 +108,7 @@ export const notes = new OpenAPIHono<ApiEnv>()
     const body = postBodySchema.safeParse(c.req.valid("json").body);
     if (!body.success) return c.json(apiError("invalid_request", body.error.issues[0]?.message ?? "Check the note."), 400);
     const post = await createPost(userId, id, body.data);
-    if (!post) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    if (!post) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
     // A new note should change the read; it runs after this returns, as on the web.
     await requestRead(userId, id, { trigger: "note" });
     return c.json(asNote(post), 201);

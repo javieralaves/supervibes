@@ -839,25 +839,20 @@ private struct DraftOutline: View {
 }
 
 #Preview("Week") {
-    @Previewable @State var showsOverview = true
-    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, span: .week, onSetSpan: { _ in },
-            showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, span: .week, onSetSpan: { _ in })
         .background(Theme.background)
         .frame(width: 1400, height: 760)
 }
 
 #Preview("Next 3 days") {
-    @Previewable @State var showsOverview = false
-    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: 0, span: .days(3), onSetSpan: { _ in },
-            showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: 0, span: .days(3), onSetSpan: { _ in })
         .background(Theme.background)
         .frame(width: 1400, height: 760)
 }
 
 #Preview("Next 5 days") {
-    @Previewable @State var showsOverview = false
     DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow, first: 0, span: .days(5), dayCount: 5,
-            onSetSpan: { _ in }, showsOverview: showsOverview, onToggleOverview: { showsOverview.toggle() })
+            onSetSpan: { _ in })
         .background(Theme.background)
         .frame(width: 1400, height: 760)
 }

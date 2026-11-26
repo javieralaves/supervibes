@@ -58,7 +58,7 @@ final class GoalsModel {
             }
         } catch {
             Log.app.error("Goals: \(error.localizedDescription, privacy: .public)")
-            if load != .loaded { load = .failed("Couldn’t load your goals. Check your connection and try again.") }
+            if load != .loaded { load = .failed("Couldn’t load your projects and practices. Check your connection and try again.") }
         }
         if let loaded = await areasLoaded { areas = loaded }
         if let loaded = await seasonsLoaded { seasons = loaded }
@@ -127,10 +127,10 @@ final class GoalsModel {
                     goals.removeAll { $0.id == pendingID }
                     await auth.sessionEnded()
                 case .undocumented(let status, _):
-                    fail(pendingID, "Couldn’t add that goal (the server answered \(status)).")
+                    fail(pendingID, "Couldn’t add that (the server answered \(status)).")
                 }
             } catch {
-                fail(pendingID, "Couldn’t add that goal. Check your connection.")
+                fail(pendingID, "Couldn’t add that. Check your connection.")
             }
         }
     }
@@ -197,11 +197,11 @@ final class GoalsModel {
                     await auth.sessionEnded()
                 case .undocumented(let status, _):
                     goals = before
-                    error = "Couldn’t delete that goal (the server answered \(status))."
+                    error = "Couldn’t delete that (the server answered \(status))."
                 }
             } catch {
                 goals = before
-                self.error = "Couldn’t delete that goal. Check your connection."
+                self.error = "Couldn’t delete that. Check your connection."
             }
         }
     }
@@ -285,7 +285,7 @@ final class GoalsModel {
             await refreshAreas()
         } catch {
             goals = before
-            self.error = (error as? AreaAPIError)?.message ?? "Couldn’t move that goal."
+            self.error = (error as? AreaAPIError)?.message ?? "Couldn’t move that."
         }
     }
 

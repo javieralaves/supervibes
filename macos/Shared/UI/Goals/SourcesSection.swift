@@ -23,7 +23,7 @@ struct SourcesSection: View {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Sources").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-                    Text("Where context for this goal lives, and how it relates.").appText(.sm).foregroundStyle(Theme.muted)
+                    Text("Where context for this \(goal.kind.noun) lives, and how it relates.").appText(.sm).foregroundStyle(Theme.muted)
                 }
                 Spacer()
                 if !options.isEmpty {
@@ -37,7 +37,7 @@ struct SourcesSection: View {
 
             if options.isEmpty {
                 // `rounded-2xl border border-dashed p-6`, with "Go to Connections" as an inline link.
-                Text("Connect Linear, GitHub or Granola first, then tell Supervibes where this goal’s context lives. **[Go to Connections](supervibes-app://connections)**")
+                Text("Connect Linear, GitHub or Granola first, then tell Supervibes where this \(goal.kind.noun)’s context lives. **[Go to Connections](supervibes-app://connections)**")
                     .appText(.sm)
                     .foregroundStyle(Theme.muted)
                     .tint(Theme.foreground)
@@ -49,7 +49,7 @@ struct SourcesSection: View {
                     .padding(24)
                     .dashedCard()
             } else if sources.isEmpty {
-                Text("No sources yet. Add one and describe, in your own words, where to look and how it relates to this goal.")
+                Text("No sources yet. Add one and describe, in your own words, where to look and how it relates to this \(goal.kind.noun).")
                     .appText(.sm).foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(24)
@@ -270,7 +270,7 @@ struct SourceDialog: View {
                     .padding(.top, 20)
                 Text("For “\(goal.title)”").appText(.sm).foregroundStyle(Theme.muted).padding(.top, 4)
 
-                Text("How does \(connection.label) relate to this goal?")
+                Text("How does \(connection.label) relate to this \(goal.kind.noun)?")
                     .appText(.sm, .medium).foregroundStyle(Theme.foreground)
                     .padding(.top, 24)
                 Text("Where to look, what counts, and what to ignore.")
@@ -284,7 +284,7 @@ struct SourceDialog: View {
                     .lineLimit(6...12)
                     .focused($focused)
                     .placeholder(connection.relationHint, when: relation.isEmpty, font: .app(14), color: Theme.muted.opacity(0.8))
-                    .accessibilityLabel("How \(connection.label) relates to this goal")
+                    .accessibilityLabel("How \(connection.label) relates to this \(goal.kind.noun)")
                     .onChange(of: relation) { error = nil }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)

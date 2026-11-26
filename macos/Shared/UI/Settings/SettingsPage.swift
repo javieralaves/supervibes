@@ -205,7 +205,7 @@ private struct UsageSection: View {
     }
 
     private var byGoal: some View {
-        TableCard(title: "By goal", columns: [.init("Goal", leading: true), .init("Calls"), .init("Total")]) {
+        TableCard(title: "By project or practice", columns: [.init("Project or practice", leading: true), .init("Calls"), .init("Total")]) {
             ForEach(summary.byGoal) { row in
                 GridRow {
                     Text(row.title).lineLimit(1).truncationMode(.tail)
@@ -222,7 +222,7 @@ private struct UsageSection: View {
     private var recent: some View {
         let calls = Array(summary.calls.prefix(25))
         return TableCard(title: "Recent calls", columns: [
-            .init("When", leading: true), .init("What", leading: true), .init("Goal", leading: true),
+            .init("When", leading: true), .init("What", leading: true), .init("For", leading: true),
             .init("In"), .init("Out"), .init("Tools"), .init("Time"), .init("Cost"),
         ]) {
             ForEach(calls) { call in

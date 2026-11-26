@@ -173,7 +173,7 @@ final class CalendarModel {
                     if isNewTask { Task { await model.refresh() } }
                 }
             case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t save that block.")
-            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That project or practice doesn’t exist anymore.")
             // Only an import sends an event, and drawing a block never does.
             case .conflict(let taken): return .failed((try? taken.body.json.error.message) ?? "That event is already on your calendar.")
             case .unauthorized: return .signedOut
@@ -219,7 +219,7 @@ final class CalendarModel {
                 let block = CalendarBlock(api: try created.body.json)
                 return .apply { model in model.replace(pendingId, with: block) }
             case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t import that event.")
-            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore.")
+            case .notFound(let gone): return .failed((try? gone.body.json.error.message) ?? "That project or practice doesn’t exist anymore.")
             case .conflict(let taken): return .failed((try? taken.body.json.error.message) ?? "That event is already on your calendar.")
             case .unauthorized: return .signedOut
             case .undocumented(let status, _): return .failed("Couldn’t import that event (the server answered \(status)).")
@@ -546,25 +546,6 @@ final class CalendarModel {
         setTimes(before, startsAt: shifted(before.startsAt, edge != .end), endsAt: shifted(before.endsAt, edge != .start))
     }
 
-    /// A goal's objective for a week; empty clears it. Returns an error to show, or nil.
-    func setObjective(_ goalId: String, weekStart: String, _ text: String) async -> String? {
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let before = data.objectives
-        data.objectives.removeAll { $0.goalId == goalId && $0.weekStart == weekStart }
-        if !value.isEmpty { data.objectives.append(.init(goalId: goalId, weekStart: weekStart, objective: value)) }
-        let error = await call { client in
-            switch try await client.setWeekObjective(path: .init(id: goalId, weekStart: weekStart), body: .json(.init(objective: value))) {
-            case .noContent: nil
-            case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t save that."
-            case .notFound: "That goal doesn’t exist anymore."
-            case .unauthorized: Self.signedOut
-            case .undocumented(let status, _): "Couldn’t save that (the server answered \(status))."
-            }
-        }
-        if error != nil { data.objectives = before }
-        return error
-    }
-
     /// The same time, a day later.
     func moveToTomorrow(_ blockId: String) {
         guard let before = block(blockId) else { return }
@@ -670,7 +651,7 @@ final class CalendarModel {
             switch try await client.reorderTasks(path: .init(id: goalId), body: .json(.init(ids: ids))) {
             case .noContent: return .done
             case .badRequest(let bad): return .failed((try? bad.body.json.error.message) ?? "Couldn’t reorder these tasks.")
-            case .notFound: return .failed("That goal doesn’t exist anymore.")
+            case .notFound: return .failed("That project or practice doesn’t exist anymore.")
             case .unauthorized: return .signedOut
             case .undocumented(let status, _): return .failed("Couldn’t reorder (the server answered \(status)).")
             }

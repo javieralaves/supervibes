@@ -172,7 +172,7 @@ export async function prepareRecap(userId: string, blockId: string): Promise<Blo
 
   const apps = await openGoalApps(userId, session.goalId);
   if (apps.sources.length > 0 && apps.usable.length === 0) {
-    throw new RecapError("None of this goal's apps could be reached. Reconnect them first.");
+    throw new RecapError("None of its connected apps could be reached. Reconnect them first.");
   }
   // With no apps to read, the person writes it up themselves.
   const recap =

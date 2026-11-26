@@ -283,33 +283,6 @@ struct DaySegment: Identifiable, Hashable, Sendable {
     }
 }
 
-extension CalendarData {
-    /// Each goal's time in the week starting `monday` days from today: all of it, and how much has
-    /// happened, in minutes (weekTotals).
-    func weekTotals(monday: Int, now: Date) -> [String: (planned: Double, done: Double)] {
-        var totals: [String: (planned: Double, done: Double)] = [:]
-        for block in blocks {
-            for segment in DaySegment.of(block, today: now) where segment.day >= monday && segment.day <= monday + 6 {
-                let midnight = CalendarDayMath.midnight(segment.day, from: now)
-                let from = midnight.addingTimeInterval(Double(segment.start) * 60)
-                let to = midnight.addingTimeInterval(Double(segment.end) * 60)
-                let elapsed = to > from ? min(max(now.timeIntervalSince(from) / to.timeIntervalSince(from), 0), 1) : 0
-                let minutes = Double(segment.end - segment.start)
-                var total = totals[block.goalId] ?? (0, 0)
-                total.planned += minutes
-                total.done += minutes * elapsed
-                totals[block.goalId] = total
-            }
-        }
-        return totals
-    }
-
-    /// Each goal's objective for the week starting on `weekStart`.
-    func objectives(weekStart: String) -> [String: String] {
-        Dictionary(objectives.filter { $0.weekStart == weekStart }.map { ($0.goalId, $0.objective) }, uniquingKeysWith: { a, _ in a })
-    }
-}
-
 /// "45m", "2h", "2h 30m".
 func durationLabel(_ minutes: Double) -> String {
     let h = Int(minutes / 60)
@@ -317,8 +290,8 @@ func durationLabel(_ minutes: Double) -> String {
     return h == 0 ? "\(m)m" : m == 0 ? "\(h)h" : "\(h)h \(m)m"
 }
 
-/// An open task as the task panel lists it, with its next block that hasn't ended: dragging the
-/// task moves that block rather than adding another.
+/// An open task with its next block that hasn't ended: dragging the task moves that block rather
+/// than adding another.
 struct PanelTask: Identifiable, Hashable, Sendable {
     let task: CalendarTask
     let block: CalendarBlock?
@@ -331,13 +304,6 @@ struct PanelTask: Identifiable, Hashable, Sendable {
     }
 
     var isPending: Bool { block?.isPending ?? false }
-}
-
-/// A goal's open tasks in the panel.
-struct PanelGroup: Identifiable, Hashable, Sendable {
-    let goal: CalendarGoal
-    let tasks: [PanelTask]
-    var id: String { goal.id }
 }
 
 extension CalendarData {
@@ -354,22 +320,6 @@ extension CalendarData {
 
     func panelTask(_ taskId: String, now: Date) -> PanelTask? {
         tasks.first { $0.id == taskId }.map { PanelTask(task: $0, block: nextBlocks(now: now)[taskId]) }
-    }
-
-    /// The panel: each goal's open tasks in your order. Those planned for the shown day come first,
-    /// ready to drag in; those already on the calendar last.
-    func panelGroups(day: Int, now: Date) -> [PanelGroup] {
-        let next = nextBlocks(now: now)
-        let shown = CalendarDay.today(CalendarDayMath.midnight(day, from: now))
-        func rank(_ t: PanelTask) -> Int { t.block != nil ? 2 : t.task.plannedFor == shown ? 0 : 1 }
-        return goals.compactMap { goal in
-            let mine = tasks.filter { $0.goalId == goal.id }.map { PanelTask(task: $0, block: next[$0.id]) }
-            guard !mine.isEmpty else { return nil }
-            let sorted = mine.enumerated().sorted { a, b in
-                rank(a.element) != rank(b.element) ? rank(a.element) < rank(b.element) : a.offset < b.offset
-            }.map(\.element)
-            return PanelGroup(goal: goal, tasks: sorted)
-        }
     }
 }
 

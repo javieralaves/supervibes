@@ -97,11 +97,11 @@ struct SessionPlanView: View {
                     SuggestedFocus(suggestion: suggestion, suggesting: suggesting, onUse: adopt, onAnother: another, onDismiss: dismiss)
                 } else {
                     QuietAction(title: suggesting ? "Suggesting…" : "Suggest a focus", systemImage: "scope", busy: suggesting, action: suggest)
-                        .help("Suggests an aim for this session, from the goal’s week, tasks, notes and latest read")
+                        .help("Suggests an aim for this session, from the project’s week, tasks, notes and latest read")
                 }
             } else {
                 QuietAction(title: planning ? "Planning…" : "Plan this session", systemImage: "checklist", busy: planning, action: plan)
-                    .help("A short plan for getting what this session is for, from the goal’s tasks, notes and latest read")
+                    .help("A short plan for getting what this session is for, from the project’s tasks, notes and latest read")
             }
 
             if let message = actionError ?? error {

@@ -150,7 +150,7 @@ struct BlockPanel: View {
                 // Once it says what it's for, planning is a quiet link: Tab only offers it while empty.
                 if tab == .plan, hasDescription {
                     QuietButton(icon: .checklist, title: "Plan session", action: prepare)
-                        .help("A short plan for getting what this session is for, from the goal’s tasks, notes and latest read")
+                        .help("A short plan for getting what this session is for, from the project’s tasks, notes and latest read")
                         .padding(.top, 4)
                 }
 
@@ -187,7 +187,7 @@ struct BlockPanel: View {
 
                 // Reserved time has no recap to write, nor has a session that didn't happen; one posted before still shows.
                 if ended, (block.isSession && !block.missed) || recapped {
-                    RecapSection(block: block, actions: actions).padding(.top, 24)
+                    RecapSection(block: block, noun: isPractice ? "practice" : "project", actions: actions).padding(.top, 24)
                 }
 
                 if block.isSession, !isPractice || block.agenda != nil {
@@ -526,7 +526,7 @@ private struct PropertyRows: View {
                 SourceRow(calendar: source.calendar, changed: sourceChanged)
             }
 
-            PropertyRow(title: goal?.title ?? "No goal", detail: goal?.isPractice == true ? "Practice" : nil, accessibility: "Goal",
+            PropertyRow(title: goal?.title ?? "No project", detail: goal?.isPractice == true ? "Practice" : nil, accessibility: "Project or practice",
                         isEnabled: calendar != nil && goals.count > 1) {
                 if let goal { GoalIconImage(name: goal.icon, size: 16) } else { Icon.target.image(size: 16) }
             } menu: {
@@ -1034,10 +1034,12 @@ private struct RelatedTask: View {
 
 // MARK: - Recap
 
-/// "Recap session" once a block has ended: a draft of what happened from the goal's connected apps,
-/// edited and posted to the goal's activity. Once posted, the recap itself shows here.
+/// "Recap session" once a block has ended: a draft of what happened from the project's or practice's
+/// connected apps, edited and posted to its activity. Once posted, the recap itself shows here.
 private struct RecapSection: View {
     let block: CalendarBlock
+    /// "project" or "practice", for the copy.
+    let noun: String
     let actions: BlockPanelActions?
 
     @State private var preparing = false
@@ -1045,7 +1047,7 @@ private struct RecapSection: View {
 
     var body: some View {
         if let posted = block.recapPost {
-            PostedRecapView(recap: posted) { actions?.openGoal(block.goalId) }
+            PostedRecapView(recap: posted, noun: noun) { actions?.openGoal(block.goalId) }
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 if (preparing || block.recapDrafting), block.recap == nil {
@@ -1057,7 +1059,7 @@ private struct RecapSection: View {
                         .id(recap.preparedAt)
                 } else {
                     FullPrimaryButton(title: "Recap session", action: prepare)
-                        .help("Draft what happened in this session from the goal’s connected apps")
+                        .help("Draft what happened in this session from the \(noun)’s connected apps")
                 }
                 if let error {
                     Text(error).appText(.sm).foregroundStyle(Theme.danger).padding(.top, 8)
@@ -1114,7 +1116,7 @@ private struct RecapDraftView: View {
         case .clear: return "Drafted from your connected apps. Edit anything before posting."
         case .partial: return "Drafted from what your connected apps show. Fill in the rest."
         case .none: return "Nothing in your connected apps from this session. Write what happened."
-        case .noSources: return "This goal has no connected apps. Write what happened."
+        case .noSources: return "There are no connected apps to draft from. Write what happened."
         }
     }
 
@@ -1217,6 +1219,7 @@ private struct RecapDraftView: View {
 /// A posted recap: what happened, clamped until asked for in full, and the links it kept.
 private struct PostedRecapView: View {
     let recap: PostedRecap
+    let noun: String
     let onOpenGoal: () -> Void
 
     @State private var expanded = false
@@ -1231,7 +1234,7 @@ private struct PostedRecapView: View {
                 Spacer()
                 Button(action: onOpenGoal) {
                     HStack(spacing: 2) {
-                        Text("View in goal").appText(.xs, .medium)
+                        Text("View in \(noun)").appText(.xs, .medium)
                         Icon.arrowRight.image(size: 13)
                     }
                     .foregroundStyle(linkHovered ? Theme.foreground : Theme.muted)

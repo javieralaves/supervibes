@@ -220,7 +220,7 @@ struct PlanningBoard: View {
                         .background(Theme.foreground(0.08), in: .rect(cornerRadius: 12))
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    ScopeTitle(title: single?.title ?? "All goals", anchor: $titleAnchor, action: showScopeMenu)
+                    ScopeTitle(title: single?.title ?? "All projects", anchor: $titleAnchor, action: showScopeMenu)
                     Text(subtitle)
                         .font(.app(14))
                         .foregroundStyle(Theme.muted)
@@ -237,9 +237,9 @@ struct PlanningBoard: View {
         if let goal = single { return goal.objective.map { "This week: \($0)" } ?? "No objective for this week yet." }
         let withTime = data.goals.filter { goal in goal.protectedBlocks.contains { CalendarDay.weekStart(CalendarDay.today($0.start)) == thisWeek } }.count
         switch withTime {
-        case 0: return "No goal has session time this week yet."
-        case 1: return "1 goal with session time this week."
-        default: return "\(withTime) goals with session time this week."
+        case 0: return "No project has session time this week yet."
+        case 1: return "1 project with session time this week."
+        default: return "\(withTime) projects with session time this week."
         }
     }
 
@@ -253,7 +253,7 @@ struct PlanningBoard: View {
                         .foregroundStyle(Theme.foreground)
                         .frame(width: 24, height: 24)
                         .background(Theme.foreground(0.08), in: .rect(cornerRadius: 6))
-                    Text("All goals").appText(.sm, .medium).foregroundStyle(Theme.foreground)
+                    Text("All projects").appText(.sm, .medium).foregroundStyle(Theme.foreground)
                 }
                 MenuSeparator()
                 ForEach(data.goals) { goal in
@@ -303,7 +303,7 @@ struct PlanningBoard: View {
         ScrollView(.horizontal) {
             VStack(alignment: .leading, spacing: Self.rowGap) {
                 HStack(alignment: .bottom, spacing: Self.rowGap) {
-                    Text("Goal").appText(.xs, .medium).foregroundStyle(Theme.muted)
+                    Text("Project").appText(.xs, .medium).foregroundStyle(Theme.muted)
                         .padding(.horizontal, 10)
                         .frame(width: Self.labelWidth, alignment: .leading)
                     ForEach(columns, id: \.self) { column in
@@ -646,7 +646,7 @@ private struct ScopeTitle: View {
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .modifier(AnchorReader(frame: $anchor))
-        .help("Show another goal, or all of them")
+        .help("Show another project, or all of them")
     }
 }
 

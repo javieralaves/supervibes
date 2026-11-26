@@ -770,13 +770,6 @@ final class SurfaceSnapshotTests: XCTestCase {
         )
     }
 
-    func testDayViewWithTasks() {
-        assertAppearances(
-            DayView(data: Fixtures.calendar, offset: 0, now: now, showsTasks: true, onToggleTasks: {}).background(Theme.background),
-            width: 1180, height: 560
-        )
-    }
-
     /// The Anytime strip by goal: a row each, over first, every one closed.
     func testDayStripByGoal() {
         assertAppearances(
@@ -947,20 +940,18 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     func testWeekView() {
         assertAppearances(
-            DayView(data: Fixtures.calendar, offset: 0, now: now, span: .week, onSetSpan: { _ in },
-                    showsOverview: true, onToggleOverview: {})
+            DayView(data: Fixtures.calendar, offset: 0, now: now, span: .week, onSetSpan: { _ in })
                 .background(Theme.background),
             width: 1400, height: 720
         )
     }
 
     func testWeekFromThursday() {
-        // Scrolled to start on a Thursday: the title runs Thursday to Wednesday, and the overview
-        // keeps to the Monday-to-Sunday week holding most of those days.
+        // Scrolled to start on a Thursday: the title runs Thursday to Wednesday.
         let thursday = CalendarDayMath.monday(of: 0, from: now) + 3
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, first: thursday, onScroll: { _ in },
-                    span: .week, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
+                    span: .week, onSetSpan: { _ in })
                 .background(Theme.background),
             width: 1400, height: 720
         )
@@ -994,7 +985,7 @@ final class SurfaceSnapshotTests: XCTestCase {
                                 defaultGoalId: "g1", lastRead: now, hovered: review.key)
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
-                    span: .days(5), onSetSpan: { _ in }, showsOverview: false, onToggleOverview: {},
+                    span: .days(5), onSetSpan: { _ in },
                     eventsPanel: AnyView(panel), showsEvents: true, onToggleEvents: {},
                     eventPreview: EventPreview(event: review, color: "sky", now: now))
                 .background(Theme.background),
@@ -1007,28 +998,27 @@ final class SurfaceSnapshotTests: XCTestCase {
         // the day's block cards.
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
-                    span: .days(3), onSetSpan: { _ in }, showsOverview: false, onToggleOverview: {})
+                    span: .days(3), onSetSpan: { _ in })
                 .background(Theme.background),
             width: 1400, height: 720
         )
     }
 
     func testFiveDaysFromToday() {
-        // Wednesday to Sunday, with the week's overview beside them.
+        // Wednesday to Sunday.
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
-                    span: .days(5), dayCount: 5, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
+                    span: .days(5), dayCount: 5, onSetSpan: { _ in })
                 .background(Theme.background),
             width: 1400, height: 720
         )
     }
 
     func testSevenDaysFromToday() {
-        // Wednesday to Tuesday, across the end of the week; the overview keeps to the Monday-to-Sunday
-        // week holding the middle day (Saturday's, Nov 16–22).
+        // Wednesday to Tuesday, across the end of the week.
         assertAppearances(
             DayView(data: Fixtures.calendar, offset: 0, now: now, first: 0, onScroll: { _ in },
-                    span: .days(7), dayCount: 7, onSetSpan: { _ in }, showsOverview: true, onToggleOverview: {})
+                    span: .days(7), dayCount: 7, onSetSpan: { _ in })
                 .background(Theme.background),
             width: 1400, height: 720
         )

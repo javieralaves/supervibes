@@ -99,12 +99,12 @@ struct TasksSection: View {
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Tasks").appText(.lg, .semibold, tracking: -0.02).foregroundStyle(Theme.foreground)
-                    Text("What you’ve decided to do for this goal, and when.").appText(.sm).foregroundStyle(Theme.muted)
+                    Text("What you’ve decided to do for this project, and when.").appText(.sm).foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 0)
                 if let plan = actions.plan {
                     SmallButton(icon: .calendarSmall, title: "Plan tasks", action: plan)
-                        .help("Plan this goal’s tasks across days and weeks")
+                        .help("Plan this project’s tasks across days and weeks")
                 }
             }
             .padding(.bottom, 16)

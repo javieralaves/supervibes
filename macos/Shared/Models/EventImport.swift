@@ -251,7 +251,7 @@ struct ImportChangeCopy: Hashable, Sendable {
             takeRemoves = true
             summary = "No longer in \(source.calendar)"
             if block.hasRecapPost {
-                body = "Its recap is posted to the goal’s activity, so the block stays as a record. Keeping it unlinks it from the event."
+                body = "Its recap is posted to its project’s or practice’s activity, so the block stays as a record. Keeping it unlinks it from the event."
                 keep = "Keep it"
                 keepFirst = true
             } else {

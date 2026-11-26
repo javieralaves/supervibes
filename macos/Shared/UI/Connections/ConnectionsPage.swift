@@ -20,13 +20,13 @@ struct ConnectionsPage: View {
             VStack(alignment: .leading, spacing: 0) {
                 PageHeader(
                     title: "Connections",
-                    lead: "Let Supervibes read activity from the apps where your work happens. Access is read-only, and you decide per goal what counts."
+                    lead: "Let Supervibes read activity from the apps where your work happens. Access is read-only, and you decide per project or practice what counts."
                 )
 
                 VStack(spacing: 12) {
                     switch notice {
                     case .connected(let label):
-                        Banner(text: "\(label) is connected. Add it as a source on any goal.").padding(.bottom, 12)
+                        Banner(text: "\(label) is connected. Add it as a source on any project or practice.").padding(.bottom, 12)
                     case .failed(let message):
                         Banner(text: message, tone: .error).padding(.bottom, 12)
                     case nil:
@@ -132,7 +132,7 @@ private struct ConnectionRow: View {
         overlays.showDialog {
             ConfirmDialog(
                 title: "Disconnect \(item.label)?",
-                message: "Supervibes will stop reading from \(item.label). Goal sources that use it will be removed, so progress reads won’t look there anymore. You can connect it again anytime.",
+                message: "Supervibes will stop reading from \(item.label). Sources that use it will be removed, so progress reads won’t look there anymore. You can connect it again anytime.",
                 confirmTitle: "Disconnect",
                 onCancel: { overlays.dismiss() },
                 onConfirm: {

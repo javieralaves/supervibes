@@ -268,7 +268,7 @@ private struct GoalStripTask: View {
         if let from = item.carriedFrom { lines.append("Planned from \(CalendarDay.relativeLabel(from, today: today))") }
         if item.due == .overdue, let due = item.task.dueOn { lines.append("Overdue since \(CalendarDay.relativeLabel(due, today: today))") }
         else if item.due == .due { lines.append("Due this day") }
-        if isPastTime { lines.append("Past the goal's time today") }
+        if isPastTime { lines.append("Past the project’s time today") }
         lines.append("Drag up or down to reorder, or onto the timeline to give it a time")
         return lines.joined(separator: "\n")
     }

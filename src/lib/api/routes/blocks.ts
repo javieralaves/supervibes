@@ -384,7 +384,7 @@ export const blocks = new OpenAPIHono<ApiEnv>()
     }
     if (kind !== "task") {
       const block = await createBlock(userId, { ...details, ...times, reserved: kind === "reserved", source: source?.data ?? null });
-      if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+      if (!block) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
       return c.json(asCalendarBlock(block, new Set()), 201);
     }
     // Time for a task: the one named, or a new one in the goal, sized to the block when it can be.
@@ -395,10 +395,10 @@ export const blocks = new OpenAPIHono<ApiEnv>()
       if (!title.success) return c.json(apiError("invalid_request", firstIssue(title.error)), 400);
       const minutes = taskMinutesSchema.safeParse(Math.round((times.endsAt.getTime() - times.startsAt.getTime()) / 60_000));
       task = await createTask(userId, details.goalId, title.data, minutes.success ? { minutes: minutes.data } : {});
-      if (!task) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+      if (!task) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
     }
     const block = await createBlock(userId, { goalId: task.goalId, title: task.title, taskId: task.id, ...times });
-    if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    if (!block) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
     await planTaskForBlock(userId, block);
     return c.json(asCalendarBlock(block, new Set()), 201);
   })
@@ -477,7 +477,7 @@ export const blocks = new OpenAPIHono<ApiEnv>()
       startsAt: new Date(when.data.startsAt),
       endsAt: new Date(when.data.endsAt),
     });
-    if (!block) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    if (!block) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
     await planTaskForBlock(userId, block);
     return c.json(asCalendarBlock(block, new Set()), 201);
   })
@@ -526,7 +526,7 @@ export const blocks = new OpenAPIHono<ApiEnv>()
         description: before.description,
         ...(minutes.success ? { minutes: minutes.data } : {}),
       });
-      if (!task) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+      if (!task) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
       // The description moves to the task, which describes its time from now on.
       block = await updateBlock(userId, blockId, { taskId: task.id, reserved: false, description: null });
       if (block) await planTaskForBlock(userId, block);

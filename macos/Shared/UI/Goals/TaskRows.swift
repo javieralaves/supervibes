@@ -241,7 +241,7 @@ struct TaskMenu: View {
             }
             if let onOpenGoal {
                 MenuSeparator()
-                MenuItem(icon: .target, title: "Open goal") { run(onOpenGoal) }
+                MenuItem(icon: .target, title: "Open project") { run(onOpenGoal) }
             }
             MenuSeparator()
             MenuItem(icon: .delete, title: "Delete", isDestructive: true) { run { actions.delete(task) } }

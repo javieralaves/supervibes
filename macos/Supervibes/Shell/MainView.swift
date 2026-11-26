@@ -160,7 +160,7 @@ private struct LifeScreen: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 ContentUnavailableView {
-                    Label("Couldn't load your goals", systemImage: "exclamationmark.triangle")
+                    Label("Couldn't load your projects and practices", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(message)
                 } actions: {
@@ -573,7 +573,7 @@ private struct GoalScreen: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             case .gone:
                 ContentUnavailableView {
-                    Label("This goal is gone", systemImage: "target")
+                    Label("This is gone", systemImage: "target")
                 } description: {
                     Text("It may have been deleted.")
                 } actions: {
@@ -581,7 +581,7 @@ private struct GoalScreen: View {
                 }
             case .failed(let message):
                 ContentUnavailableView {
-                    Label("Couldn't load this goal", systemImage: "exclamationmark.triangle")
+                    Label("Couldn't load this page", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(message)
                 } actions: {
@@ -751,12 +751,8 @@ private struct GoalScreen: View {
 /// The calendar with its data, in the app's window.
 private struct CalendarScreen: View {
     @State private var model: CalendarModel
-    /// The task panel beside the day: closed unless opened, remembered.
-    @AppStorage("sv-calendar-task-panel") private var showsTasks = false
     /// The count Next N days last showed, for the switch's button.
     @AppStorage(CalendarSpan.dayCountKey) private var dayCount = 3
-    /// The week's overview: open unless closed, remembered.
-    @AppStorage("sv-calendar-week-panel") private var weekPanel = "on"
     /// How tall an hour is in the day and in the week, as last pinched, remembered.
     @AppStorage("sv-calendar-day-hour") private var dayHour = Double(DayGrid.hour)
     @AppStorage("sv-calendar-week-hour") private var weekHour = Double(WeekGrid.hour)
@@ -940,8 +936,6 @@ private struct CalendarScreen: View {
                             remove: model.removePracticeSession
                         )
                     ),
-                    showsTasks: showsTasks,
-                    onToggleTasks: { showsTasks.toggle() },
                     selectedId: $selectedId,
                     panel: BlockPanelActions(
                         setReserved: model.setReserved,
@@ -961,9 +955,6 @@ private struct CalendarScreen: View {
                     span: span,
                     dayCount: CalendarSpan.dayCounts.contains(dayCount) ? dayCount : 3,
                     onSetSpan: setSpan,
-                    showsOverview: weekPanel != "off",
-                    onToggleOverview: { weekPanel = weekPanel == "off" ? "on" : "off" },
-                    setObjective: model.setObjective(_:weekStart:_:),
                     dayHour: Binding(get: { CGFloat(dayHour) }, set: { dayHour = Double($0) }),
                     weekHour: Binding(get: { CGFloat(weekHour) }, set: { weekHour = Double($0) }),
                     eventsPanel: AnyView(eventsPanel),

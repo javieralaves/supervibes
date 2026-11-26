@@ -50,9 +50,9 @@ struct AreaAPI {
         switch try await call({ try await client.setGoalArea(path: .init(id: goalId), body: .json(body)) }) {
         case .noContent: return
         case .unauthorized: throw await signedOut()
-        case .notFound(let gone): throw AreaAPIError((try? gone.body.json.error.message) ?? "That goal or area doesn’t exist anymore.")
-        case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t move that goal.")
-        case .undocumented(let status, _): throw AreaAPIError("Couldn’t move that goal (the server answered \(status)).")
+        case .notFound(let gone): throw AreaAPIError((try? gone.body.json.error.message) ?? "That project, practice or area doesn’t exist anymore.")
+        case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t move that.")
+        case .undocumented(let status, _): throw AreaAPIError("Couldn’t move that (the server answered \(status)).")
         }
     }
 

@@ -80,7 +80,7 @@ export const sources = new OpenAPIHono<ApiEnv>()
     const { id } = c.req.valid("param");
     const input = sourceInputSchema.safeParse(c.req.valid("json"));
     if (!input.success) return c.json(apiError("invalid_request", input.error.issues[0]?.message ?? "Check the form."), 400);
-    if (!(await getGoal(userId, id))) return c.json(apiError("not_found", "That goal doesn’t exist anymore."), 404);
+    if (!(await getGoal(userId, id))) return c.json(apiError("not_found", "That project or practice doesn’t exist anymore."), 404);
     const saved = await createSource(userId, id, input.data);
     const source = saved && (await findSource(userId, id, saved.id));
     if (!source) return c.json(apiError("not_saved", NOT_SAVED), 400);

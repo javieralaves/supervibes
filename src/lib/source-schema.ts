@@ -9,7 +9,7 @@ export const sourceInputSchema = z.object({
   relation: z
     .string()
     .trim()
-    .min(10, "Say where to look and how it relates to this goal.")
+    .min(10, "Say where to look and how it relates.")
     .max(MAX_RELATION, "Keep it under 1,500 characters."),
 });
 

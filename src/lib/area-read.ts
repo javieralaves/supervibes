@@ -110,7 +110,7 @@ export async function readArea(userId: string, areaId: string): Promise<AreaRead
   const area = await getArea(userId, areaId);
   if (!area) throw new AreaReadError("That area doesn't exist anymore.");
   const goals = (await listGoals(userId)).filter((goal) => goal.areaId === areaId);
-  if (goals.length === 0) throw new AreaReadError("Give this area a goal first, so there's something to read.");
+  if (goals.length === 0) throw new AreaReadError("Give this area a project or practice first, so there's something to read.");
 
   const now = new Date();
   const today = todayIn(await getTimeZone(userId), now);

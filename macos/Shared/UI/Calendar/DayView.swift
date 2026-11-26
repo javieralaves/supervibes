@@ -39,10 +39,6 @@ struct DayView: View {
     var onScroll: ((Int) -> Void)?
     /// Changing blocks; without it the day is read-only.
     var actions: CalendarActions?
-    /// The task panel beside the day.
-    var showsTasks = false
-    /// Shows or hides it; without it there's no toggle.
-    var onToggleTasks: (() -> Void)?
     /// The block whose panel is open on the right.
     var selectedId: Binding<String?> = .constant(nil)
     /// What the block panel can do; without it, clicking a block edits it in place.
@@ -53,11 +49,6 @@ struct DayView: View {
     var dayCount = 3
     /// Changes the view; without it there's no switch.
     var onSetSpan: ((CalendarSpan) -> Void)?
-    /// The week's overview panel, beside any of the multi-day views.
-    var showsOverview = false
-    var onToggleOverview: (() -> Void)?
-    /// Saves a goal's objective for a week; returns an error to show, or nil.
-    var setObjective: ((_ goalId: String, _ weekStart: String, _ text: String) async -> String?)?
     /// How tall an hour is in the day and in the week, as last pinched; without them each keeps its own.
     var dayHour: Binding<CGFloat>?
     var weekHour: Binding<CGFloat>?
@@ -88,10 +79,8 @@ struct DayView: View {
     init(data: CalendarData, offset: Int, now: Date, error: String? = nil, onStep: @escaping (Int) -> Void = { _ in },
          onToday: @escaping () -> Void = {}, first: Int? = nil, firstRange: ClosedRange<Int>? = nil,
          onScroll: ((Int) -> Void)? = nil, actions: CalendarActions? = nil, editing: BlockEditing? = nil,
-         showsTasks: Bool = false, onToggleTasks: (() -> Void)? = nil, selectedId: Binding<String?> = .constant(nil),
+         selectedId: Binding<String?> = .constant(nil),
          panel: BlockPanelActions? = nil, span: CalendarSpan = .day, dayCount: Int = 3, onSetSpan: ((CalendarSpan) -> Void)? = nil,
-         showsOverview: Bool = false, onToggleOverview: (() -> Void)? = nil,
-         setObjective: ((String, String, String) async -> String?)? = nil,
          dayHour: Binding<CGFloat>? = nil, weekHour: Binding<CGFloat>? = nil,
          eventsPanel: AnyView? = nil, showsEvents: Bool = false, onToggleEvents: (() -> Void)? = nil, eventChanges: Int = 0,
          eventsHelp: String = "Events from Google", eventPreview: EventPreview? = nil, importChanges: [String: ImportChange] = [:],
@@ -106,16 +95,11 @@ struct DayView: View {
         self.firstRange = firstRange
         self.onScroll = onScroll
         self.actions = actions
-        self.showsTasks = showsTasks
-        self.onToggleTasks = onToggleTasks
         self.selectedId = selectedId
         self.panel = panel
         self.span = span
         self.dayCount = dayCount
         self.onSetSpan = onSetSpan
-        self.showsOverview = showsOverview
-        self.onToggleOverview = onToggleOverview
-        self.setObjective = setObjective
         self.dayHour = dayHour
         self.weekHour = weekHour
         self.eventsPanel = eventsPanel
@@ -138,10 +122,9 @@ struct DayView: View {
     }
     /// The first of the days shown, in days from today: any day, once they've been scrolled.
     private var shownFirst: Int { first ?? (span == .week ? CalendarDayMath.monday(of: offset, from: now) : offset) }
-    /// The Monday-to-Sunday week the overview and the "This week" label go by: the one holding the
-    /// middle day shown (most of them, in the week), in days from today and as "YYYY-MM-DD".
+    /// The Monday-to-Sunday week the "This week" label goes by: the one holding the middle day shown
+    /// (most of them, in the week), in days from today.
     private var monday: Int { CalendarDayMath.monday(of: shownFirst + span.count / 2, from: now) }
-    private var weekStart: String { CalendarDay.today(CalendarDayMath.midnight(monday, from: now)) }
     /// Starting where Today puts it: this Monday-to-Sunday week, or today first.
     private var atHome: Bool { shownFirst == span.home(now: now) }
 
@@ -219,9 +202,6 @@ struct DayView: View {
                 span: onSetSpan != nil && width >= 1024 ? span : nil,
                 dayCount: dayCount,
                 onSetSpan: setSpan,
-                showsTasks: isMultiDay ? (onToggleOverview == nil ? nil : showsOverview) : (onToggleTasks == nil ? nil : showsTasks),
-                weekPanel: isMultiDay,
-                onToggleTasks: { if isMultiDay { onToggleOverview?() } else { onToggleTasks?() } },
                 showsEvents: onToggleEvents != nil && eventsPanel != nil && width >= 1024 ? showsEvents : nil,
                 eventChanges: eventChanges,
                 eventsHelp: eventsHelp,
@@ -271,10 +251,6 @@ struct DayView: View {
 
     private var dayLayout: some View {
         HStack(spacing: 16) {
-            if showsTasks {
-                TaskPanel(groups: data.panelGroups(day: offset, now: now), clock: clock, now: now)
-                    .frame(width: 288)
-            }
             day
             if let selected {
                 blockPanel(selected).frame(width: 320)
@@ -282,23 +258,13 @@ struct DayView: View {
                 eventsPanel.frame(width: 320)
             }
         }
-        .frame(maxWidth: showsTasks && hasRightPanel ? 1408 : showsTasks ? 1072 : hasRightPanel ? 1104 : 768)
+        .frame(maxWidth: hasRightPanel ? 1104 : 768)
         .padding(16)
         .frame(maxWidth: .infinity)
     }
 
     private var weekLayout: some View {
         HStack(spacing: 16) {
-            if showsOverview {
-                WeekOverview(
-                    goals: data.goals,
-                    totals: data.weekTotals(monday: monday, now: now),
-                    objectives: data.objectives(weekStart: weekStart),
-                    weekStart: weekStart,
-                    setObjective: setObjective
-                )
-                .frame(width: 288)
-            }
             VStack(spacing: 0) {
                 if let error {
                     Text(error).appText(.sm).foregroundStyle(Theme.danger)
@@ -345,8 +311,7 @@ struct DayView: View {
                 Rectangle().fill(Theme.cardBorder).frame(height: 1)
             }
             let rows = data.goalRows(day: offset, now: now)
-            // With nothing on it, the strip only shows when there are tasks beside it to drop in.
-            if !rows.isEmpty || showsTasks {
+            if !rows.isEmpty {
                 GoalStrip(
                     rows: rows,
                     blocks: data.nextBlocks(now: now),
@@ -461,11 +426,6 @@ struct CalendarTopBar: View {
     /// The count Next N days last showed, for its button while another view is on.
     var dayCount = 3
     var onSetSpan: (CalendarSpan) -> Void = { _ in }
-    /// Whether the view's panel is open (tasks beside a day, the overview beside a week); nil hides its toggle.
-    var showsTasks: Bool?
-    /// The week's panel rather than the day's.
-    var weekPanel = false
-    var onToggleTasks: () -> Void = {}
     /// Whether Calendar import's events panel is open; nil hides its button.
     var showsEvents: Bool?
     /// Imported events that changed since, as a count on the button.
@@ -485,13 +445,6 @@ struct CalendarTopBar: View {
         HStack(spacing: 12) {
             if let span {
                 ViewSwitch(span: span, dayCount: dayCount, onSet: onSetSpan)
-            }
-            if let showsTasks {
-                ToggleButton(icon: weekPanel ? .target : .checklist, isOn: showsTasks, action: onToggleTasks)
-                    .help(weekPanel
-                        ? (showsTasks ? "Hide the week’s overview" : "Show each goal’s objective and time this week")
-                        : (showsTasks ? "Hide tasks" : "Show tasks to drag onto the day"))
-                    .accessibilityLabel(weekPanel ? "This week’s overview" : "Tasks")
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title).font(.app(15, .semibold)).tracking(-0.15).foregroundStyle(Theme.foreground).lineLimit(1)
@@ -619,31 +572,6 @@ struct CalendarTopBar: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
-        }
-    }
-
-    /// The view's panel toggle: pressed, or a card button like the arrows.
-    private struct ToggleButton: View {
-        let icon: Icon
-        let isOn: Bool
-        let action: () -> Void
-        @State private var isHovered = false
-
-        var body: some View {
-            Button(action: action) {
-                icon.image(size: 16)
-                    .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
-                    .frame(width: 32, height: 32)
-                    .background {
-                        RoundedRectangle(cornerRadius: 8).fill(isOn ? Theme.foreground(0.06) : Theme.card)
-                            .shadow(color: Color(nsColor: .rgb(0x0f1114, alpha: isOn ? 0 : 0.05)), radius: 1, y: 1)
-                    }
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isOn || isHovered ? Theme.lineStrong : Theme.cardBorder))
-                    .contentShape(.rect(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
-            .accessibilityAddTraits(isOn ? .isSelected : [])
         }
     }
 
@@ -1379,7 +1307,7 @@ struct BlockMenu: View {
             }
             if let openGoal = actions.openGoal {
                 MenuSeparator()
-                MenuItem(icon: .target, title: "Open \(goal?.kind.noun ?? "goal")") { run { openGoal(block.goalId) } }
+                MenuItem(icon: .target, title: "Open \(goal?.kind.noun ?? "project")") { run { openGoal(block.goalId) } }
             }
             MenuSeparator()
             MenuItem(icon: .delete, title: "Remove", isDestructive: true) { run { actions.remove(block.id) } }
@@ -1698,9 +1626,7 @@ extension GoalPalette {
 }
 
 #Preview("Day") {
-    @Previewable @State var showsTasks = true
-    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow,
-            showsTasks: showsTasks, onToggleTasks: { showsTasks.toggle() })
+    DayView(data: Fixtures.calendar, offset: 0, now: Fixtures.referenceNow)
         .background(Theme.background)
         .frame(width: 1180, height: 760)
 }

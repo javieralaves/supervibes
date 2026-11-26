@@ -96,7 +96,7 @@ final class PlanBoardModel {
         return switch try await client.createBlock(body: .json(body)) {
         case .created: nil
         case .badRequest(let bad): (try? bad.body.json.error.message) ?? "Couldn’t protect that time."
-        case .notFound(let gone): (try? gone.body.json.error.message) ?? "That goal doesn’t exist anymore."
+        case .notFound(let gone): (try? gone.body.json.error.message) ?? "That project doesn’t exist anymore."
         // Only an import sends an event; protecting time never does.
         case .conflict(let taken): (try? taken.body.json.error.message) ?? "That event is already on your calendar."
         case .unauthorized: signedOut

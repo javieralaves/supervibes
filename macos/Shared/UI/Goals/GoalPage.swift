@@ -135,7 +135,7 @@ private struct GoalHeader: View {
                 Spacer()
                 RoundIconButton(icon: .more, action: openMenu)
                     .modifier(AnchorReader(frame: $menuAnchor))
-                    .accessibilityLabel("Goal options")
+                    .accessibilityLabel("Project options")
             }
 
             Text(goal.title)
@@ -193,11 +193,11 @@ private struct GoalHeader: View {
                     overlays.dismiss()
                     onUpdateStatus()
                 }
-                MenuItem(icon: .edit, title: "Edit goal") {
+                MenuItem(icon: .edit, title: "Edit project") {
                     overlays.dismiss()
                     onEdit()
                 }
-                MenuItem(icon: .delete, title: "Delete goal", isDestructive: true) {
+                MenuItem(icon: .delete, title: "Delete project", isDestructive: true) {
                     overlays.dismiss()
                     onDelete()
                 }
@@ -309,8 +309,8 @@ private struct WeekObjective: View {
                 .foregroundStyle(Theme.foreground(0.9))
                 .lineLimit(1...8)
                 .focused($isFocused)
-                .placeholder("What should this week move for this goal? (optional)", when: draft.isEmpty, font: .app(15.2))
-                .accessibilityLabel("What this week should move for this goal")
+                .placeholder("What should this week move for this project? (optional)", when: draft.isEmpty, font: .app(15.2))
+                .accessibilityLabel("What this week should move for this project")
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(isHovered || isFocused ? Theme.wash.opacity(0.6) : .clear, in: .rect(cornerRadius: 8))
