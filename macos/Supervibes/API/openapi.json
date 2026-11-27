@@ -2768,7 +2768,8 @@
               "stand_read",
               "quest_suggest",
               "season_read",
-              "quest_read"
+              "quest_read",
+              "plate_sort"
             ]
           },
           "trigger": {
@@ -3631,6 +3632,290 @@
           "line",
           "perWeek"
         ]
+      },
+      "SortedPlate": {
+        "type": "object",
+        "properties": {
+          "areas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortedArea"
+            }
+          }
+        },
+        "required": [
+          "areas"
+        ]
+      },
+      "SortedArea": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "Rocket01Icon",
+              "Target02Icon",
+              "Flag02Icon",
+              "Award01Icon",
+              "CrownIcon",
+              "SparklesIcon",
+              "Idea01Icon",
+              "MountainIcon",
+              "Briefcase01Icon",
+              "Task01Icon",
+              "ChartIncreaseIcon",
+              "Presentation01Icon",
+              "Building03Icon",
+              "Agreement01Icon",
+              "LaptopIcon",
+              "CodeIcon",
+              "PaintBoardIcon",
+              "PenTool01Icon",
+              "Edit02Icon",
+              "Book02Icon",
+              "Camera01Icon",
+              "Video01Icon",
+              "MusicNote01Icon",
+              "MagicWand01Icon",
+              "Layers01Icon",
+              "Megaphone01Icon",
+              "VoteIcon",
+              "JusticeScale01Icon",
+              "Globe02Icon",
+              "UserGroupIcon",
+              "Message01Icon",
+              "Dumbbell01Icon",
+              "RunningShoesIcon",
+              "Bicycle01Icon",
+              "SwimmingIcon",
+              "YogaIcon",
+              "HeartCheckIcon",
+              "BrainIcon",
+              "Moon02Icon",
+              "Medicine01Icon",
+              "Leaf01Icon",
+              "Mortarboard01Icon",
+              "BookOpen01Icon",
+              "LanguageSkillIcon",
+              "PiggyBankIcon",
+              "Money03Icon",
+              "Wallet01Icon",
+              "Coins01Icon",
+              "ChartLineData01Icon",
+              "SaleTag01Icon",
+              "Home01Icon",
+              "FavouriteIcon",
+              "Baby01Icon",
+              "CatIcon",
+              "Plant01Icon",
+              "Sofa01Icon",
+              "Coffee01Icon",
+              "ChefHatIcon",
+              "GiftIcon",
+              "PartyIcon",
+              "Airplane01Icon",
+              "Compass01Icon",
+              "MapsLocation01Icon",
+              "Beach02Icon",
+              "TentIcon",
+              "Car01Icon"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortedItem"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "icon",
+          "items"
+        ]
+      },
+      "SortedItem": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true,
+            "description": "A few words they said that help place it: a deadline, who it's with."
+          },
+          "perWeek": {
+            "type": "integer",
+            "nullable": true,
+            "description": "For a practice, times a week; null when they didn't say (ask before saving)."
+          },
+          "targetDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "For a project, the day they want it done by, if they said."
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "Rocket01Icon",
+              "Target02Icon",
+              "Flag02Icon",
+              "Award01Icon",
+              "CrownIcon",
+              "SparklesIcon",
+              "Idea01Icon",
+              "MountainIcon",
+              "Briefcase01Icon",
+              "Task01Icon",
+              "ChartIncreaseIcon",
+              "Presentation01Icon",
+              "Building03Icon",
+              "Agreement01Icon",
+              "LaptopIcon",
+              "CodeIcon",
+              "PaintBoardIcon",
+              "PenTool01Icon",
+              "Edit02Icon",
+              "Book02Icon",
+              "Camera01Icon",
+              "Video01Icon",
+              "MusicNote01Icon",
+              "MagicWand01Icon",
+              "Layers01Icon",
+              "Megaphone01Icon",
+              "VoteIcon",
+              "JusticeScale01Icon",
+              "Globe02Icon",
+              "UserGroupIcon",
+              "Message01Icon",
+              "Dumbbell01Icon",
+              "RunningShoesIcon",
+              "Bicycle01Icon",
+              "SwimmingIcon",
+              "YogaIcon",
+              "HeartCheckIcon",
+              "BrainIcon",
+              "Moon02Icon",
+              "Medicine01Icon",
+              "Leaf01Icon",
+              "Mortarboard01Icon",
+              "BookOpen01Icon",
+              "LanguageSkillIcon",
+              "PiggyBankIcon",
+              "Money03Icon",
+              "Wallet01Icon",
+              "Coins01Icon",
+              "ChartLineData01Icon",
+              "SaleTag01Icon",
+              "Home01Icon",
+              "FavouriteIcon",
+              "Baby01Icon",
+              "CatIcon",
+              "Plant01Icon",
+              "Sofa01Icon",
+              "Coffee01Icon",
+              "ChefHatIcon",
+              "GiftIcon",
+              "PartyIcon",
+              "Airplane01Icon",
+              "Compass01Icon",
+              "MapsLocation01Icon",
+              "Beach02Icon",
+              "TentIcon",
+              "Car01Icon"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "coral",
+              "amber",
+              "green",
+              "teal",
+              "sky",
+              "indigo",
+              "violet",
+              "pink",
+              "slate"
+            ]
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One-off things to do on a project, saved to Later."
+          }
+        },
+        "required": [
+          "title",
+          "kind",
+          "detail",
+          "perWeek",
+          "targetDate",
+          "icon",
+          "color",
+          "tasks"
+        ]
+      },
+      "PlateText": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          },
+          "timeZone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The device's time zone, for working out dates; defaults to the stored one."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "SavedPlate": {
+        "type": "object",
+        "properties": {
+          "areas": {
+            "type": "integer"
+          },
+          "projects": {
+            "type": "integer"
+          },
+          "practices": {
+            "type": "integer"
+          },
+          "tasks": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "areas",
+          "projects",
+          "practices",
+          "tasks"
+        ],
+        "description": "How much was made: new areas, projects, practices and tasks."
       }
     },
     "parameters": {}
@@ -8479,6 +8764,110 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/first-run/sort": {
+      "post": {
+        "operationId": "sortPlate",
+        "summary": "Sort what someone typed into areas, projects and practices; nothing is saved; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlateText"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SortedPlate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/first-run/save": {
+      "post": {
+        "operationId": "savePlate",
+        "summary": "Make a sorted plate: the areas not there yet, each project and practice in its area, and the projects' tasks",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SortedPlate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Made",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedPlate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
             "content": {
               "application/json": {
                 "schema": {

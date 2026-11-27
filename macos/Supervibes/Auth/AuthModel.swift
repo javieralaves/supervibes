@@ -175,6 +175,90 @@ final class AuthModel: NSObject {
         await signOut(message: "Your session ended. Sign in again.")
     }
 
+    #if DEBUG
+    // MARK: Development
+
+    /// The signed-in email, if known; the Develop menu shows it.
+    var signedInEmail: String? {
+        if case .signedIn(let email) = state { return email }
+        return nil
+    }
+
+    /// Your own account's email, while its session is kept aside for a test person; the Develop menu offers to
+    /// switch back to it.
+    private(set) var personalEmail: String? = UserDefaults.standard.string(forKey: AuthModel.personalEmailKey)
+
+    private static let personalEmailKey = "dev.personalEmail"
+
+    /// Where your own session waits while the app is signed in as a test person: beside the usual token file.
+    private var personalStore: any TokenStore { FileTokenStore(account: "\(baseURL.host() ?? "default")-personal") }
+
+    /// The throwaway people /api/dev/new-person makes.
+    static func isTestPerson(_ email: String?) -> Bool {
+        email?.lowercased().hasSuffix("@supervibes.test") ?? false
+    }
+
+    /// Debug builds only: signs in as a brand-new throwaway person made by the local server (POST /api/dev/new-person,
+    /// which answers only under `next dev` with DEV_NEW_PERSON=1), to go through first run from the start. Your own
+    /// account's session is kept aside, not signed out, so switching back needs no Google sign-in; a test person's is
+    /// signed out, since there's nothing to go back to.
+    func startAsNewPerson() async {
+        if let email = signedInEmail, !Self.isTestPerson(email), let token = store.read() {
+            try? personalStore.write(token)
+            personalEmail = email
+            UserDefaults.standard.set(email, forKey: Self.personalEmailKey)
+            store.delete()
+        } else {
+            await signOut()
+        }
+        // A plain spinner while the person is made, rather than the sign-in screen's "Waiting for Google".
+        state = .checking
+        var request = URLRequest(url: baseURL.appending(path: "api/dev/new-person"))
+        request.httpMethod = "POST"
+        do {
+            let (data, response) = try await http.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else { throw AuthError.server(status) }
+            let person = try JSONDecoder().decode(NewPerson.self, from: data)
+            try store.write(person.token)
+            state = .signedIn(email: person.email)
+            Log.auth.info("Started as a new person, \(person.name, privacy: .public)")
+        } catch {
+            Log.auth.error("Couldn't start as a new person: \(error.localizedDescription, privacy: .public)")
+            state = .signedOut(message: "Couldn’t start as someone new. Is the local server running with DEV_NEW_PERSON=1?")
+        }
+    }
+
+    /// Debug builds only: back to your own account from a test person, with the session kept aside when the app
+    /// started as someone new. The test person is signed out. With no session kept (or one that's ended), it opens
+    /// the usual Google sign-in instead.
+    func switchToPersonal() async {
+        if Self.isTestPerson(signedInEmail) { await signOut() }
+        guard let token = personalStore.read() else {
+            signIn()
+            return
+        }
+        state = .checking
+        do {
+            if let email = try await sessionEmail(token: token) {
+                try store.write(token)
+                personalStore.delete()
+                state = .signedIn(email: email)
+                Log.auth.info("Switched back to your own account")
+            } else {
+                personalStore.delete()
+                personalEmail = nil
+                UserDefaults.standard.removeObject(forKey: Self.personalEmailKey)
+                Log.auth.notice("Your kept session had ended; signing in again")
+                signIn()
+            }
+        } catch {
+            Log.auth.error("Couldn't switch back: \(error.localizedDescription, privacy: .public)")
+            state = .signedOut(message: "Couldn’t switch back. Is the local server running?")
+        }
+    }
+    #endif
+
     // MARK: Server calls
 
     /// Trades the one-time token from the sign-in sheet for this app's session token.
@@ -252,6 +336,14 @@ enum AuthError: LocalizedError {
 private struct OneTimeToken: Codable {
     let token: String
 }
+
+#if DEBUG
+private struct NewPerson: Decodable {
+    let token: String
+    let email: String
+    let name: String
+}
+#endif
 
 private struct SessionPayload: Decodable {
     struct User: Decodable { let email: String }

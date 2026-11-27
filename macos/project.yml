@@ -138,7 +138,9 @@ targets:
       - iOS
       - Shared
       - Supervibes/API
-      - Supervibes/Auth
+      - path: Supervibes/Auth
+        excludes:
+          - DevelopCommands.swift # the Mac's Develop menu, which needs the Mac-only FirstRunModel
       - Supervibes/Calendar/CalendarModel.swift
     info:
       path: iOS/Info.plist

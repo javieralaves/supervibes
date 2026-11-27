@@ -11,6 +11,7 @@ import { PracticeError } from "@/lib/goals";
 import { blocks } from "@/lib/api/routes/blocks";
 import { calendar } from "@/lib/api/routes/calendar";
 import { connections } from "@/lib/api/routes/connections";
+import { firstRun } from "@/lib/api/routes/first-run";
 import { goals } from "@/lib/api/routes/goals";
 import { me } from "@/lib/api/routes/me";
 import { notes } from "@/lib/api/routes/notes";
@@ -75,6 +76,7 @@ api.route("/", usage);
 api.route("/", areas);
 api.route("/", practices);
 api.route("/", seasonRoutes);
+api.route("/", firstRun);
 
 api.notFound((c) => c.json(apiError("not_found", "There's nothing here."), 404));
 
