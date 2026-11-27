@@ -5,8 +5,10 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, errorResponses } from "@/lib/api/errors";
 import { AreaLimitError } from "@/lib/areas";
-import { FirstRunError, MAX_PLATE_TEXT, savePlate, sortedAreaSchema, sortedItemSchema, sortPlate } from "@/lib/first-run";
+import { FirstRunError, MAX_PLATE_TEXT, savePlate, sortedAreaSchema, sortedItemSchema, sortPlate, startFirstSeason } from "@/lib/first-run";
 import { GoalLimitError } from "@/lib/goals";
+import { MAX_QUESTS, questWordsSchema } from "@/lib/season-schema";
+import { SeasonError } from "@/lib/seasons";
 import { getTimeZone } from "@/lib/settings";
 import { timeZoneSchema } from "@/lib/settings-schema";
 import { todayIn } from "@/lib/target-date";
@@ -62,8 +64,55 @@ const saveRoute = createRoute({
   responses: { 201: json(SavedPlateSchema, "Made"), ...errorResponses },
 });
 
+const FirstSeasonInputSchema = z
+  .object({
+    focus: z
+      .array(
+        z.object({
+          goalId: z.uuid(),
+          title: questWordsSchema.shape.title.openapi({ description: "The quest's name, as named on its card; starts as the goal's title." }),
+        }),
+      )
+      .min(1)
+      .max(MAX_QUESTS)
+      .openapi({ description: "The focuses in order, each a project or practice in its own area." }),
+    waiting: z.array(z.uuid()).openapi({ description: "What waits for next season. Its practices are paused until the season ends." }),
+  })
+  .openapi("FirstSeasonInput");
+
+const FirstSeasonSchema = z
+  .object({
+    id: z.string(),
+    startsOn: z.iso.date(),
+    endsOn: z.iso.date().openapi({ description: "Its last day, included." }),
+    quests: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            goalId: z.string().openapi({ description: "The one project or practice that moves it." }),
+            title: z.string(),
+            position: z.int().openapi({ description: "Its number in the season, 1 first." }),
+          })
+          .openapi("FirstSeasonQuest"),
+      )
+      .openapi({ description: "In order." }),
+  })
+  .openapi("FirstSeason");
+
+const seasonRoute = createRoute({
+  method: "post",
+  path: "/first-run/season",
+  operationId: "startFirstSeason",
+  summary: "Route 2: make a season from up to three focuses, each its own area's quest, start it, and pause what waits",
+  security: secured,
+  request: { body: { content: { "application/json": { schema: FirstSeasonInputSchema } } } },
+  responses: { 201: json(FirstSeasonSchema, "Started"), ...errorResponses },
+});
+
 function failure(error: unknown) {
   if (error instanceof FirstRunError) return apiError("first_run", error.message);
+  if (error instanceof SeasonError) return apiError(error.code, error.message);
   if (error instanceof GoalLimitError || error instanceof AreaLimitError) return apiError("limit", error.message);
   throw error;
 }
@@ -82,6 +131,14 @@ export const firstRun = new OpenAPIHono<ApiEnv>()
   .openapi(saveRoute, async (c) => {
     try {
       return c.json(await savePlate(c.var.user.id, c.req.valid("json")), 201);
+    } catch (error) {
+      return c.json(failure(error), 400);
+    }
+  })
+  .openapi(seasonRoute, async (c) => {
+    const userId = c.var.user.id;
+    try {
+      return c.json(await startFirstSeason(userId, c.req.valid("json"), todayIn(await getTimeZone(userId))), 201);
     } catch (error) {
       return c.json(failure(error), 400);
     }

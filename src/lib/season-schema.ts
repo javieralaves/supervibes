@@ -162,6 +162,28 @@ export const START_MESSAGES: Record<StartProblem, string> = {
   quest_without_goals: "Give each quest a project or practice to move it.",
 };
 
+export type FocusProblem = "no_focus" | "too_many_focus" | "focus_without_area" | "focus_area_taken";
+
+/**
+ * Why first run's focuses can't become a season, or null when they can: one to three projects or practices, each in an
+ * area, no two in the same one (a season has one quest an area, and each focus becomes its area's quest).
+ */
+export function focusProblem(focus: { areaId: string | null }[]): FocusProblem | null {
+  if (focus.length === 0) return "no_focus";
+  if (focus.length > MAX_QUESTS) return "too_many_focus";
+  if (focus.some((f) => !f.areaId)) return "focus_without_area";
+  if (new Set(focus.map((f) => f.areaId)).size < focus.length) return "focus_area_taken";
+  return null;
+}
+
+/** What each focus problem says to the person. */
+export const FOCUS_MESSAGES: Record<FocusProblem, string> = {
+  no_focus: "Choose something to focus on.",
+  too_many_focus: `Choose up to ${MAX_QUESTS} things to focus on.`,
+  focus_without_area: "Each focus needs to be in one of your areas.",
+  focus_area_taken: "Choose one focus from each area.",
+};
+
 /** The usual life areas, offered when choosing a season's areas. A fixed list, not AI. */
 export const POPULAR_AREAS = [
   { name: "Health", icon: "FavouriteIcon", line: "Your body, energy and how you look after them." },

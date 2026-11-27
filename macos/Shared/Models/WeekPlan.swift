@@ -34,6 +34,12 @@ struct WeekPlan: Hashable, Sendable {
     var open: Set<String> = []
     var stage: Stage = .calendar
     var calendar: CalendarState = .ready
+    /// Route 2's quests, first on the plate; none in Route 1.
+    var quests: [WeekQuest] = []
+    /// What waits for next season, left off the plate.
+    var waiting: Set<String> = []
+    /// The route's row of steps; the week is its last.
+    var steps: [String] = FirstRunChoice.week.steps
 
     /// The seven days, Monday first.
     var days: [Date] { (0..<7).map { Calendar.current.date(byAdding: .day, value: $0, to: monday) ?? monday } }
@@ -61,8 +67,18 @@ struct WeekPlan: Hashable, Sendable {
 
     func goal(_ id: String) -> CalendarGoal? { goals.first { $0.id == id } }
 
-    var projects: [CalendarGoal] { goals.filter { !$0.isPractice } }
-    var practices: [CalendarGoal] { goals.filter(\.isPractice) }
+    /// What can be given time this week: everything but what waits for next season.
+    var activeGoals: [CalendarGoal] { goals.filter { !waiting.contains($0.id) } }
+    var projects: [CalendarGoal] { activeGoals.filter { !$0.isPractice } }
+    var practices: [CalendarGoal] { activeGoals.filter(\.isPractice) }
+
+    /// The quest a project or practice moves.
+    func quest(for goalId: String) -> WeekQuest? { quests.first { $0.goalId == goalId } }
+
+    /// A project's hours or a practice's count this week: "3h 30m", "2 of 3 this week".
+    func meta(_ goal: CalendarGoal) -> String {
+        goal.isPractice ? "\(count(for: goal.id)) of \(goal.perWeek ?? 1) this week" : Self.hours(minutes(for: goal.id))
+    }
 
     /// A project's minutes this week, sessions and reserved alike.
     func minutes(for goalId: String) -> Int {

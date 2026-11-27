@@ -8,6 +8,8 @@ struct FirstRunWhatMatters: View {
     /// The season's last day, for "until February".
     let seasonEnd: Date
     var hovered: FirstRunChoice?
+    /// Why the way chosen couldn't open.
+    var error: String?
     let onBack: () -> Void
     let onChoose: (FirstRunChoice) -> Void
 
@@ -65,7 +67,11 @@ struct FirstRunWhatMatters: View {
         } footer: {
             FlowButton(title: "Back", action: onBack)
             Spacer()
-            Text("Whichever you choose, you’ll plan your week next").appText(.sm).foregroundStyle(Theme.muted)
+            if let error {
+                Text(error).appText(.sm).foregroundStyle(StatusTone.text(.offTrack))
+            } else {
+                Text("Whichever you choose, you’ll plan your week next").appText(.sm).foregroundStyle(Theme.muted)
+            }
         } backdrop: {
             FloatingPlate(items: plate.items)
         }

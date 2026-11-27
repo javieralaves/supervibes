@@ -7,8 +7,11 @@ import { answerText, askWithApps } from "@/lib/goal-apps";
 import { GOAL_COLOR_KEYS, type GoalColor } from "@/lib/goal-colors";
 import { GOAL_ICON_NAMES, type GoalIconName } from "@/lib/goal-icons";
 import { MAX_GOAL_TITLE } from "@/lib/goal-schema";
-import { createGoal } from "@/lib/goals";
-import { POPULAR_AREAS } from "@/lib/season-schema";
+import { createGoal, listGoals } from "@/lib/goals";
+import { pausePractice } from "@/lib/practice";
+import { FOCUS_MESSAGES, focusProblem, POPULAR_AREAS } from "@/lib/season-schema";
+import { createDraft, deleteDraft, listQuests, setQuestGoals, startSeason, updateQuest, upsertCandidate } from "@/lib/seasons";
+import { addDays } from "@/lib/target-date";
 import { createTask } from "@/lib/tasks";
 
 /*
@@ -178,4 +181,57 @@ export async function savePlate(userId: string, plate: SortedPlate): Promise<Sav
     }
   }
   return saved;
+}
+
+export type FirstSeason = {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  quests: { id: string; goalId: string; title: string; position: number }[];
+};
+
+/**
+ * Route 2, the next few months: makes a season from up to three focuses and starts it. Each focus becomes a quest in
+ * its area, named as the person named it on its card, moved by that one project or practice; a quest here comes from
+ * the choice, not from a gap, so it has no "from" and no reach yet. Practices left to wait for next season are paused
+ * until the day after it ends. (Projects that wait are only kept on the Mac for now.) Runs as the default season: 13
+ * weeks from next Monday, as the app shows it.
+ */
+export async function startFirstSeason(
+  userId: string,
+  input: { focus: { goalId: string; title: string }[]; waiting: string[] },
+  today: string,
+): Promise<FirstSeason> {
+  const goals = new Map((await listGoals(userId)).map((g) => [g.id, g]));
+  const picked = input.focus.map((f) => ({ title: f.title.trim(), goal: goals.get(f.goalId) }));
+  if (picked.some((p) => !p.goal)) throw new FirstRunError("One of those projects or practices doesn’t exist anymore.");
+  const problem = focusProblem(picked.map((p) => ({ areaId: p.goal!.areaId })));
+  if (problem) throw new FirstRunError(FOCUS_MESSAGES[problem]);
+
+  // A draft they're already setting up stays theirs: createDraft says so rather than replacing it.
+  const season = await createDraft(userId, today);
+  try {
+    for (const { title, goal } of picked) {
+      const questId = await upsertCandidate(userId, season.id, goal!.areaId!, { title: title || goal!.title, fromText: "", reach: 0 });
+      await updateQuest(userId, questId, { chosen: true });
+      await setQuestGoals(userId, questId, [goal!.id]);
+    }
+    await startSeason(userId, season.id, today);
+  } catch (error) {
+    await deleteDraft(userId, season.id);
+    throw error;
+  }
+
+  const focusIds = new Set(picked.map((p) => p.goal!.id));
+  for (const id of new Set(input.waiting)) {
+    if (goals.get(id)?.kind === "practice" && !focusIds.has(id)) await pausePractice(userId, id, today, addDays(season.endsOn, 1));
+  }
+
+  const quests = await listQuests(userId, season.id);
+  return {
+    id: season.id,
+    startsOn: season.startsOn,
+    endsOn: season.endsOn,
+    quests: quests.map((q) => ({ id: q.id, goalId: q.goalIds[0]!, title: q.title, position: q.position })),
+  };
 }

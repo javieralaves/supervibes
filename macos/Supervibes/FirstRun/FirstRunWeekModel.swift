@@ -16,6 +16,10 @@ final class FirstRunWeekModel {
     private(set) var open: Set<String>
 
     let monday: Date
+    /// Route 2's quests and what waits for next season; none in Route 1.
+    let quests: [WeekQuest]
+    let waiting: Set<String>
+    let steps: [String]
     @ObservationIgnored let calendar: CalendarModel
     @ObservationIgnored private let feed: EventFeed
     @ObservationIgnored private var placedProject = false
@@ -23,9 +27,12 @@ final class FirstRunWeekModel {
 
     private static let openKey = "firstRun.openSeries"
 
-    init(auth: AuthModel, feed: EventFeed) {
+    init(auth: AuthModel, feed: EventFeed, quests: [WeekQuest] = [], waiting: Set<String> = [], steps: [String] = FirstRunChoice.week.steps) {
         calendar = CalendarModel(auth: auth, span: .week)
         self.feed = feed
+        self.quests = quests
+        self.waiting = waiting
+        self.steps = steps
         monday = WeekPlan.weekToPlan(from: .now)
         open = Set(UserDefaults.standard.stringArray(forKey: Self.openKey) ?? [])
     }
@@ -46,6 +53,9 @@ final class FirstRunWeekModel {
         var plan = WeekPlan(monday: monday, events: events, blocks: blocks, goals: calendar.data.goals)
         plan.open = open
         plan.stage = stage
+        plan.quests = quests
+        plan.waiting = waiting
+        plan.steps = steps
         plan.calendar = switch feed.access {
         case .notAsked: .notAsked
         case .denied: .denied

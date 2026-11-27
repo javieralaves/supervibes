@@ -33,7 +33,7 @@ struct FirstRunWeek: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            FirstRunSteps(current: 3)
+            FirstRunSteps(current: plan.steps.count - 1, steps: plan.steps)
             HStack(spacing: 12) {
                 Text("Your week ahead").font(.app(22, .semibold)).tracking(-0.55).foregroundStyle(Theme.foreground)
                 Text(plan.label).font(.app(14)).foregroundStyle(Theme.muted).padding(.top, 2)
@@ -64,14 +64,28 @@ struct FirstRunWeek: View {
 // MARK: - The plate
 
 /// The plate beside the week: what to drag in, and the time each has so far: hours for a project, a count for a
-/// practice.
+/// practice. With a season, its quests come first, numbered, and each project or practice is marked with the quest
+/// it moves; what waits for next season is left off, and counted at the end.
 private struct PlateColumn: View {
     let plan: WeekPlan
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            section("Projects", plan.projects) { WeekPlan.hours(plan.minutes(for: $0.id)) }
-            section("Practices", plan.practices) { "\(plan.count(for: $0.id)) of \($0.perWeek ?? 1) this week" }
+            if !plan.quests.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your quests").font(.app(12, .semibold)).foregroundStyle(Theme.muted).padding(.horizontal, 8).padding(.bottom, 2)
+                    ForEach(plan.quests) { quest in
+                        if let goal = plan.goal(quest.goalId) {
+                            QuestRow(quest: quest, meta: plan.meta(goal))
+                        }
+                    }
+                }
+            }
+            section("Projects", plan.projects) { plan.meta($0) }
+            section("Practices", plan.practices) { plan.meta($0) }
+            if !plan.waiting.isEmpty {
+                Text("\(plan.waiting.count) waiting for next season").font(.app(11.5)).foregroundStyle(Theme.muted).padding(.horizontal, 8)
+            }
             Spacer(minLength: 0)
         }
         .padding(8)
@@ -88,7 +102,7 @@ private struct PlateColumn: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.app(12, .semibold)).foregroundStyle(Theme.muted).padding(.horizontal, 8).padding(.bottom, 2)
                 ForEach(goals) { goal in
-                    PlateRow(goal: goal, meta: meta(goal))
+                    PlateRow(goal: goal, meta: meta(goal), quest: plan.quest(for: goal.id)?.number)
                 }
             }
         }
@@ -98,6 +112,8 @@ private struct PlateColumn: View {
 private struct PlateRow: View {
     let goal: CalendarGoal
     let meta: String
+    /// The number of the quest it moves.
+    var quest: Int?
     @State private var isHovered = false
 
     var body: some View {
@@ -105,6 +121,13 @@ private struct PlateRow: View {
             GoalBadge(icon: goal.icon, color: goal.color, size: .xs, round: goal.isPractice)
                 .scaleEffect(28.0 / 24.0)
                 .frame(width: 28, height: 28)
+                .overlay(alignment: .bottomTrailing) {
+                    if let quest {
+                        QuestMark(number: quest, size: 14)
+                            .padding(2).background(Theme.card, in: .circle)
+                            .offset(x: 5, y: 5)
+                    }
+                }
             VStack(alignment: .leading, spacing: 1) {
                 Text(goal.title).font(.app(12.5, .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
                 Text(meta).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
@@ -125,6 +148,53 @@ private struct PlateRow: View {
             .background(Theme.card, in: .rect(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
         }
+    }
+}
+
+/// A quest on the plate: its number, its name, and its project's hours or practice's count. Dragging it gives its
+/// project or practice time.
+private struct QuestRow: View {
+    let quest: WeekQuest
+    let meta: String
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            QuestMark(number: quest.number)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(quest.title).font(.app(12.5, .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
+                Text(meta).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 12))
+        .contentShape(.rect(cornerRadius: 12))
+        .onHover { isHovered = $0 }
+        .draggable(quest.goalId) {
+            HStack(spacing: 8) {
+                QuestMark(number: quest.number, size: 22)
+                Text(quest.title).font(.app(12, .medium)).foregroundStyle(Theme.foreground)
+            }
+            .padding(.leading, 6).padding(.trailing, 12).frame(height: 34)
+            .background(Theme.card, in: .rect(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
+        }
+    }
+}
+
+/// A quest's mark: its number, in ink, round.
+struct QuestMark: View {
+    let number: Int
+    var size: CGFloat = 28
+
+    var body: some View {
+        Text("\(number)")
+            .font(.app(size * 0.45, .semibold)).monospacedDigit()
+            .foregroundStyle(Theme.background)
+            .frame(width: size, height: size)
+            .background(Theme.foreground, in: .circle)
     }
 }
 
@@ -224,7 +294,7 @@ private struct PlanGrid: View {
                 if let goal = plan.goal(block.goalId) {
                     GoalBlock(
                         block: block, goal: goal, count: goal.isPractice ? "\(plan.ordinal(of: block)) of \(goal.perWeek ?? 1) this week" : nil,
-                        isActive: isSelected(block), height: frame.height
+                        quest: plan.quest(for: goal.id)?.number, isActive: isSelected(block), height: frame.height
                     )
                     .frame(width: frame.width, height: frame.height)
                     .offset(x: frame.minX - layout.x(day), y: frame.minY)
@@ -283,7 +353,7 @@ private struct PlanGrid: View {
                 title: event.title,
                 when: plan.when(event.title, start: event.start, end: event.end, key: event.key, repeats: event.repeats),
                 answer: plan.isOpen(event) ? .open : .event,
-                goals: plan.goals,
+                goals: plan.activeGoals,
                 onLink: { actions.link(event.key, $0) },
                 onReserved: { actions.setSeriesReserved(series, $0) },
                 onOpen: { actions.markOpen(series) },
@@ -299,7 +369,7 @@ private struct PlanGrid: View {
                     title: source.snapshot.title,
                     when: plan.when(source.snapshot.title, start: source.snapshot.startsAt, end: source.snapshot.endsAt, key: source.key, repeats: source.key.contains("|")),
                     answer: .goal(goal.id, reserved: block.reserved),
-                    goals: plan.goals,
+                    goals: plan.activeGoals,
                     onLink: { actions.link(source.key, $0) },
                     onReserved: { actions.setSeriesReserved(series, $0) },
                     onOpen: { actions.markOpen(series) },
@@ -345,8 +415,8 @@ private struct PlanGrid: View {
                         .offset(x: right ? frame.maxX + 12 : frame.minX - 232, y: frame.minY - 4)
                     }
                 case .projects:
-                    WeekTip(kicker: "Your projects", nib: .left, onNext: actions.next) {
-                        Text("Drag a project onto your week to give it time.\(plan.open.isEmpty ? "" : " Time to fill is a good place to start.")")
+                    WeekTip(kicker: plan.quests.isEmpty ? "Your projects" : "Your quests", nib: .left, onNext: actions.next) {
+                        Text("\(plan.quests.isEmpty ? "Drag a project onto your week to give it time." : "Start with your quests: drag one onto your week to give it time.")\(plan.open.isEmpty ? "" : " Time to fill is a good place to start.")")
                     }
                     .offset(x: 10, y: Self.header + 16)
                 case .practices:
@@ -417,6 +487,8 @@ private struct GoalBlock: View {
     let goal: CalendarGoal
     /// For a practice: "1 of 3 this week".
     let count: String?
+    /// The number of the quest it moves.
+    var quest: Int?
     let isActive: Bool
     let height: CGFloat
 
@@ -429,6 +501,9 @@ private struct GoalBlock: View {
                 HStack(alignment: .top, spacing: 4) {
                     Text(title).font(.app(11.5, .medium)).foregroundStyle(Theme.foreground).lineLimit(height > 48 ? 2 : 1)
                     Spacer(minLength: 0)
+                    if let quest {
+                        QuestMark(number: quest, size: 14)
+                    }
                     if block.source != nil {
                         Icon.calendarSmall.image(size: 10).foregroundStyle(Theme.muted)
                     }

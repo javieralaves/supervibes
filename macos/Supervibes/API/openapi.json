@@ -3916,6 +3916,103 @@
           "tasks"
         ],
         "description": "How much was made: new areas, projects, practices and tasks."
+      },
+      "FirstSeason": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startsOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "endsOn": {
+            "type": "string",
+            "format": "date",
+            "description": "Its last day, included."
+          },
+          "quests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FirstSeasonQuest"
+            },
+            "description": "In order."
+          }
+        },
+        "required": [
+          "id",
+          "startsOn",
+          "endsOn",
+          "quests"
+        ]
+      },
+      "FirstSeasonQuest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goalId": {
+            "type": "string",
+            "description": "The one project or practice that moves it."
+          },
+          "title": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Its number in the season, 1 first."
+          }
+        },
+        "required": [
+          "id",
+          "goalId",
+          "title",
+          "position"
+        ]
+      },
+      "FirstSeasonInput": {
+        "type": "object",
+        "properties": {
+          "focus": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "goalId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120,
+                  "description": "The quest's name, as named on its card; starts as the goal's title."
+                }
+              },
+              "required": [
+                "goalId",
+                "title"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3,
+            "description": "The focuses in order, each a project or practice in its own area."
+          },
+          "waiting": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "What waits for next season. Its practices are paused until the season ends."
+          }
+        },
+        "required": [
+          "focus",
+          "waiting"
+        ]
       }
     },
     "parameters": {}
@@ -8852,6 +8949,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SavedPlate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/first-run/season": {
+      "post": {
+        "operationId": "startFirstSeason",
+        "summary": "Route 2: make a season from up to three focuses, each its own area's quest, start it, and pause what waits",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirstSeasonInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirstSeason"
                 }
               }
             }

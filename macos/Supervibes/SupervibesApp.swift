@@ -14,11 +14,12 @@ struct SupervibesApp: App {
         let shell = ShellModel(auth: auth)
         let firstRun = FirstRunModel(auth: auth)
         firstRun.eventFeed = model.eventFeed
-        // Until each route's own steps are built, a way ahead opens the nearest screen the app has.
+        // Routes 1 and 2 end on their week, so the calendar opens; Step back first isn't built yet, so it opens the
+        // nearest screen the app has.
         firstRun.onFinish = { choice in
             switch choice {
-            case .week: shell.route = .calendar
-            case .season, .stepBack: shell.route = .startSeason
+            case .week, .season: shell.route = .calendar
+            case .stepBack: shell.route = .startSeason
             }
         }
         // Clicking a session notice opens the calendar on its block.

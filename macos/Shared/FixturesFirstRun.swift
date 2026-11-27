@@ -65,4 +65,28 @@ extension Fixtures {
     static func firstRun(_ step: FirstRunStep, plate: SortedPlate? = sortedPlate, text: String = plateText) -> FirstRunState {
         FirstRunState(step: step, firstName: "Alex", plateText: text, sorted: plate, seasonEnd: seasonEnd)
     }
+
+    /// Route 2's season: Monday, Nov 30, 2026 to Sunday, Feb 28, 2027, 13 weeks.
+    static let firstRunSeason = SeasonSpan(endsOn: seasonEnd)
+
+    /// Alex's plate as made, on the Focus board.
+    static func focusBoard(focus: [String] = [], waiting: Set<String> = []) -> FocusBoard {
+        let items = sortedPlate.areas.flatMap { area in
+            area.items.map { item in
+                FocusItem(
+                    id: item.id, title: item.title, icon: item.icon, color: item.color, isPractice: item.isPractice,
+                    perWeek: item.perWeek ?? (item.isPractice ? 3 : nil), areaId: area.id, areaName: area.name,
+                    areaIcon: area.icon, detail: item.detail
+                )
+            }
+        }
+        return FocusBoard(items: items, focus: focus, waiting: waiting)
+    }
+
+    /// Route 2's quests, as the season started them.
+    static let weekQuests = [
+        WeekQuest(number: 1, title: "Ship the new pricing page", goalId: "pricing"),
+        WeekQuest(number: 2, title: "Move flats by January", goalId: "move"),
+        WeekQuest(number: 3, title: "Run", goalId: "run"),
+    ]
 }

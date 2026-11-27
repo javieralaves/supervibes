@@ -1,12 +1,13 @@
 import Foundation
 import Observation
 
-/// First run's shared start, against /api/v1 (server side in src/lib/first-run.ts): who sees it, and each step.
+/// First run, against /api/v1 (server side in src/lib/first-run.ts): who sees it, and each step.
 ///
 /// Someone sees it when they have no projects, practices or areas, unless they've been through it on this Mac. How
 /// far they got is kept on this Mac, keyed by their email: once the plate is made, the sorted plate is kept too, so
-/// coming back picks up at What matters; once they choose a way ahead, it's done. (A server-side marker can replace
-/// this once first run is settled.)
+/// coming back picks up at What matters; Route 2's board is kept while it's being chosen, and its quests and what
+/// waits once the season starts; once the week is started, it's done. (A server-side marker can replace this once
+/// first run is settled.)
 @MainActor
 @Observable
 final class FirstRunModel {
@@ -50,11 +51,28 @@ final class FirstRunModel {
         case "done":
             phase = .inactive
             return
-        case "whatMatters", "week":
+        case "whatMatters", "focus", "week":
             if let plate = keptPlate {
                 state.sorted = plate
-                state.step = progress == "week" ? .weekIntro : .whatMatters
                 saved = true
+                state.route = keptRoute
+                switch progress {
+                case "focus":
+                    if let board = keptBoard {
+                        state.board = board
+                        state.step = .focus
+                    } else {
+                        state.step = .whatMatters
+                    }
+                case "week":
+                    state.step = .weekIntro
+                    if state.route == .season {
+                        state.seasonStarted = true
+                        state.board = keptBoard
+                    }
+                default:
+                    state.step = .whatMatters
+                }
             }
         default: break
         }
@@ -99,8 +117,29 @@ final class FirstRunModel {
             sort: { [weak self] in Task { await self?.sort() } },
             setPerWeek: { [weak self] id, perWeek in self?.state.sorted?.setPerWeek(perWeek, for: id) },
             save: { [weak self] in Task { await self?.save() } },
-            choose: { [weak self] choice in self?.choose(choice) }
+            choose: { [weak self] choice in self?.choose(choice) },
+            focus: FocusActions(
+                choose: { [weak self] id in self?.changeBoard { $0.choose(id) } },
+                place: { [weak self] id, slot in self?.changeBoard { $0.place(id, at: slot) } },
+                remove: { [weak self] id in self?.changeBoard { $0.remove(id) } },
+                wait: { [weak self] id in self?.changeBoard { $0.wait(id) } },
+                keep: { [weak self] id in self?.changeBoard { $0.keep(id) } }
+            ),
+            toSeason: { [weak self] in
+                guard self?.state.board?.focus.isEmpty == false else { return }
+                self?.go(.season)
+            },
+            rename: { [weak self] id, name in self?.changeBoard { $0.names[id] = name } },
+            startSeason: { [weak self] in Task { await self?.startSeason() } }
         )
+    }
+
+    /// A change on the Focus board, kept on this Mac until the season starts.
+    private func changeBoard(_ change: (inout FocusBoard) -> Void) {
+        guard var board = state.board, !state.seasonStarted else { return }
+        change(&board)
+        state.board = board
+        keptBoard = board
     }
 
     private func go(_ step: FirstRunStep) {
@@ -114,7 +153,17 @@ final class FirstRunModel {
         case .plate: go(.welcome)
         case .sorted: go(.plate)
         case .whatMatters: go(.sorted)
-        case .weekIntro: go(.whatMatters)
+        case .focus:
+            progress = "whatMatters"
+            go(.whatMatters)
+        case .season: if !state.seasonStarted { go(.focus) }
+        case .weekIntro:
+            if state.route == .season {
+                go(.season)
+            } else {
+                progress = "whatMatters"
+                go(.whatMatters)
+            }
         case .week: go(.weekIntro)
         }
     }
@@ -170,19 +219,115 @@ final class FirstRunModel {
         }
     }
 
-    /// A way ahead from What matters. Just this week goes on to the week; the other two routes aren't built yet, so
-    /// they finish first run and open the nearest screen the app has.
+    /// A way ahead from What matters. Just this week goes on to the week; the next few months to the Focus board, once
+    /// it's loaded; Step back first isn't built yet, so it finishes first run and opens the nearest screen the app has.
     private func choose(_ choice: FirstRunChoice) {
-        guard choice == .week else { return finish(choice) }
-        progress = "week"
-        go(.weekIntro)
+        switch choice {
+        case .week:
+            state.route = .week
+            keptRoute = .week
+            progress = "week"
+            go(.weekIntro)
+        case .season:
+            Task { await openBoard() }
+        case .stepBack:
+            finish(choice)
+        }
+    }
+
+    // MARK: Route 2, the next few months
+
+    /// The Focus board, from what the plate made: each project and practice with its area, in the plate's order, with
+    /// what sorting heard about it. A board already being chosen is picked up as it was.
+    private func openBoard() async {
+        guard !state.isBusy else { return }
+        if state.board == nil {
+            state.isBusy = true
+            defer { state.isBusy = false }
+            guard let board = await loadBoard() else {
+                state.error = "Couldn’t open your plate. Try again."
+                return
+            }
+            state.board = board
+        }
+        state.route = .season
+        keptRoute = .season
+        keptBoard = state.board
+        progress = "focus"
+        go(.focus)
+    }
+
+    private func loadBoard() async -> FocusBoard? {
+        do {
+            let zone = TimeZone.current.identifier
+            async let goals = client.listGoals(query: .init(timeZone: zone))
+            async let areas = client.listAreas(query: .init(timeZone: zone))
+            guard case .ok(let goalsOK) = try await goals, case .ok(let areasOK) = try await areas else { return nil }
+            let areaList = try areasOK.body.json.areas
+            let plate = state.sorted?.items ?? []
+            let items: [FocusItem] = try goalsOK.body.json.goals.compactMap { goal in
+                guard let areaId = goal.areaId, let area = areaList.first(where: { $0.id == areaId }) else { return nil }
+                let isPractice = goal.kind == .practice
+                let sorted = plate.first { $0.title == goal.title && $0.isPractice == isPractice }
+                return FocusItem(
+                    id: goal.id, title: goal.title, icon: goal.icon, color: goal.color, isPractice: isPractice,
+                    perWeek: goal.practice?.perWeek, areaId: areaId, areaName: area.name, areaIcon: area.icon,
+                    detail: sorted?.detail
+                )
+            }
+            // In the plate's order, as it was sorted.
+            let order = plate.map(\.title)
+            let sorted = items.enumerated().sorted { a, b in
+                (order.firstIndex(of: a.element.title) ?? order.count + a.offset) < (order.firstIndex(of: b.element.title) ?? order.count + b.offset)
+            }.map(\.element)
+            return FocusBoard(items: sorted)
+        } catch {
+            Log.app.error("Opening the Focus board: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Makes the season from the board and starts it, once; on to the week.
+    private func startSeason() async {
+        guard let board = state.board, !board.focus.isEmpty, !state.isBusy else { return }
+        if state.seasonStarted { return go(.weekIntro) }
+        state.isBusy = true
+        state.error = nil
+        defer { state.isBusy = false }
+        do {
+            let body = Components.Schemas.FirstSeasonInput(
+                focus: board.focus.map { .init(goalId: $0, title: board.name($0)) },
+                waiting: Array(board.waiting).sorted()
+            )
+            switch try await client.startFirstSeason(body: .json(body)) {
+            case .created(let created):
+                let season = try created.body.json
+                keptQuests = season.quests.map { WeekQuest(number: $0.position, title: $0.title, goalId: $0.goalId) }
+                state.seasonStarted = true
+                progress = "week"
+                Log.app.info("First run: season started with \(season.quests.count) quests")
+                go(.weekIntro)
+            case .unauthorized: await auth.sessionEnded()
+            case .badRequest(let bad): state.error = (try? bad.body.json.error.message) ?? "Couldn’t start your season. Try again."
+            case .undocumented(let status, _): state.error = "Couldn’t start your season (the server answered \(status))."
+            }
+        } catch {
+            Log.app.error("Starting the first season: \(error.localizedDescription, privacy: .public)")
+            state.error = "Couldn’t reach Supervibes. Check your connection."
+        }
     }
 
     /// From the way in to the week itself.
     func openWeek() {
         guard let eventFeed else { return }
         if week == nil {
-            let model = FirstRunWeekModel(auth: auth, feed: eventFeed)
+            let season = state.route == .season
+            let model = FirstRunWeekModel(
+                auth: auth, feed: eventFeed,
+                quests: season ? keptQuests : [],
+                waiting: season ? state.board?.waiting ?? [] : [],
+                steps: state.route.steps
+            )
             week = model
             Task { await model.start() }
         }
@@ -192,13 +337,15 @@ final class FirstRunModel {
     var weekActions: WeekActions {
         var actions = week?.actions ?? WeekActions()
         actions.back = { [weak self] in self?.back() }
-        actions.start = { [weak self] in self?.finish(.week) }
+        actions.start = { [weak self] in self?.finish(self?.state.route ?? .week) }
         return actions
     }
 
     private func finish(_ choice: FirstRunChoice) {
         progress = "done"
         keptPlate = nil
+        keptBoard = nil
+        keptQuests = []
         week = nil
         phase = .inactive
         Log.app.info("First run done: \(choice.rawValue, privacy: .public)")
@@ -220,6 +367,35 @@ final class FirstRunModel {
         set {
             guard let email else { return }
             UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "firstRun.plate.\(email)")
+        }
+    }
+
+    private var keptRoute: FirstRunChoice {
+        get { email.flatMap { UserDefaults.standard.string(forKey: "firstRun.route.\($0)") }.flatMap(FirstRunChoice.init) ?? .week }
+        set { if let email { UserDefaults.standard.set(newValue.rawValue, forKey: "firstRun.route.\(email)") } }
+    }
+
+    /// Route 2's board: while it's chosen, and after, for what waits for next season (its projects are only kept here).
+    private var keptBoard: FocusBoard? {
+        get {
+            email.flatMap { UserDefaults.standard.data(forKey: "firstRun.board.\($0)") }
+                .flatMap { try? JSONDecoder().decode(FocusBoard.self, from: $0) }
+        }
+        set {
+            guard let email else { return }
+            UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "firstRun.board.\(email)")
+        }
+    }
+
+    /// Route 2's quests, as the season started them, for the week.
+    private var keptQuests: [WeekQuest] {
+        get {
+            email.flatMap { UserDefaults.standard.data(forKey: "firstRun.quests.\($0)") }
+                .flatMap { try? JSONDecoder().decode([WeekQuest].self, from: $0) } ?? []
+        }
+        set {
+            guard let email else { return }
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "firstRun.quests.\(email)")
         }
     }
 

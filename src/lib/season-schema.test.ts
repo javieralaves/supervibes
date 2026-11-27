@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   defaultSeason,
+  focusProblem,
   overlaps,
   popularAreasFor,
   questEffort,
@@ -105,5 +106,19 @@ describe("popularAreasFor", () => {
   it("leaves out the areas the person already has, by name", () => {
     const names = popularAreasFor(["Superfocus", "Capacity Labs", "health", "Relationships"]).map((a) => a.name);
     assert.deepEqual(names, ["Work", "Money", "Home", "Growth", "Play", "Mind", "Meaning"]);
+  });
+});
+
+describe("focusProblem", () => {
+  it("takes one to three focuses, each in its own area", () => {
+    assert.equal(focusProblem([{ areaId: "work" }]), null);
+    assert.equal(focusProblem([{ areaId: "work" }, { areaId: "home" }, { areaId: "health" }]), null);
+  });
+
+  it("names what's wrong", () => {
+    assert.equal(focusProblem([]), "no_focus");
+    assert.equal(focusProblem([{ areaId: "a" }, { areaId: "b" }, { areaId: "c" }, { areaId: "d" }]), "too_many_focus");
+    assert.equal(focusProblem([{ areaId: "work" }, { areaId: null }]), "focus_without_area");
+    assert.equal(focusProblem([{ areaId: "work" }, { areaId: "work" }]), "focus_area_taken");
   });
 });

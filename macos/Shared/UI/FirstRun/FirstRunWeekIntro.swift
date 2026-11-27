@@ -6,11 +6,13 @@ import SwiftUI
 struct FirstRunWeekIntro: View {
     /// "Nov 30 – Dec 6".
     let weekLabel: String
+    /// The route's row of steps; the week is its last.
+    var steps: [String] = FirstRunChoice.week.steps
     let onStart: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            FirstRunSteps(current: 3)
+            FirstRunSteps(current: steps.count - 1, steps: steps)
             VStack(spacing: 0) {
                 Text("Your week · \(weekLabel)").font(.app(13, .medium)).foregroundStyle(Theme.muted)
                 Text("Now, make room for it")

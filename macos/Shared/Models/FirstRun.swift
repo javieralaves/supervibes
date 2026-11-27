@@ -9,12 +9,14 @@ import Foundation
 /// Where someone is in the shared start.
 enum FirstRunStep: Int, CaseIterable, Hashable, Sendable {
     case welcome, plate, sorted, whatMatters
-    /// Route 1: the way into the week, then the week itself.
+    /// Route 2: choosing up to three focuses, then the season they make.
+    case focus, season
+    /// Every route: the way into the week, then the week itself.
     case weekIntro, week
 }
 
-/// The three ways ahead from What matters. Each route's own steps aren't built yet; for now each opens the nearest
-/// thing the app already has.
+/// The three ways ahead from What matters. Step back first isn't built yet; for now it opens the nearest thing the app
+/// already has.
 enum FirstRunChoice: String, CaseIterable, Hashable, Sendable {
     /// Just this week: straight to planning the week.
     case week
@@ -22,6 +24,15 @@ enum FirstRunChoice: String, CaseIterable, Hashable, Sendable {
     case season
     /// Step back first: where each area stands, its gaps as quests.
     case stepBack
+
+    /// The row of steps once this way is chosen; every route ends in Your week.
+    var steps: [String] {
+        switch self {
+        case .week: ["Your plate", "Sorted", "What matters", "Your week"]
+        case .season: ["Your plate", "Sorted", "What matters", "Focus", "Your week"]
+        case .stepBack: ["Your plate", "Sorted", "What matters", "Areas", "Quests", "Your week"]
+        }
+    }
 }
 
 /// One thing from the plate, sorted: a project or a practice, with what helps place it.
@@ -83,4 +94,12 @@ struct FirstRunState: Hashable, Sendable {
     var error: String?
     /// The last day of a season starting next Monday, for "until February".
     var seasonEnd: Date
+    /// The way ahead chosen at What matters.
+    var route: FirstRunChoice = .week
+    /// Route 2's board, once it's opened.
+    var board: FocusBoard?
+    /// Route 2's season once it's started, so going back and on again doesn't start it twice.
+    var seasonStarted = false
+
+    var season: SeasonSpan { SeasonSpan(endsOn: seasonEnd) }
 }
