@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The first thing someone new sees: the mark, a welcome, what Supervibes does for them in a line, and the way through
-/// as four illustrated tiles on a numbered track, the last solid, since that's where things start moving.
+/// as four illustrated tiles on a numbered track, every step drawn alike.
 struct FirstRunWelcome: View {
     let firstName: String
     let onStart: () -> Void
@@ -57,17 +57,16 @@ struct FirstRunWelcome: View {
         .background(Theme.background)
     }
 
-    /// A dashed line through each step's number, hollow until the last.
+    /// A dashed line through each step's number, each hollow.
     private var track: some View {
         HStack(spacing: 12) {
             ForEach(0..<tiles.count, id: \.self) { index in
-                let last = index == tiles.count - 1
                 Text("\(index + 1)")
                     .font(.app(11.5, .semibold)).monospacedDigit()
-                    .foregroundStyle(last ? Theme.background : Theme.muted)
+                    .foregroundStyle(Theme.muted)
                     .frame(width: 24, height: 24)
-                    .background(last ? Theme.foreground : Theme.background, in: .circle)
-                    .overlay { if !last { Circle().strokeBorder(Theme.foreground(0.3), lineWidth: 1.5) } }
+                    .background(Theme.background, in: .circle)
+                    .overlay { Circle().strokeBorder(Theme.foreground(0.3), lineWidth: 1.5) }
                     .frame(maxWidth: .infinity)
             }
         }
