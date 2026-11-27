@@ -1,10 +1,11 @@
 import Foundation
 
 /*
- * Route 1's guided week (the design's "Your week · Full screen, guided"): the week ahead, full window, with the plate
- * beside it. First what's already booked: any event from the person's Google calendars can be said to be time for a
- * project or practice (it's imported as that one's blocks, a session or reserved), time to fill (faded back, kept on
- * this Mac), or just an event. Then projects are dragged in, then practices, each explained where it first comes up.
+ * Every route's guided week (the design's "Your week · Full screen, guided"): the next seven days, Today first with a
+ * line at the time it is, full window, with the plate beside it. First what's already booked: any event from the
+ * person's Google calendars can be said to be time for a project or practice (it's imported as that one's blocks, a
+ * session or reserved), time to fill (faded back, kept on this Mac), or just an event. Then projects are dragged in,
+ * then practices, each explained where it first comes up.
  */
 
 /// What first run's week shows, so it can be drawn from fixtures.
@@ -23,8 +24,10 @@ struct WeekPlan: Hashable, Sendable {
         case off
     }
 
-    /// Midnight on the week's Monday.
-    var monday: Date
+    /// Midnight on the week's first day: today, so the first column is Today.
+    var start: Date
+    /// The moment it is, for the line across today; nil draws none.
+    var now: Date?
     /// Events in the week not imported, from the person's Google calendars.
     var events: [ExternalEvent]
     /// Blocks in the week, imported events among them.
@@ -41,20 +44,20 @@ struct WeekPlan: Hashable, Sendable {
     /// The route's row of steps; the week is its last.
     var steps: [String] = FirstRunChoice.week.steps
 
-    /// The seven days, Monday first.
-    var days: [Date] { (0..<7).map { Calendar.current.date(byAdding: .day, value: $0, to: monday) ?? monday } }
+    /// The seven days, today first.
+    var days: [Date] { (0..<7).map { Calendar.current.date(byAdding: .day, value: $0, to: start) ?? start } }
 
     /// "Nov 30 – Dec 6".
     var label: String {
-        let end = Calendar.current.date(byAdding: .day, value: 6, to: monday) ?? monday
-        return "\(monday.formatted(.dateTime.month(.abbreviated).day().locale(Self.locale))) – \(end.formatted(.dateTime.month(.abbreviated).day().locale(Self.locale)))"
+        let end = Calendar.current.date(byAdding: .day, value: 6, to: start) ?? start
+        return "\(start.formatted(.dateTime.month(.abbreviated).day().locale(Self.locale))) – \(end.formatted(.dateTime.month(.abbreviated).day().locale(Self.locale)))"
     }
 
     static let locale = Locale(identifier: "en_US")
 
     /// The day of the week (0 is Monday) a moment falls on, or nil outside the week.
     func dayIndex(_ date: Date) -> Int? {
-        let day = Calendar.current.dateComponents([.day], from: monday, to: Calendar.current.startOfDay(for: date)).day ?? -1
+        let day = Calendar.current.dateComponents([.day], from: start, to: Calendar.current.startOfDay(for: date)).day ?? -1
         return (0..<7).contains(day) ? day : nil
     }
 
@@ -126,14 +129,9 @@ struct WeekPlan: Hashable, Sendable {
         return h == 0 ? "\(m)m" : m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
-    /// The Monday of the week to plan: this one early in the week, the next one from Wednesday on.
+    /// The week to plan: the next seven days, starting today.
     static func weekToPlan(from now: Date) -> Date {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: now)
-        let weekday = calendar.component(.weekday, from: today) // Sunday is 1
-        let sinceMonday = (weekday + 5) % 7
-        let thisMonday = calendar.date(byAdding: .day, value: -sinceMonday, to: today) ?? today
-        return sinceMonday <= 1 ? thisMonday : calendar.date(byAdding: .day, value: 7, to: thisMonday) ?? thisMonday
+        Calendar.current.startOfDay(for: now)
     }
 }
 

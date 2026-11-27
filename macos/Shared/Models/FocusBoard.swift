@@ -4,7 +4,7 @@ import Foundation
  * Route 2, the next few months (the design's "Route 2 · The next few months"): up to three things from the plate to
  * focus on for a season, drawn as a board. Each focus becomes a quest holding that one project or practice. The rest
  * keeps going, or waits for next season: its practices are paused until the season ends, its projects kept on this
- * Mac. A season has one quest an area, so it's one focus an area.
+ * Mac. Several focuses can come from the same area.
  */
 
 /// One thing on the plate, as made: a project or practice with the area it sits in.
@@ -51,23 +51,16 @@ struct FocusBoard: Hashable, Codable, Sendable {
     var waits: [FocusItem] { items.filter { waiting.contains($0.id) } }
     var isFull: Bool { focus.count >= Self.slots }
 
-    /// The focus already taken in an item's area, if it's another thing.
-    func areaFocus(for id: String) -> FocusItem? {
-        guard let it = item(id) else { return nil }
-        return focused.first { $0.areaId == it.areaId && $0.id != id }
-    }
-
-    /// Whether clicking it fills the next slot: not in focus, a slot free, and nothing else in focus from its area.
-    func canFocus(_ id: String) -> Bool { !focus.contains(id) && !isFull && areaFocus(for: id) == nil }
+    /// Whether clicking it fills the next slot: not in focus, and a slot free.
+    func canFocus(_ id: String) -> Bool { !focus.contains(id) && !isFull }
 
     /// Whether it can be dropped onto slot `slot` (0 first): onto an empty slot as clicking would, or onto a focus to
-    /// swap it out, as long as no other focus is in its area.
+    /// swap it out.
     func canPlace(_ id: String, at slot: Int) -> Bool {
         guard item(id) != nil else { return false }
         if focus.contains(id) { return slot < focus.count }
         if slot >= focus.count { return canFocus(id) }
-        guard let taken = areaFocus(for: id) else { return true }
-        return taken.id == focus[slot]
+        return true
     }
 
     /// Into the next free slot.

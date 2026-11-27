@@ -4,13 +4,12 @@ import SwiftUI
 /// practices sorted into it, what helps place them, and the tasks under them; an area's bucket says it holds one-offs
 /// that belong to nothing bigger. Clicking anything opens a card to change it: its kind, name and area, and what its
 /// kind needs. Each area can take something missed, and Add an area brings in another part of life. A practice nobody
-/// said the rhythm of asks How often?, and the plate can't be made until each has one. Once it's made, it's shown as
-/// made, with nothing left to change here.
+/// said the rhythm of asks How often?, and the plate can't be made until each has one. Changed after it's made, Looks
+/// right replaces what was made.
 struct FirstRunSorted: View {
     let plate: SortedPlate
     var isSaving = false
     var error: String?
-    var isMade = false
     var actions = FirstRunActions()
     @Environment(\.overlays) private var overlays
     @State private var areaButton: CGRect = .zero
@@ -20,16 +19,14 @@ struct FirstRunSorted: View {
             step: 1,
             eyebrow: "Sorted",
             title: "Your plate, sorted",
-            subtitle: isMade
-                ? "Projects have a finish line; practices are things you keep up. This is all made; change anything later in the app."
-                : "Projects have a finish line; practices are things you keep up. Click anything to change it, and add what’s missing."
+            subtitle: "Projects have a finish line; practices are things you keep up. Click anything to change it, and add what’s missing."
         ) {
             ScrollView {
                 Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         GridRow {
                             ForEach(row) { area in
-                                AreaCard(plate: plate, area: area, isMade: isMade, actions: actions)
+                                AreaCard(plate: plate, area: area, actions: actions)
                                     .frame(maxHeight: .infinity, alignment: .top)
                             }
                             ForEach(0..<(3 - row.count), id: \.self) { _ in Color.clear.gridCellUnsizedAxes([.vertical]) }
@@ -47,10 +44,8 @@ struct FirstRunSorted: View {
             } else if let first = plate.needsRhythm.first {
                 Text("Say how often for \(first.title)").appText(.sm).foregroundStyle(Theme.muted).padding(.trailing, 8)
             }
-            if !isMade {
-                AddAreaButton { openAreas() }
-                    .modifier(AnchorReader(frame: $areaButton))
-            }
+            AddAreaButton { openAreas() }
+                .modifier(AnchorReader(frame: $areaButton))
             FlowButton(title: "Looks right", primary: true, isBusy: isSaving, isEnabled: plate.needsRhythm.isEmpty, action: actions.save)
         }
     }
@@ -77,7 +72,6 @@ struct FirstRunSorted: View {
 private struct AreaCard: View {
     let plate: SortedPlate
     let area: PlateArea
-    let isMade: Bool
     let actions: FirstRunActions
 
     var body: some View {
@@ -93,7 +87,7 @@ private struct AreaCard: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(area.items) { item in
-                    ItemRow(plate: plate, item: item, isMade: isMade, actions: actions)
+                    ItemRow(plate: plate, item: item, actions: actions)
                 }
                 if area.items.isEmpty {
                     Text("Nothing here yet").font(.app(12)).foregroundStyle(Theme.muted.opacity(0.8))
@@ -103,9 +97,7 @@ private struct AreaCard: View {
             .padding(.top, 4)
 
             Spacer(minLength: 8)
-            if !isMade {
-                AddRow(area: area.name) { title, kind in actions.add(title, kind, area.id) }
-            }
+            AddRow(area: area.name) { title, kind in actions.add(title, kind, area.id) }
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -118,7 +110,6 @@ private struct AreaCard: View {
 private struct ItemRow: View {
     let plate: SortedPlate
     let item: PlateItem
-    let isMade: Bool
     let actions: FirstRunActions
     @Environment(\.overlays) private var overlays
     @State private var frame: CGRect = .zero
@@ -173,12 +164,12 @@ private struct ItemRow: View {
 
     private func rowBackground(_ editing: Bool) -> some View {
         RoundedRectangle(cornerRadius: 12)
-            .fill(editing ? Theme.foreground(0.045) : isHovered && !isMade ? Theme.wash : .clear)
+            .fill(editing ? Theme.foreground(0.045) : isHovered ? Theme.wash : .clear)
             .overlay { if editing { RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.foreground, lineWidth: 1.5) } }
     }
 
     private func open(_ selection: SortedSelection, anchor: CGRect) {
-        guard !isMade, let edit = plate.edit(for: selection) else { return }
+        guard let edit = plate.edit(for: selection) else { return }
         let owner: String = switch selection {
         case .item(let id): id
         case .task(let id, let index): "\(id)#\(index)"

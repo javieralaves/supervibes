@@ -70,6 +70,7 @@ export async function createGoal(
     db.select({ last: max(goals.position) }).from(goals).where(eq(goals.userId, userId)),
   ]);
 
+  // No limit in practice (MAX_GOALS is far out of reach); kept as a backstop against runaway loops.
   if (total >= MAX_GOALS) throw new GoalLimitError(kind);
 
   const [goal] = await db

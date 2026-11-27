@@ -24,9 +24,8 @@ final class FirstRunSortingTests: XCTestCase {
                           width: 1280, height: 820)
     }
 
-    private func sorted(_ plate: SortedPlate, center: OverlayCenter = OverlayCenter(), made: Bool = false) -> some View {
-        var state = Fixtures.firstRun(.sorted, plate: plate)
-        state.plateMade = made
+    private func sorted(_ plate: SortedPlate, center: OverlayCenter = OverlayCenter()) -> some View {
+        let state = Fixtures.firstRun(.sorted, plate: plate)
         return FirstRunView(state: state, plateText: .constant("")).padding(.top, 20).background(Theme.background).overlayHost(center)
     }
 
@@ -62,10 +61,5 @@ final class FirstRunSortingTests: XCTestCase {
             AddAreaMenu(usual: Array(UsualArea.all.filter { !["Work", "Home", "Money", "Health", "Growth", "Play"].contains($0.name) }.prefix(4))) { _, _ in }
         }
         assertAppearances(sorted(Fixtures.sortedPlateAnswered, center: center), width: 1280, height: 820)
-    }
-
-    /// Back on Sorted once it's made: nothing to change here.
-    func testSortedMade() {
-        assertAppearances(sorted(Fixtures.sortedPlateAnswered, made: true), width: 1280, height: 820)
     }
 }

@@ -32,10 +32,8 @@ final class FirstRunModel {
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
-    /// Whether the sorted plate has been made, so going back to it and on again doesn't make it twice.
-    @ObservationIgnored private var saved = false {
-        didSet { state.plateMade = saved }
-    }
+    /// Whether the sorted plate has been made, so going back to it and on again unchanged doesn't make it again.
+    @ObservationIgnored private var saved = false
     @ObservationIgnored private var email: String?
 
     init(auth: AuthModel) {
@@ -302,17 +300,20 @@ final class FirstRunModel {
         }
     }
 
-    /// A change on Sorted: what's made on Looks right is whatever's there then. Once it's made, it stays as made.
+    /// A change on Sorted: what's made on Looks right is whatever's there then; changed after it's made, Looks right
+    /// replaces what was made.
     private func changeSorted(_ change: (inout SortedPlate) -> Void) {
-        guard var plate = state.sorted, !saved else { return }
+        guard var plate = state.sorted else { return }
         change(&plate)
         state.sorted = plate
     }
 
     /// Makes the sorted plate (once), then on to What matters.
+    /// Makes the sorted plate, then on to What matters. Unchanged since it was made, it just goes on; changed (or
+    /// sorted again), it replaces what the last save made, so nothing is made twice.
     private func save() async {
         guard let plate = state.sorted, plate.needsRhythm.isEmpty, !state.isBusy else { return }
-        if saved {
+        if saved, keptPlate == plate {
             go(.whatMatters)
             return
         }
@@ -320,10 +321,22 @@ final class FirstRunModel {
         state.error = nil
         defer { state.isBusy = false }
         do {
-            switch try await client.savePlate(body: .json(plate.api)) {
-            case .created:
+            let made = keptMade
+            let body = Components.Schemas.PlateToSave(
+                areas: plate.api.areas,
+                replacing: made.goalIds.isEmpty && made.areaIds.isEmpty ? nil : .init(goalIds: made.goalIds, areaIds: made.areaIds)
+            )
+            switch try await client.savePlate(body: .json(body)) {
+            case .created(let created):
+                let result = try created.body.json
+                keptMade = MadeOnPlate(goalIds: result.goalIds, areaIds: result.areaIds)
                 saved = true
                 keptPlate = plate
+                // What was opened from the last save is about things that are gone now.
+                state.board = nil
+                keptBoard = nil
+                setup = nil
+                week = nil
                 progress = "whatMatters"
                 go(.whatMatters)
             case .unauthorized: await auth.sessionEnded()
@@ -554,6 +567,7 @@ final class FirstRunModel {
         keptPlate = nil
         keptBoard = nil
         keptQuests = []
+        keptMade = MadeOnPlate()
         setup = nil
         week = nil
         phase = .inactive
@@ -576,6 +590,18 @@ final class FirstRunModel {
         set {
             guard let email else { return }
             UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "firstRun.plate.\(email)")
+        }
+    }
+
+    /// What saving the plate last made, so saving it again replaces it.
+    private var keptMade: MadeOnPlate {
+        get {
+            email.flatMap { UserDefaults.standard.data(forKey: "firstRun.made.\($0)") }
+                .flatMap { try? JSONDecoder().decode(MadeOnPlate.self, from: $0) } ?? MadeOnPlate()
+        }
+        set {
+            guard let email else { return }
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "firstRun.made.\(email)")
         }
     }
 
@@ -651,4 +677,10 @@ extension SortedPlate {
             )
         })
     }
+}
+
+/// What saving the plate made: its projects and practices, and the areas that were new.
+private struct MadeOnPlate: Codable {
+    var goalIds: [String] = []
+    var areaIds: [String] = []
 }

@@ -128,7 +128,7 @@ export const GoalWeekSchema = z
 const GoalsSchema = z
   .object({
     today: z.iso.date().openapi({ description: "Today in `timeZone`; the trajectories end on it." }),
-    max: z.int().openapi({ description: "How many goals someone can have." }),
+    max: z.int().openapi({ description: "No longer a limit: a number far out of reach, for older clients that hide New past it." }),
     goals: z.array(GoalSchema),
     week: z
       .object({

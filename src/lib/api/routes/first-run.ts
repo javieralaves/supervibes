@@ -78,8 +78,25 @@ const PlateQuestionsSchema = z
   .openapi("PlateQuestions", { description: "What's worth asking before sorting; none when the plate is clear." });
 
 const SavedPlateSchema = z
-  .object({ areas: z.int(), projects: z.int(), practices: z.int(), tasks: z.int() })
-  .openapi("SavedPlate", { description: "How much was made: new areas, projects, practices and tasks." });
+  .object({
+    areas: z.int(),
+    projects: z.int(),
+    practices: z.int(),
+    tasks: z.int(),
+    goalIds: z.array(z.string()).openapi({ description: "The projects and practices made, to send back as `replacing` on a later save." }),
+    areaIds: z.array(z.string()).openapi({ description: "The areas made, likewise." }),
+  })
+  .openapi("SavedPlate", { description: "How much was made: new areas, projects, practices and tasks, and their ids." });
+
+// Spelled out rather than extended from SortedPlate: an extended schema becomes an allOf, which the Mac app's
+// generated client turns into a wrapper instead of a plain struct.
+const PlateToSaveSchema = z.object({
+  areas: z.array(SortedAreaSchema),
+  replacing: z
+    .object({ goalIds: z.array(z.uuid()), areaIds: z.array(z.uuid()) })
+    .optional()
+    .openapi({ description: "What an earlier save of this plate made, taken out first so saving again replaces it." }),
+}).openapi("PlateToSave");
 
 const json = <T extends z.ZodType>(schema: T, description = "OK") => ({ description, content: { "application/json": { schema } } });
 const secured = [{ bearerAuth: [] }];
@@ -108,9 +125,9 @@ const saveRoute = createRoute({
   method: "post",
   path: "/first-run/save",
   operationId: "savePlate",
-  summary: "Make a sorted plate: the areas not there yet, each project and practice in its area, and the projects' tasks",
+  summary: "Make a sorted plate: the areas not there yet, each project and practice in its area, and the projects' tasks; replacing an earlier save of it when given",
   security: secured,
-  request: { body: { content: { "application/json": { schema: SortedPlateSchema } } } },
+  request: { body: { content: { "application/json": { schema: PlateToSaveSchema } } } },
   responses: { 201: json(SavedPlateSchema, "Made"), ...errorResponses },
 });
 
@@ -207,7 +224,8 @@ export const firstRun = new OpenAPIHono<ApiEnv>()
   })
   .openapi(saveRoute, async (c) => {
     try {
-      return c.json(await savePlate(c.var.user.id, asSortedPlate(c.req.valid("json"))), 201);
+      const body = c.req.valid("json");
+      return c.json(await savePlate(c.var.user.id, asSortedPlate(body), body.replacing), 201);
     } catch (error) {
       return c.json(failure(error), 400);
     }

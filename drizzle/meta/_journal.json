@@ -246,6 +246,13 @@
       "when": 1795653431266,
       "tag": "0034_seasons",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795791851896,
+      "tag": "0035_quests_per_area",
+      "breakpoints": true
     }
   ]
 }

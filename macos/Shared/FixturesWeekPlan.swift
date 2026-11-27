@@ -1,6 +1,6 @@
 import Foundation
 
-/// Route 1's week as Alex plans it: Mon Nov 30 to Sun Dec 6, 2026, with the calendar from the First run page in
+/// The week as Alex plans it, from Today, Monday Nov 30, at 9:40, to Sun Dec 6, 2026, with the calendar from the First run page in
 /// supervibes-design (standups, reviews, a birthday; runs, Deep work holds and a dentist made by Alex).
 extension Fixtures {
     private static func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
@@ -57,7 +57,7 @@ extension Fixtures {
         let review = weekEvents.first { $0.title == "Product review" }!
         let runs = weekEvents.filter { $0.title == "Run" }
         var plan = WeekPlan(
-            monday: at(0, 0),
+            start: at(0, 0),
             events: weekEvents.filter { $0.title != "Product review" && $0.title != "Run" },
             blocks: [block("review", "pricing", 0, (14, 0), (15, 30), reserved: true, from: review)]
                 + runs.enumerated().map { index, run in block("run-\(index)", "run", index == 0 ? 1 : 3, (18, 0), (19, 0), from: run) }
@@ -66,10 +66,11 @@ extension Fixtures {
         )
         plan.open = ["deep-work"]
         plan.stage = stage
+        plan.now = at(0, 9, 40)
         return plan
     }
 
-    static let weekStart = WeekPlan(monday: at(0, 0), events: weekEvents, blocks: [], goals: weekGoals)
+    static let weekStart = WeekPlan(start: at(0, 0), now: at(0, 9, 40), events: weekEvents, blocks: [], goals: weekGoals)
 
     static let weekPricingSession = block("pricing-1", "pricing", 0, (10, 0), (12, 0))
     static let weekSpanish = block("spanish-1", "spanish", 6, (10, 0), (11, 0))

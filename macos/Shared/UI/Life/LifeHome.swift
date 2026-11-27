@@ -154,12 +154,10 @@ struct LifeHome: View {
         .padding(.bottom, 12)
     }
 
-    /// The plus beside Projects or Practices, while there's room for another of that kind.
+    /// The plus beside Projects or Practices. There's no limit on either.
     @ViewBuilder private func newButton(_ kind: GoalKind, count: Int) -> some View {
-        if count < max {
-            HeaderIconButton(icon: .add, label: kind == .practice ? "New practice" : "New project") {
-                onNew(GoalInput(kind: kind))
-            }
+        HeaderIconButton(icon: .add, label: kind == .practice ? "New practice" : "New project") {
+            onNew(GoalInput(kind: kind))
         }
     }
 

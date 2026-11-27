@@ -19,7 +19,7 @@ struct FirstRunWeekIntro: View {
                     .font(.app(32, .semibold)).tracking(-0.03 * 32)
                     .foregroundStyle(Theme.foreground)
                     .padding(.top, 4)
-                Text("What matters only moves once it has time. So next is your week: what’s already booked, and where what matters fits around it, starting with the one ahead.")
+                Text("What matters only moves once it has time. So next is your week: what’s already booked over the next seven days, starting today, and where what matters fits around it.")
                     .font(.app(15.2)).lineSpacing(3.5)
                     .foregroundStyle(Theme.muted)
                     .multilineTextAlignment(.center)

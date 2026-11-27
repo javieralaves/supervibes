@@ -53,7 +53,7 @@ struct FirstRunView: View {
                 FirstRunClarify(clarify: state.clarify, isSorting: state.isBusy, error: state.error, dictation: dictation, actions: actions)
             case .sorted:
                 if let plate = state.sorted {
-                    FirstRunSorted(plate: plate, isSaving: state.isBusy, error: state.error, isMade: state.plateMade, actions: actions)
+                    FirstRunSorted(plate: plate, isSaving: state.isBusy, error: state.error, actions: actions)
                 }
             case .whatMatters:
                 if let plate = state.sorted {

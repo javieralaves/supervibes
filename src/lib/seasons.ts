@@ -204,18 +204,38 @@ export async function getQuest(userId: string, questId: string): Promise<{ quest
   return season && quest ? { quest, season } : null;
 }
 
-/** Writes or replaces the draft's candidate quest for an area, as the stand read names it. Keeps whether it's chosen. */
+/**
+ * Writes or replaces the draft's candidate quest for an area, as the stand read names it: the area's first quest in
+ * the season if it has one, keeping whether it's chosen, or a new one. (An area can hold several quests; the stand read
+ * only ever writes one.)
+ */
 export async function upsertCandidate(
   userId: string,
   seasonId: string,
   areaId: string,
   words: { title: string; fromText: string; reach: number },
 ): Promise<string> {
-  const [row] = await db
-    .insert(quests)
-    .values({ userId, seasonId, areaId, ...words })
-    .onConflictDoUpdate({ target: [quests.seasonId, quests.areaId], set: words })
-    .returning({ id: quests.id });
+  const [existing] = await db
+    .select({ id: quests.id })
+    .from(quests)
+    .where(and(eq(quests.seasonId, seasonId), eq(quests.areaId, areaId), eq(quests.userId, userId)))
+    .orderBy(asc(quests.createdAt))
+    .limit(1);
+  if (existing) {
+    await db.update(quests).set(words).where(eq(quests.id, existing.id));
+    return existing.id;
+  }
+  return createQuest(userId, seasonId, areaId, words);
+}
+
+/** A new quest in an area, however many it has already. */
+export async function createQuest(
+  userId: string,
+  seasonId: string,
+  areaId: string,
+  words: { title: string; fromText: string; reach: number },
+): Promise<string> {
+  const [row] = await db.insert(quests).values({ userId, seasonId, areaId, ...words }).returning({ id: quests.id });
   return row.id;
 }
 

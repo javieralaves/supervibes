@@ -102,8 +102,6 @@ struct FirstRunState: Hashable, Sendable {
     var seasonEnd: Date
     /// The questions asked before sorting, and what's been answered.
     var clarify = PlateClarify()
-    /// The sorted plate has been made: Sorted shows it as made, with nothing left to change there.
-    var plateMade = false
     /// The way ahead chosen at What matters.
     var route: FirstRunChoice = .week
     /// Route 2's board, once it's opened.

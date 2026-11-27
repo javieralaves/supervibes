@@ -944,7 +944,7 @@
           },
           "max": {
             "type": "integer",
-            "description": "How many goals someone can have."
+            "description": "No longer a limit: a number far out of reach, for older clients that hide New past it."
           },
           "goals": {
             "type": "array",
@@ -4011,15 +4011,69 @@
           },
           "tasks": {
             "type": "integer"
+          },
+          "goalIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The projects and practices made, to send back as `replacing` on a later save."
+          },
+          "areaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The areas made, likewise."
           }
         },
         "required": [
           "areas",
           "projects",
           "practices",
-          "tasks"
+          "tasks",
+          "goalIds",
+          "areaIds"
         ],
-        "description": "How much was made: new areas, projects, practices and tasks."
+        "description": "How much was made: new areas, projects, practices and tasks, and their ids."
+      },
+      "PlateToSave": {
+        "type": "object",
+        "properties": {
+          "areas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortedArea"
+            }
+          },
+          "replacing": {
+            "type": "object",
+            "properties": {
+              "goalIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "areaIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "required": [
+              "goalIds",
+              "areaIds"
+            ],
+            "description": "What an earlier save of this plate made, taken out first so saving again replaces it."
+          }
+        },
+        "required": [
+          "areas"
+        ]
       },
       "FirstSeason": {
         "type": "object",
@@ -9083,7 +9137,7 @@
     "/api/v1/first-run/save": {
       "post": {
         "operationId": "savePlate",
-        "summary": "Make a sorted plate: the areas not there yet, each project and practice in its area, and the projects' tasks",
+        "summary": "Make a sorted plate: the areas not there yet, each project and practice in its area, and the projects' tasks; replacing an earlier save of it when given",
         "security": [
           {
             "bearerAuth": []
@@ -9093,7 +9147,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SortedPlate"
+                "$ref": "#/components/schemas/PlateToSave"
               }
             }
           }

@@ -2,15 +2,15 @@ import "server-only";
 
 import * as z from "zod";
 
-import { createArea, listAreas } from "@/lib/areas";
+import { createArea, deleteArea, listAreas } from "@/lib/areas";
 import { answerText, askWithApps } from "@/lib/goal-apps";
 import { GOAL_COLOR_KEYS, type GoalColor } from "@/lib/goal-colors";
 import { GOAL_ICON_NAMES, type GoalIconName } from "@/lib/goal-icons";
 import { MAX_GOAL_TITLE } from "@/lib/goal-schema";
-import { createGoal, listGoals } from "@/lib/goals";
+import { createGoal, deleteGoal, listGoals } from "@/lib/goals";
 import { pausePractice } from "@/lib/practice";
 import { FOCUS_MESSAGES, focusProblem, POPULAR_AREAS } from "@/lib/season-schema";
-import { createDraft, deleteDraft, listQuests, setQuestGoals, startSeason, updateQuest, upsertCandidate } from "@/lib/seasons";
+import { createDraft, createQuest, deleteDraft, listQuests, setQuestGoals, startSeason, updateQuest } from "@/lib/seasons";
 import { addDays } from "@/lib/target-date";
 import { createTask } from "@/lib/tasks";
 
@@ -281,18 +281,41 @@ export async function clarifyPlate(userId: string, text: string, today: string):
     .slice(0, MAX_QUESTIONS);
 }
 
-export type SavedPlate = { areas: number; projects: number; practices: number; tasks: number };
+export type SavedPlate = {
+  areas: number;
+  projects: number;
+  practices: number;
+  tasks: number;
+  /** What this save made, so a later save of the plate can replace it. */
+  goalIds: string[];
+  areaIds: string[];
+};
+
+/** What an earlier save of the plate made, to take back out before saving it again. */
+export type MadeBefore = { goalIds: string[]; areaIds: string[] };
 
 /**
  * Makes what was sorted: each area they don't have yet (matched on name, ignoring case), each project and practice in
  * its area, and each project's tasks, in Later. A practice must say how often by now.
+ *
+ * Saving the plate again (after going back to change it or sort it again) replaces the earlier save: what that made,
+ * as `replacing` says, goes first (its projects and practices with their tasks, then its areas, if nothing else is in
+ * them). Nothing the person had before first run is touched.
  */
-export async function savePlate(userId: string, plate: SortedPlate): Promise<SavedPlate> {
+export async function savePlate(userId: string, plate: SortedPlate, replacing?: MadeBefore): Promise<SavedPlate> {
   const missingRhythm = plate.areas.flatMap((a) => a.items).find((i) => i.kind === "practice" && !i.perWeek);
   if (missingRhythm) throw new FirstRunError(`Say how often for ${missingRhythm.title}.`);
 
+  if (replacing && (replacing.goalIds.length > 0 || replacing.areaIds.length > 0)) {
+    for (const id of new Set(replacing.goalIds)) await deleteGoal(userId, id);
+    const inUse = new Set((await listGoals(userId)).map((g) => g.areaId));
+    for (const id of new Set(replacing.areaIds)) {
+      if (!inUse.has(id)) await deleteArea(userId, id);
+    }
+  }
+
   const existing = new Map((await listAreas(userId)).map((a) => [a.name.trim().toLowerCase(), a.id]));
-  const saved: SavedPlate = { areas: 0, projects: 0, practices: 0, tasks: 0 };
+  const saved: SavedPlate = { areas: 0, projects: 0, practices: 0, tasks: 0, goalIds: [], areaIds: [] };
 
   for (const area of plate.areas) {
     const key = area.name.trim().toLowerCase();
@@ -301,16 +324,19 @@ export async function savePlate(userId: string, plate: SortedPlate): Promise<Sav
       areaId = (await createArea(userId, { name: area.name, icon: area.icon as GoalIconName, now: null, want: null })).id;
       existing.set(key, areaId);
       saved.areas++;
+      saved.areaIds.push(areaId);
     }
     for (const item of area.items) {
       const input = { title: item.title, icon: item.icon as GoalIconName, color: item.color as GoalColor, description: null, targetDate: null };
       if (item.kind === "practice") {
-        await createGoal(userId, input, areaId, { perWeek: item.perWeek! });
+        const practice = await createGoal(userId, input, areaId, { perWeek: item.perWeek! });
         saved.practices++;
+        saved.goalIds.push(practice.id);
         continue;
       }
       const goal = await createGoal(userId, { ...input, targetDate: item.targetDate }, areaId);
       saved.projects++;
+      saved.goalIds.push(goal.id);
       for (const task of item.tasks) {
         await createTask(userId, goal.id, task);
         saved.tasks++;
@@ -349,7 +375,7 @@ export async function startFirstSeason(
   const season = await createDraft(userId, today);
   try {
     for (const { title, goal } of picked) {
-      const questId = await upsertCandidate(userId, season.id, goal!.areaId!, { title: title || goal!.title, fromText: "", reach: 0 });
+      const questId = await createQuest(userId, season.id, goal!.areaId!, { title: title || goal!.title, fromText: "", reach: 0 });
       await updateQuest(userId, questId, { chosen: true });
       await setQuestGoals(userId, questId, [goal!.id]);
     }

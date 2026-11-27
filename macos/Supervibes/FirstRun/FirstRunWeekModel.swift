@@ -15,7 +15,8 @@ final class FirstRunWeekModel {
     private(set) var practiceTip: WeekSelection?
     private(set) var open: Set<String>
 
-    let monday: Date
+    /// Today, the week's first day.
+    let start: Date
     /// Route 2's quests and what waits for next season; none in Route 1.
     let quests: [WeekQuest]
     let waiting: Set<String>
@@ -33,7 +34,7 @@ final class FirstRunWeekModel {
         self.quests = quests
         self.waiting = waiting
         self.steps = steps
-        monday = WeekPlan.weekToPlan(from: .now)
+        start = WeekPlan.weekToPlan(from: .now)
         open = Set(UserDefaults.standard.stringArray(forKey: Self.openKey) ?? [])
     }
 
@@ -46,11 +47,12 @@ final class FirstRunWeekModel {
     // MARK: What the week shows
 
     var plan: WeekPlan {
-        let end = Calendar.current.date(byAdding: .day, value: 7, to: monday) ?? monday
-        let blocks = calendar.data.blocks.filter { $0.startsAt >= monday && $0.startsAt < end }
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: start) ?? start
+        let blocks = calendar.data.blocks.filter { $0.startsAt >= start && $0.startsAt < end }
         let imported = Set(blocks.compactMap { $0.source?.key })
-        let events = feed.isActive ? feed.events.filter { $0.start >= monday && $0.start < end && !imported.contains($0.key) } : []
-        var plan = WeekPlan(monday: monday, events: events, blocks: blocks, goals: calendar.data.goals)
+        let events = feed.isActive ? feed.events.filter { $0.start >= start && $0.start < end && !imported.contains($0.key) } : []
+        var plan = WeekPlan(start: start, events: events, blocks: blocks, goals: calendar.data.goals)
+        plan.now = calendar.now
         plan.open = open
         plan.stage = stage
         plan.quests = quests
@@ -145,7 +147,7 @@ final class FirstRunWeekModel {
         guard let goal = calendar.data.goals.first(where: { $0.id == goalId }) else { return }
         let length = goal.isPractice ? max(goal.minMinutes ?? 60, 30) : 120
         let end = min(start + length, 21 * 60)
-        let date = Calendar.current.date(byAdding: .day, value: day, to: monday) ?? monday
+        let date = Calendar.current.date(byAdding: .day, value: day, to: self.start) ?? self.start
         let offset = CalendarDayMath.dayOffset(date, from: calendar.now)
         calendar.create(day: offset, start: start, end: max(end, start + 15), goalId: goalId, title: nil, kind: .session)
         let startsAt = date.addingTimeInterval(Double(start) * 60)

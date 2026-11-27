@@ -49,7 +49,7 @@ struct FirstRunFocus: View {
                         .padding(.top, 24)
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                             ForEach(board.items) { item in
-                                PlateTile(item: item, taken: board.areaFocus(for: item.id), canFocus: board.canFocus(item.id)) {
+                                PlateTile(item: item, canFocus: board.canFocus(item.id)) {
                                     actions.choose(item.id)
                                 }
                             }
@@ -241,12 +241,9 @@ private struct EmptySlot: View {
 
 // MARK: - The plate
 
-/// One thing on the plate before anything's chosen, all at the same level. Hovered, it offers to become a focus; one
-/// from an area that already has a focus says so instead.
+/// One thing on the plate before anything's chosen, all at the same level. Hovered, it offers to become a focus.
 private struct PlateTile: View {
     let item: FocusItem
-    /// The focus already in its area.
-    let taken: FocusItem?
     let canFocus: Bool
     let onFocus: () -> Void
     @State private var isHovered = false
@@ -256,7 +253,7 @@ private struct PlateTile: View {
             GoalBadge(icon: item.icon, color: item.color, size: .card, round: item.isPractice)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title).font(.app(13, .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
-                Text(taken.map { "\($0.areaName) has a focus" } ?? item.plateLine)
+                Text(item.plateLine)
                     .font(.app(11.5)).foregroundStyle(Theme.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -272,7 +269,6 @@ private struct PlateTile: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 60)
-        .opacity(taken == nil ? 1 : 0.55)
         .background {
             RoundedRectangle(cornerRadius: 12).fill(Theme.card)
                 .shadow(color: .black.opacity(isHovered && canFocus ? 0.12 : 0), radius: 10, y: 8)

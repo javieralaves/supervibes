@@ -636,7 +636,8 @@ export const quests = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [uniqueIndex("quests_season_area_idx").on(t.seasonId, t.areaId)],
+  // An area can have several quests in a season (two focuses from Work, say), so this only speeds up finding them.
+  (t) => [index("quests_season_area_idx").on(t.seasonId, t.areaId)],
 );
 
 export type Quest = typeof quests.$inferSelect;

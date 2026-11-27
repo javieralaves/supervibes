@@ -217,7 +217,18 @@ private struct PlanGrid: View {
                 ForEach(0..<7, id: \.self) { day in
                     dayColumn(day, layout: layout)
                 }
+                nowLine(layout)
                 overlays(layout)
+            }
+            // One drop area over the whole week, the day worked out from where it's let go. (Each column is moved into
+            // place with an offset, which moves where it's drawn but not where drops land: dropping on a column of its
+            // own put everything on the last day.)
+            .contentShape(.rect)
+            .dropDestination(for: String.self) { ids, location in
+                guard let id = ids.first, plan.goal(id) != nil, location.x >= Self.gutter else { return false }
+                let day = min(max(Int((location.x - Self.gutter) / layout.column), 0), 6)
+                actions.drop(id, day, min(max(layout.minutes(at: location.y), Self.fromHour * 60), (Self.toHour - 1) * 60))
+                return true
             }
         }
         .background(Theme.card, in: .rect(cornerRadius: 16))
@@ -252,9 +263,11 @@ private struct PlanGrid: View {
     private func lines(_ layout: Layout) -> some View {
         ZStack(alignment: .topLeading) {
             ForEach(Array(plan.days.enumerated()), id: \.offset) { index, day in
+                let isToday = plan.now.map { plan.dayIndex($0) == index } ?? false
                 HStack(spacing: 6) {
-                    Text(day.formatted(.dateTime.weekday(.abbreviated).locale(WeekPlan.locale)))
-                        .foregroundStyle(Theme.muted)
+                    Text(isToday ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).locale(WeekPlan.locale)))
+                        .foregroundStyle(isToday ? Theme.foreground : Theme.muted)
+                        .fontWeight(isToday ? .semibold : .medium)
                     Text(day.formatted(.dateTime.day().locale(WeekPlan.locale))).monospacedDigit()
                         .foregroundStyle(Theme.foreground)
                 }
@@ -302,10 +315,29 @@ private struct PlanGrid: View {
         }
         .frame(width: layout.column, height: layout.size.height)
         .offset(x: layout.x(day))
-        .dropDestination(for: String.self) { ids, location in
-            guard let id = ids.first, plan.goal(id) != nil else { return false }
-            actions.drop(id, day, min(max(layout.minutes(at: location.y), Self.fromHour * 60), (Self.toHour - 1) * 60))
-            return true
+    }
+
+    /// The time it is, across today: a red line with a dot at its start, and the time in the gutter, as on the
+    /// calendar.
+    @ViewBuilder
+    private func nowLine(_ layout: Layout) -> some View {
+        if let now = plan.now, let day = plan.dayIndex(now) {
+            let minutes = CalendarDayMath.minutes(now)
+            if minutes >= Self.fromHour * 60, minutes <= Self.toHour * 60 {
+                let red = Color(nsColor: .rgb(0xef4444))
+                ZStack(alignment: .topLeading) {
+                    Text(WeekPlan.clock(now)).font(.app(10.5, .semibold)).monospacedDigit().foregroundStyle(red)
+                        .frame(width: Self.gutter - 6, alignment: .trailing)
+                        .background(Theme.card)
+                        .offset(y: -7)
+                    Rectangle().fill(red).frame(width: layout.column, height: 2)
+                        .offset(x: layout.x(day), y: -1)
+                    Circle().fill(red).frame(width: 9, height: 9)
+                        .offset(x: layout.x(day) - 4.5, y: -4.5)
+                }
+                .offset(y: layout.y(minutes))
+                .allowsHitTesting(false)
+            }
         }
     }
 

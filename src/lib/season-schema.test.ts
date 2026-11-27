@@ -110,15 +110,15 @@ describe("popularAreasFor", () => {
 });
 
 describe("focusProblem", () => {
-  it("takes one to three focuses, each in its own area", () => {
+  it("takes one to three focuses, from any areas, several from one if they like", () => {
     assert.equal(focusProblem([{ areaId: "work" }]), null);
     assert.equal(focusProblem([{ areaId: "work" }, { areaId: "home" }, { areaId: "health" }]), null);
+    assert.equal(focusProblem([{ areaId: "work" }, { areaId: "work" }]), null);
   });
 
   it("names what's wrong", () => {
     assert.equal(focusProblem([]), "no_focus");
     assert.equal(focusProblem([{ areaId: "a" }, { areaId: "b" }, { areaId: "c" }, { areaId: "d" }]), "too_many_focus");
     assert.equal(focusProblem([{ areaId: "work" }, { areaId: null }]), "focus_without_area");
-    assert.equal(focusProblem([{ areaId: "work" }, { areaId: "work" }]), "focus_area_taken");
   });
 });

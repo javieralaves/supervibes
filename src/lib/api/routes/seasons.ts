@@ -556,7 +556,8 @@ export async function seasonLinks(userId: string, timeZone: string | null) {
   const goalQuest = new Map<string, string>();
   const areaQuest = new Map<string, string>();
   for (const quest of quests) {
-    areaQuest.set(quest.areaId, quest.id);
+    // An area with several quests links to its first, in the season's order.
+    if (!areaQuest.has(quest.areaId)) areaQuest.set(quest.areaId, quest.id);
     for (const goalId of quest.goalIds) goalQuest.set(goalId, quest.id);
   }
   return { goalQuest, areaQuest };

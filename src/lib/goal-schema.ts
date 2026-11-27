@@ -6,8 +6,12 @@ import { GOAL_ICON_NAMES } from "@/lib/goal-icons";
 /** A goal is a project (it has a finish line) or a practice (kept up a number of times a week). */
 export const GOAL_KINDS = ["project", "practice"] as const;
 
-/** Soft cap so goals stay "a handful": this many projects, and as many practices. */
-export const MAX_GOALS = 12;
+/**
+ * There's no cap on projects or practices: some people carry more than a dozen, and the app helps them put things off
+ * rather than refusing them. GET /goals still sends this as `max` so older app builds, which hide New past it, keep
+ * offering it.
+ */
+export const MAX_GOALS = 10_000;
 /** A practice is meant to happen at most this many times a week. */
 export const MAX_PER_WEEK = 14;
 /** A practice's minimum session length can't be more than this many minutes. */
