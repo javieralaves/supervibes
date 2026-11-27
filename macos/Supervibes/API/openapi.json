@@ -3866,9 +3866,6 @@
         "required": [
           "title",
           "kind",
-          "detail",
-          "perWeek",
-          "targetDate",
           "icon",
           "color",
           "tasks"

@@ -5,7 +5,16 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, errorResponses } from "@/lib/api/errors";
 import { AreaLimitError } from "@/lib/areas";
-import { FirstRunError, MAX_PLATE_TEXT, savePlate, sortedAreaSchema, sortedItemSchema, sortPlate, startFirstSeason } from "@/lib/first-run";
+import {
+  FirstRunError,
+  MAX_PLATE_TEXT,
+  savePlate,
+  sortedAreaSchema,
+  sortedItemSchema,
+  sortPlate,
+  startFirstSeason,
+  type SortedPlate,
+} from "@/lib/first-run";
 import { GoalLimitError } from "@/lib/goals";
 import { MAX_QUESTS, questWordsSchema } from "@/lib/season-schema";
 import { SeasonError } from "@/lib/seasons";
@@ -18,11 +27,13 @@ import { todayIn } from "@/lib/target-date";
  * once they've fixed what's off, make it.
  */
 
+// Each nullable field may also be left out: the Mac app's generated client leaves out what's nil rather than sending
+// null, so saving a plate sends no perWeek for a project. Left out reads as null (see asSortedPlate).
 const SortedItemSchema = sortedItemSchema
   .extend({
-    detail: z.string().nullable().openapi({ description: "A few words they said that help place it: a deadline, who it's with." }),
-    perWeek: z.int().nullable().openapi({ description: "For a practice, times a week; null when they didn't say (ask before saving)." }),
-    targetDate: z.iso.date().nullable().openapi({ description: "For a project, the day they want it done by, if they said." }),
+    detail: z.string().nullish().openapi({ description: "A few words they said that help place it: a deadline, who it's with." }),
+    perWeek: z.int().nullish().openapi({ description: "For a practice, times a week; null when they didn't say (ask before saving)." }),
+    targetDate: z.iso.date().nullish().openapi({ description: "For a project, the day they want it done by, if they said." }),
     tasks: z.array(z.string()).openapi({ description: "One-off things to do on a project, saved to Later." }),
   })
   .openapi("SortedItem");
@@ -110,6 +121,21 @@ const seasonRoute = createRoute({
   responses: { 201: json(FirstSeasonSchema, "Started"), ...errorResponses },
 });
 
+/** A plate as sent, with whatever was left out as null, as savePlate takes it. */
+function asSortedPlate(plate: z.infer<typeof SortedPlateSchema>): SortedPlate {
+  return {
+    areas: plate.areas.map((area) => ({
+      ...area,
+      items: area.items.map((item) => ({
+        ...item,
+        detail: item.detail ?? null,
+        perWeek: item.perWeek ?? null,
+        targetDate: item.targetDate ?? null,
+      })),
+    })),
+  };
+}
+
 function failure(error: unknown) {
   if (error instanceof FirstRunError) return apiError("first_run", error.message);
   if (error instanceof SeasonError) return apiError(error.code, error.message);
@@ -130,7 +156,7 @@ export const firstRun = new OpenAPIHono<ApiEnv>()
   })
   .openapi(saveRoute, async (c) => {
     try {
-      return c.json(await savePlate(c.var.user.id, c.req.valid("json")), 201);
+      return c.json(await savePlate(c.var.user.id, asSortedPlate(c.req.valid("json"))), 201);
     } catch (error) {
       return c.json(failure(error), 400);
     }
