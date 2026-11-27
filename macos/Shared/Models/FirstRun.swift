@@ -8,7 +8,8 @@ import Foundation
 
 /// Where someone is in the shared start.
 enum FirstRunStep: Int, CaseIterable, Hashable, Sendable {
-    case welcome, plate, sorted, whatMatters
+    /// `clarify`: a few questions about what's fuzzy on the plate, before it's sorted; skipped when it's clear.
+    case welcome, plate, clarify, sorted, whatMatters
     /// Route 2: choosing up to three focuses, then the season they make.
     case focus, season
     /// Route 3: areas, where each stands, quests, what moves them and the season, as Start a season steps through them.
@@ -54,8 +55,12 @@ struct PlateItem: Identifiable, Hashable, Codable, Sendable {
     var color: String
     /// One-off things to do on a project, saved to Later.
     var tasks: [String]
+    /// The area's bucket for one-offs that belong to nothing bigger: a project, named for its area ("Around the
+    /// house"). Nil reads as no.
+    var bucket: Bool? = nil
 
     var isPractice: Bool { kind == .practice }
+    var isBucket: Bool { bucket == true }
 }
 
 /// A part of life, with what was sorted into it.
@@ -95,6 +100,10 @@ struct FirstRunState: Hashable, Sendable {
     var error: String?
     /// The last day of a season starting next Monday, for "until February".
     var seasonEnd: Date
+    /// The questions asked before sorting, and what's been answered.
+    var clarify = PlateClarify()
+    /// The sorted plate has been made: Sorted shows it as made, with nothing left to change there.
+    var plateMade = false
     /// The way ahead chosen at What matters.
     var route: FirstRunChoice = .week
     /// Route 2's board, once it's opened.

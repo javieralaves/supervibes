@@ -7,6 +7,17 @@ struct FirstRunActions {
     var sort: () -> Void = {}
     var setPerWeek: (String, Int) -> Void = { _, _ in }
     var save: () -> Void = {}
+    /// The questions before sorting: an option picked (or picked again, to clear it), words added, on or past one.
+    var pick: (Int) -> Void = { _ in }
+    var setMore: (String) -> Void = { _ in }
+    var nextQuestion: () -> Void = {}
+    var skipQuestion: () -> Void = {}
+    var sortWithoutAnswers: () -> Void = {}
+    /// Changing what was sorted.
+    var applyEdit: (SortedEdit, SortedSelection) -> Void = { _, _ in }
+    var remove: (SortedSelection) -> Void = { _ in }
+    var add: (String, PlateKind, String) -> Void = { _, _, _ in }
+    var addArea: (String, String) -> Void = { _, _ in }
     /// Say it instead: start listening on the plate, or stop.
     var dictate: () -> Void = {}
     var choose: (FirstRunChoice) -> Void = { _ in }
@@ -38,12 +49,11 @@ struct FirstRunView: View {
                     text: $plateText, isSorting: state.isBusy, error: state.error, dictation: dictation, onDictate: actions.dictate,
                     onBack: actions.back, onSort: actions.sort
                 )
+            case .clarify:
+                FirstRunClarify(clarify: state.clarify, isSorting: state.isBusy, error: state.error, dictation: dictation, actions: actions)
             case .sorted:
                 if let plate = state.sorted {
-                    FirstRunSorted(
-                        plate: plate, isSaving: state.isBusy, error: state.error,
-                        onSetPerWeek: actions.setPerWeek, onBack: actions.back, onSave: actions.save
-                    )
+                    FirstRunSorted(plate: plate, isSaving: state.isBusy, error: state.error, isMade: state.plateMade, actions: actions)
                 }
             case .whatMatters:
                 if let plate = state.sorted {

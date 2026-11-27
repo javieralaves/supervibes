@@ -89,4 +89,33 @@ extension Fixtures {
         WeekQuest(number: 2, title: "Move flats by January", goalIds: ["move"]),
         WeekQuest(number: 3, title: "Run", goalIds: ["run"]),
     ]
+
+    /// The questions asked about Alex's plate before sorting, as on the design's "2 · Before sorting".
+    static let plateQuestions = [
+        PlateQuestion(quote: "keep up spanish", question: "Is Spanish something you keep up, or something to finish?", options: [
+            .init(title: "Something I keep up", line: "A practice, a few times a week", kind: .practice),
+            .init(title: "Something to finish", line: "A project, like passing an exam by a date", kind: .project),
+        ]),
+        PlateQuestion(quote: "also call the bank about the mortgage", question: "Is calling the bank part of moving flats, or its own thing?", options: [
+            .init(title: "Part of moving flats", line: "A task under Move flats by January", kind: .task),
+            .init(title: "Nothing bigger", line: "A one-off, in Home’s Around the house", kind: .task),
+            .init(title: "Its own project", line: "Something with steps of its own", kind: .project),
+        ]),
+        PlateQuestion(quote: "fix the leaking tap", question: "Does fixing the tap belong to something bigger?", options: [
+            .init(title: "Part of moving flats", line: "A task under Move flats by January", kind: .task),
+            .init(title: "Nothing bigger", line: "A one-off, in Home’s Around the house", kind: .task),
+            .init(title: "Its own project", line: "Something with steps of its own", kind: .project),
+        ]),
+    ]
+
+    /// Alex's plate sorted with the answers: Spanish 3 times a week, and Home's bucket holding the leaking tap.
+    static var sortedPlateAnswered: SortedPlate {
+        var plate = sortedPlate
+        plate.setPerWeek(3, for: "spanish")
+        if let home = plate.areas.firstIndex(where: { $0.id == "home" }) {
+            plate.areas[home].items.append(item("house", "Around the house", .project, icon: "Home01Icon", color: "slate", tasks: ["Fix the leaking tap"]))
+            plate.areas[home].items[1].bucket = true
+        }
+        return plate
+    }
 }

@@ -3633,6 +3633,127 @@
           "perWeek"
         ]
       },
+      "PlateQuestions": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlateQuestion"
+            }
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "description": "What's worth asking before sorting; none when the plate is clear."
+      },
+      "PlateQuestion": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlateQuestionOption"
+            }
+          }
+        },
+        "required": [
+          "quote",
+          "question",
+          "options"
+        ]
+      },
+      "PlateQuestionOption": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "project",
+              "practice",
+              "task"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "line",
+          "kind"
+        ]
+      },
+      "PlateText": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          },
+          "timeZone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The device's time zone, for working out dates; defaults to the stored one."
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlateAnswer"
+            },
+            "maxItems": 8,
+            "description": "Answers to the questions asked before sorting."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "PlateAnswer": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "answer": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "The option picked: its title and line. Left out when skipped."
+          },
+          "more": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "What they added in their own words."
+          }
+        },
+        "required": [
+          "quote",
+          "question"
+        ]
+      },
       "SortedPlate": {
         "type": "object",
         "properties": {
@@ -3861,6 +3982,11 @@
               "type": "string"
             },
             "description": "One-off things to do on a project, saved to Later."
+          },
+          "bucket": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "The area's bucket for one-offs that belong to nothing bigger; false when left out."
           }
         },
         "required": [
@@ -3869,25 +3995,6 @@
           "icon",
           "color",
           "tasks"
-        ]
-      },
-      "PlateText": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 6000
-          },
-          "timeZone": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "description": "The device's time zone, for working out dates; defaults to the stored one."
-          }
-        },
-        "required": [
-          "text"
         ]
       },
       "SavedPlate": {
@@ -8858,6 +8965,58 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/first-run/clarify": {
+      "post": {
+        "operationId": "clarifyPlate",
+        "summary": "The few questions worth asking about what someone typed before sorting it; often none; takes a few seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlateText"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlateQuestions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
             "content": {
               "application/json": {
                 "schema": {

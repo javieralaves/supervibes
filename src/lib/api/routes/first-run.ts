@@ -6,8 +6,10 @@ import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, errorResponses } from "@/lib/api/errors";
 import { AreaLimitError } from "@/lib/areas";
 import {
+  clarifyPlate,
   FirstRunError,
   MAX_PLATE_TEXT,
+  plateQuestionSchema,
   savePlate,
   sortedAreaSchema,
   sortedItemSchema,
@@ -23,8 +25,8 @@ import { timeZoneSchema } from "@/lib/settings-schema";
 import { todayIn } from "@/lib/target-date";
 
 /*
- * First run's shared start (src/lib/first-run.ts): sort what someone typed into areas, projects and practices, then,
- * once they've fixed what's off, make it.
+ * First run's shared start (src/lib/first-run.ts): ask about what's fuzzy in what someone typed, sort it into areas,
+ * projects and practices with their answers, then, once they've fixed what's off, make it.
  */
 
 // Each nullable field may also be left out: the Mac app's generated client leaves out what's nil rather than sending
@@ -35,18 +37,45 @@ const SortedItemSchema = sortedItemSchema
     perWeek: z.int().nullish().openapi({ description: "For a practice, times a week; null when they didn't say (ask before saving)." }),
     targetDate: z.iso.date().nullish().openapi({ description: "For a project, the day they want it done by, if they said." }),
     tasks: z.array(z.string()).openapi({ description: "One-off things to do on a project, saved to Later." }),
+    bucket: z.boolean().nullish().openapi({ description: "The area's bucket for one-offs that belong to nothing bigger; false when left out." }),
   })
   .openapi("SortedItem");
 
 const SortedAreaSchema = sortedAreaSchema.extend({ items: z.array(SortedItemSchema) }).openapi("SortedArea");
 const SortedPlateSchema = z.object({ areas: z.array(SortedAreaSchema) }).openapi("SortedPlate");
 
+const PlateAnswerSchema = z
+  .object({
+    quote: z.string().max(200),
+    question: z.string().max(200),
+    answer: z.string().max(200).nullish().openapi({ description: "The option picked: its title and line. Left out when skipped." }),
+    more: z.string().max(1000).nullish().openapi({ description: "What they added in their own words." }),
+  })
+  .openapi("PlateAnswer");
+
 const PlateTextSchema = z
   .object({
     text: z.string().trim().min(1, "Write a few things down first.").max(MAX_PLATE_TEXT, "That’s a lot at once. Try a shorter list."),
     timeZone: timeZoneSchema.optional().openapi({ description: "The device's time zone, for working out dates; defaults to the stored one." }),
+    answers: z.array(PlateAnswerSchema).max(8).optional().openapi({ description: "Answers to the questions asked before sorting." }),
   })
   .openapi("PlateText");
+
+const PlateQuestionsSchema = z
+  .object({
+    questions: z.array(
+      plateQuestionSchema
+        .extend({
+          options: z.array(
+            z
+              .object({ title: z.string(), line: z.string(), kind: z.enum(["project", "practice", "task"]) })
+              .openapi("PlateQuestionOption"),
+          ),
+        })
+        .openapi("PlateQuestion"),
+    ),
+  })
+  .openapi("PlateQuestions", { description: "What's worth asking before sorting; none when the plate is clear." });
 
 const SavedPlateSchema = z
   .object({ areas: z.int(), projects: z.int(), practices: z.int(), tasks: z.int() })
@@ -54,6 +83,16 @@ const SavedPlateSchema = z
 
 const json = <T extends z.ZodType>(schema: T, description = "OK") => ({ description, content: { "application/json": { schema } } });
 const secured = [{ bearerAuth: [] }];
+
+const clarifyRoute = createRoute({
+  method: "post",
+  path: "/first-run/clarify",
+  operationId: "clarifyPlate",
+  summary: "The few questions worth asking about what someone typed before sorting it; often none; takes a few seconds",
+  security: secured,
+  request: { body: { content: { "application/json": { schema: PlateTextSchema } } } },
+  responses: { 200: json(PlateQuestionsSchema), ...errorResponses },
+});
 
 const sortRoute = createRoute({
   method: "post",
@@ -131,6 +170,7 @@ function asSortedPlate(plate: z.infer<typeof SortedPlateSchema>): SortedPlate {
         detail: item.detail ?? null,
         perWeek: item.perWeek ?? null,
         targetDate: item.targetDate ?? null,
+        bucket: item.bucket ?? false,
       })),
     })),
   };
@@ -144,12 +184,23 @@ function failure(error: unknown) {
 }
 
 export const firstRun = new OpenAPIHono<ApiEnv>()
-  .openapi(sortRoute, async (c) => {
+  .openapi(clarifyRoute, async (c) => {
     const userId = c.var.user.id;
     const { text, timeZone } = c.req.valid("json");
     try {
       const today = todayIn(timeZone ?? (await getTimeZone(userId)));
-      return c.json(await sortPlate(userId, text, today), 200);
+      return c.json({ questions: await clarifyPlate(userId, text, today) }, 200);
+    } catch (error) {
+      return c.json(failure(error), 400);
+    }
+  })
+  .openapi(sortRoute, async (c) => {
+    const userId = c.var.user.id;
+    const { text, timeZone, answers } = c.req.valid("json");
+    try {
+      const today = todayIn(timeZone ?? (await getTimeZone(userId)));
+      const given = (answers ?? []).map((a) => ({ quote: a.quote, question: a.question, answer: a.answer ?? null, more: a.more ?? null }));
+      return c.json(await sortPlate(userId, text, today, given), 200);
     } catch (error) {
       return c.json(failure(error), 400);
     }

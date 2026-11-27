@@ -33,7 +33,9 @@ final class FirstRunModel {
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
     /// Whether the sorted plate has been made, so going back to it and on again doesn't make it twice.
-    @ObservationIgnored private var saved = false
+    @ObservationIgnored private var saved = false {
+        didSet { state.plateMade = saved }
+    }
     @ObservationIgnored private var email: String?
 
     init(auth: AuthModel) {
@@ -41,16 +43,23 @@ final class FirstRunModel {
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
         state = FirstRunState(firstName: "", seasonEnd: Self.seasonEnd(from: .now))
-        dictation.onSettled = { [weak self] words in self?.addSpoken(words) }
+        dictation.onSettled = { [weak self] words in
+            guard let self else { return }
+            if state.step == .clarify, let quote = state.clarify.question?.quote {
+                state.clarify.more[quote] = Self.joined(state.clarify.more[quote] ?? "", words)
+            } else {
+                addSpoken(words)
+            }
+        }
     }
 
     /// Settled words from Say it instead, after what's on the plate, with a space between unless it ends a line.
     private func addSpoken(_ words: String) {
-        if plateText.isEmpty || plateText.last?.isWhitespace == true {
-            plateText += words
-        } else {
-            plateText += " " + words
-        }
+        plateText = Self.joined(plateText, words)
+    }
+
+    private static func joined(_ text: String, _ words: String) -> String {
+        text.isEmpty || text.last?.isWhitespace == true ? text + words : text + " " + words
     }
 
     // MARK: Who sees it
@@ -140,6 +149,18 @@ final class FirstRunModel {
             sort: { [weak self] in Task { await self?.sort() } },
             setPerWeek: { [weak self] id, perWeek in self?.state.sorted?.setPerWeek(perWeek, for: id) },
             save: { [weak self] in Task { await self?.save() } },
+            pick: { [weak self] index in self?.pick(index) },
+            setMore: { [weak self] words in
+                guard let self, let quote = state.clarify.question?.quote else { return }
+                state.clarify.more[quote] = words
+            },
+            nextQuestion: { [weak self] in self?.nextQuestion(skipping: false) },
+            skipQuestion: { [weak self] in self?.nextQuestion(skipping: true) },
+            sortWithoutAnswers: { [weak self] in Task { await self?.sortNow(answering: false) } },
+            applyEdit: { [weak self] edit, selection in self?.changeSorted { $0.apply(edit, to: selection) } },
+            remove: { [weak self] selection in self?.changeSorted { $0.remove(selection) } },
+            add: { [weak self] title, kind, areaId in self?.changeSorted { $0.add(title, kind: kind, to: areaId) } },
+            addArea: { [weak self] name, icon in self?.changeSorted { $0.addArea(name, icon: icon) } },
             dictate: { [weak self] in self?.dictation.toggle() },
             choose: { [weak self] choice in self?.choose(choice) },
             focus: FocusActions(
@@ -177,6 +198,8 @@ final class FirstRunModel {
         case .plate:
             dictation.stop()
             go(.welcome)
+        case .clarify:
+            if state.clarify.current > 0 { state.clarify.current -= 1 } else { go(.plate) }
         case .sorted: go(.plate)
         case .whatMatters: go(.sorted)
         case .focus:
@@ -195,7 +218,7 @@ final class FirstRunModel {
         }
     }
 
-    /// Sends the plate to be sorted; on to Sorted with what came back.
+    /// Sort it, on the plate: first the few questions worth asking, if there are any; otherwise straight to sorting.
     private func sort() async {
         // Whatever's still being said settles first.
         await dictation.finishIfNeeded()
@@ -203,9 +226,67 @@ final class FirstRunModel {
         guard !text.isEmpty, !state.isBusy else { return }
         state.isBusy = true
         state.error = nil
-        defer { state.isBusy = false }
+        let questions = await clarify(text)
+        state.isBusy = false
+        guard !questions.isEmpty else { return await sortNow(answering: false) }
+        state.clarify = PlateClarify(questions: questions)
+        go(.clarify)
+    }
+
+    /// The questions worth asking before sorting. If they can't be had, it sorts without them rather than stopping.
+    private func clarify(_ text: String) async -> [PlateQuestion] {
         do {
             let body = Components.Schemas.PlateText(text: text, timeZone: TimeZone.current.identifier)
+            guard case .ok(let ok) = try await client.clarifyPlate(body: .json(body)) else { return [] }
+            return try ok.body.json.questions.map { question in
+                PlateQuestion(quote: question.quote, question: question.question, options: question.options.map {
+                    PlateQuestion.Option(title: $0.title, line: $0.line, kind: PlateKind(rawValue: $0.kind.rawValue) ?? .project)
+                })
+            }
+        } catch {
+            Log.app.error("Questions about the plate: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    private func pick(_ index: Int) {
+        guard let quote = state.clarify.question?.quote else { return }
+        state.clarify.picked[quote] = state.clarify.picked[quote] == index ? nil : index
+    }
+
+    /// On to the next question, or, after the last, the sort. Skipping clears what was answered.
+    private func nextQuestion(skipping: Bool) {
+        if skipping, let quote = state.clarify.question?.quote {
+            state.clarify.picked[quote] = nil
+            state.clarify.more[quote] = nil
+        }
+        if state.clarify.isLast {
+            Task { await sortNow(answering: true) }
+        } else {
+            dictation.stop()
+            state.clarify.current += 1
+        }
+    }
+
+    /// Sends the plate to be sorted, with the answers given (or none); on to Sorted with what came back.
+    private func sortNow(answering: Bool) async {
+        await dictation.finishIfNeeded()
+        let text = plateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !state.isBusy else { return }
+        state.isBusy = true
+        state.error = nil
+        defer { state.isBusy = false }
+        do {
+            let answers: [Components.Schemas.PlateAnswer] = answering ? state.clarify.questions.compactMap { question in
+                let option = state.clarify.picked[question.quote].flatMap { question.options.indices.contains($0) ? question.options[$0] : nil }
+                let more = state.clarify.more[question.quote]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard option != nil || !more.isEmpty else { return nil }
+                return Components.Schemas.PlateAnswer(
+                    quote: question.quote, question: question.question,
+                    answer: option.map { "\($0.title): \($0.line)" }, more: more.isEmpty ? nil : more
+                )
+            } : []
+            let body = Components.Schemas.PlateText(text: text, timeZone: TimeZone.current.identifier, answers: answers.isEmpty ? nil : answers)
             switch try await client.sortPlate(body: .json(body)) {
             case .ok(let ok):
                 state.sorted = SortedPlate(api: try ok.body.json)
@@ -219,6 +300,13 @@ final class FirstRunModel {
             Log.app.error("Sorting the plate: \(error.localizedDescription, privacy: .public)")
             state.error = "Couldn’t reach Supervibes. Check your connection."
         }
+    }
+
+    /// A change on Sorted: what's made on Looks right is whatever's there then. Once it's made, it stays as made.
+    private func changeSorted(_ change: (inout SortedPlate) -> Void) {
+        guard var plate = state.sorted, !saved else { return }
+        change(&plate)
+        state.sorted = plate
     }
 
     /// Makes the sorted plate (once), then on to What matters.
@@ -387,6 +475,8 @@ final class FirstRunModel {
                 guard let areaId = goal.areaId, let area = areaList.first(where: { $0.id == areaId }) else { return nil }
                 let isPractice = goal.kind == .practice
                 let sorted = plate.first { $0.title == goal.title && $0.isPractice == isPractice }
+                // An area's bucket of one-offs isn't something to focus on.
+                if sorted?.isBucket == true { return nil }
                 return FocusItem(
                     id: goal.id, title: goal.title, icon: goal.icon, color: goal.color, isPractice: isPractice,
                     perWeek: goal.practice?.perWeek, areaId: areaId, areaName: area.name, areaIcon: area.icon,
@@ -539,7 +629,7 @@ extension SortedPlate {
                 PlateItem(
                     id: "item-\(a)-\(i)", title: item.title, kind: item.kind == .practice ? .practice : .project,
                     detail: item.detail, perWeek: item.perWeek, targetDate: item.targetDate,
-                    icon: item.icon.rawValue, color: item.color.rawValue, tasks: item.tasks
+                    icon: item.icon.rawValue, color: item.color.rawValue, tasks: item.tasks, bucket: item.bucket == true ? true : nil
                 )
             })
         })
@@ -555,7 +645,7 @@ extension SortedPlate {
                         title: item.title, kind: item.isPractice ? .practice : .project, detail: item.detail,
                         perWeek: item.perWeek, targetDate: item.targetDate,
                         icon: .init(rawValue: item.icon) ?? .target02Icon, color: .init(rawValue: item.color) ?? .violet,
-                        tasks: item.tasks
+                        tasks: item.tasks, bucket: item.isBucket
                     )
                 }
             )
