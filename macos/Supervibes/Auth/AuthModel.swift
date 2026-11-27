@@ -169,6 +169,39 @@ final class AuthModel: NSObject {
         await signOut(message: "Your session ended. Sign in again.")
     }
 
+    #if DEBUG
+    // MARK: Development
+
+    /// The signed-in email, if known; the Develop menu shows it.
+    var signedInEmail: String? {
+        if case .signedIn(let email) = state { return email }
+        return nil
+    }
+
+    /// Debug builds only: signs out, then back in as a brand-new throwaway person made by the local
+    /// server (POST /api/dev/new-person, which answers only under `next dev` with DEV_NEW_PERSON=1),
+    /// to go through first run from the start.
+    func startAsNewPerson() async {
+        await signOut()
+        // A plain spinner while the person is made, rather than the sign-in screen's "Waiting for Google".
+        state = .checking
+        var request = URLRequest(url: baseURL.appending(path: "api/dev/new-person"))
+        request.httpMethod = "POST"
+        do {
+            let (data, response) = try await http.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else { throw AuthError.server(status) }
+            let person = try JSONDecoder().decode(NewPerson.self, from: data)
+            try store.write(person.token)
+            state = .signedIn(email: person.email)
+            Log.auth.info("Started as a new person, \(person.name, privacy: .public)")
+        } catch {
+            Log.auth.error("Couldn't start as a new person: \(error.localizedDescription, privacy: .public)")
+            state = .signedOut(message: "Couldn’t start as someone new. Is the local server running with DEV_NEW_PERSON=1?")
+        }
+    }
+    #endif
+
     // MARK: Server calls
 
     /// Trades the one-time token from the sign-in sheet for this app's session token.
@@ -240,6 +273,14 @@ enum AuthError: LocalizedError {
 private struct OneTimeToken: Codable {
     let token: String
 }
+
+#if DEBUG
+private struct NewPerson: Decodable {
+    let token: String
+    let email: String
+    let name: String
+}
+#endif
 
 private struct SessionPayload: Decodable {
     struct User: Decodable { let email: String }

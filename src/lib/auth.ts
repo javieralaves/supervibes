@@ -21,8 +21,22 @@ function allowedEmails(): Set<string> {
   );
 }
 
+/** The domain of the throwaway people the Debug Mac app signs in as (see /api/dev/new-person). */
+export const DEV_PERSON_DOMAIN = "supervibes.test";
+
+/**
+ * Whether local development may make throwaway people: only under `next dev` (NODE_ENV is
+ * "production" on Vercel), and only when DEV_NEW_PERSON=1 is set, in .env.development.local.
+ */
+export function devNewPersonEnabled(): boolean {
+  return process.env.NODE_ENV === "development" && process.env.DEV_NEW_PERSON === "1";
+}
+
 export function isEmailAllowed(email: string | null | undefined): boolean {
-  return !!email && allowedEmails().has(email.toLowerCase());
+  if (!email) return false;
+  const lower = email.toLowerCase();
+  if (devNewPersonEnabled() && lower.endsWith(`@${DEV_PERSON_DOMAIN}`)) return true;
+  return allowedEmails().has(lower);
 }
 
 // BETTER_AUTH_SECRET and BETTER_AUTH_URL are read from the environment.
