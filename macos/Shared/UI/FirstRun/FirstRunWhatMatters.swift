@@ -165,6 +165,8 @@ private struct ChoiceCard<Art: View>: View {
 /// choice whatever the window's size.
 private struct FloatingPlate: View {
     let items: [PlateItem]
+    @Environment(\.staticRendering) private var staticRendering
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Spot {
         /// From the window's left edge, at a share of its height.
@@ -183,21 +185,42 @@ private struct FloatingPlate: View {
         (.below(380, 44), -3, 1, 260), (.trailing(120, 0.3), 4, 2, 240),
     ]
 
+    private var isStill: Bool { staticRendering || reduceMotion }
+
     var body: some View {
-        GeometryReader { geometry in
-            ForEach(Array(items.prefix(Self.spots.count).enumerated()), id: \.element.id) { index, item in
-                let spot = Self.spots[index]
-                chip(item, maxWidth: spot.width)
-                    .rotationEffect(.degrees(spot.tilt))
-                    .scaleEffect([1, 0.92, 0.84][spot.depth])
-                    .opacity([1, 0.75, 0.5][spot.depth])
-                    .blur(radius: [0, 0.4, 1.2][spot.depth])
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: alignment(spot.spot))
-                    .offset(offset(spot.spot, in: geometry.size))
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: isStill)) { timeline in
+            let time = isStill ? nil : timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { geometry in
+                ForEach(Array(items.prefix(Self.spots.count).enumerated()), id: \.element.id) { index, item in
+                    let spot = Self.spots[index]
+                    let drift = Self.drift(index: index, depth: spot.depth, at: time)
+                    chip(item, maxWidth: spot.width)
+                        .rotationEffect(.degrees(spot.tilt + drift.tilt))
+                        .scaleEffect([1, 0.92, 0.84][spot.depth])
+                        .opacity([1, 0.75, 0.5][spot.depth])
+                        .blur(radius: [0, 0.4, 1.2][spot.depth])
+                        .offset(drift.offset)
+                        .frame(width: geometry.size.width, height: geometry.size.height, alignment: alignment(spot.spot))
+                        .offset(offset(spot.spot, in: geometry.size))
+                }
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// Where a chip has drifted to: bobbing up and down about 7 points and swaying a little sideways and in its tilt,
+    /// each on its own rhythm so no two move together; the farther back, the less it moves. Still with no time (in
+    /// snapshots, or for anyone who prefers less motion).
+    private static func drift(index: Int, depth: Int, at time: TimeInterval?) -> (offset: CGSize, tilt: Double) {
+        guard let time else { return (.zero, 0) }
+        let phase = Double(index) * 1.9
+        let period = 5.2 + Double(index % 4) * 0.9
+        let reach = [7.0, 5.5, 4.0][depth]
+        let up = sin(2 * .pi * time / period + phase) * reach
+        let side = cos(2 * .pi * time / (period * 1.6) + phase) * reach * 0.5
+        let sway = sin(2 * .pi * time / (period * 1.3) + phase + 0.8) * 0.9
+        return (CGSize(width: side, height: up), sway)
     }
 
     private func chip(_ item: PlateItem, maxWidth: CGFloat) -> some View {
