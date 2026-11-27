@@ -77,8 +77,8 @@ struct FirstRunPlate: View {
             .disabled(isSorting)
     }
 
-    /// While listening: the plate as written so far, then what's being said, muted, until it settles; kept
-    /// scrolled to the end, where the words arrive.
+    /// While listening: the plate as written so far, then what's being said, muted, until it settles, in the same
+    /// place the editor puts it; once it runs longer than the card, it follows the words to the end.
     private var live: some View {
         ScrollView {
             Text("\(text)\(Text(joiner + dictation.volatile).foregroundStyle(Theme.muted)) ")
@@ -89,7 +89,10 @@ struct FirstRunPlate: View {
                 .textSelection(.disabled)
         }
         .scrollIndicators(.never)
-        .defaultScrollAnchor(.bottom)
+        // Starts at the top, where the plate's text is, like the editor; once there's more than fits, it follows the
+        // words to the end as they arrive.
+        .defaultScrollAnchor(.top, for: .alignment)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .overlay(alignment: .topLeading) {
             if text.isEmpty && dictation.volatile.isEmpty {
                 Text(dictation.phase == .preparing ? "Getting ready to listen…" : "Listening. Say what’s on your plate, however it comes.")
