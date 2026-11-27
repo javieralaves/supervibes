@@ -81,10 +81,14 @@ targets:
       configs:
         # Release only: in Debug, hardened runtime keeps Xcode from loading its preview code into
         # the app, and the canvas fails with "did not launch in 30 seconds".
+        # The icons are Icon Composer documents in Supervibes/, written by scripts/app-icon.mjs;
+        # Debug's is grey, so Supervibes Dev and Supervibes are easy to tell apart in the Dock.
         Debug:
           ENABLE_HARDENED_RUNTIME: NO
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIconDev
         Release:
           ENABLE_HARDENED_RUNTIME: YES
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: SupervibesWidgets
       - package: OpenAPIRuntime
