@@ -25,6 +25,32 @@ final class FirstRunTests: XCTestCase {
         assertAppearances(window(Fixtures.firstRun(.plate)), width: 1280, height: 820)
     }
 
+    private func plate(text: String, dictation: DictationState) -> some View {
+        FirstRunView(state: Fixtures.firstRun(.plate, text: text), plateText: .constant(text), dictation: dictation)
+            .padding(.top, 20).background(Theme.background)
+    }
+
+    /// Saying it: what's settled in the plate's text, what's still being said after it muted, the lit mic and the
+    /// waveform, quiet as dots and speech as bars.
+    func testPlateListening() {
+        let levels: [Float] = [0, 0, 0.02, 0, 0.3, 0.55, 0.42, 0.1, 0.05, 0.6, 0.85, 0.7, 0.35, 0, 0.02, 0.4, 0.65, 0.9, 0.5, 0.2,
+                               0, 0, 0.3, 0.45, 0.75, 0.6, 0.15, 0.05, 0.5, 0.8, 0.95, 0.7, 0.4, 0.1, 0, 0.25, 0.5, 0.3, 0.6, 0.45]
+        let dictation = DictationState(phase: .listening, levels: levels, volatile: "and I keep meaning to call the bank about the mortgage")
+        assertAppearances(plate(text: "pricing page launch, needs to ship before Q1 planning. Hiring a product designer,", dictation: dictation),
+                          width: 1280, height: 820)
+    }
+
+    /// The first time: getting the speech model ready before it can listen.
+    func testPlatePreparing() {
+        assertAppearances(plate(text: "", dictation: DictationState(phase: .preparing)), width: 1280, height: 820)
+    }
+
+    /// The microphone not allowed: why, beside Say it instead.
+    func testPlateDictationError() {
+        let dictation = DictationState(error: "Supervibes needs the microphone to listen. Allow it in System Settings, under Privacy & Security, Microphone.")
+        assertAppearances(plate(text: "", dictation: dictation), width: 1280, height: 820)
+    }
+
     /// Sorted: six areas, Spanish asking how often, Looks right off until it's said.
     func testSorted() {
         assertAppearances(window(Fixtures.firstRun(.sorted)), width: 1280, height: 820)

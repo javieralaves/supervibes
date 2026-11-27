@@ -65,6 +65,9 @@ targets:
           NSAllowsLocalNetworking: true
         # Calendar import reads the person's Google calendars through macOS Calendar (EventKit).
         NSCalendarsFullAccessUsageDescription: Supervibes shows your events beside your goals’ time so you can import the ones you need. It never changes them.
+        # Say it instead, on first run's plate: speech is turned into text on this Mac (SpeechAnalyzer), never sent anywhere.
+        NSMicrophoneUsageDescription: Supervibes listens while you say what’s on your plate, and turns it into text on this Mac.
+        NSSpeechRecognitionUsageDescription: Supervibes turns what you say into text on this Mac, so you can talk instead of typing.
     entitlements:
       path: Supervibes/Supervibes.entitlements
       properties:
@@ -72,6 +75,8 @@ targets:
           - $(TeamIdentifierPrefix)$(SUPERVIBES_BUNDLE_ID)
         # Release builds run with the hardened runtime, which needs this to read calendars at all.
         com.apple.security.personal-information.calendars: true
+        # And this to use the microphone, for Say it instead.
+        com.apple.security.device.audio-input: true
     settings:
       base:
         # Supervibes, or Supervibes Dev for Debug builds: the name in the Dock, Finder and app menu.

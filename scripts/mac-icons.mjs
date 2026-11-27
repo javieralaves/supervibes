@@ -14,6 +14,7 @@ const ICONS = {
   Target02Icon: [1.8, 1.5],
   // The rail's Life item.
   Compass01Icon: [1.8],
+  Mic01Icon: [1.5, 1.8],
   Calendar03Icon: [1.8],
   Plug01Icon: [1.8],
   Settings02Icon: [1.5, 1.8],

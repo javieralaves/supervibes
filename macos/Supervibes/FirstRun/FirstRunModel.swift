@@ -17,6 +17,8 @@ final class FirstRunModel {
     private(set) var state: FirstRunState
     /// What's typed on the plate, bound to the editor.
     var plateText = ""
+    /// Say it instead, on the plate: what's said settles into `plateText`.
+    let dictation = PlateDictation()
     /// Called with the way ahead once first run is done, to open the nearest screen the app has.
     @ObservationIgnored var onFinish: (FirstRunChoice) -> Void = { _ in }
     /// The person's Google calendars, for Route 1's week. Set by the app.
@@ -39,6 +41,16 @@ final class FirstRunModel {
         let store = auth.store
         client = APIClient.make(baseURL: auth.baseURL, token: { store.read() })
         state = FirstRunState(firstName: "", seasonEnd: Self.seasonEnd(from: .now))
+        dictation.onSettled = { [weak self] words in self?.addSpoken(words) }
+    }
+
+    /// Settled words from Say it instead, after what's on the plate, with a space between unless it ends a line.
+    private func addSpoken(_ words: String) {
+        if plateText.isEmpty || plateText.last?.isWhitespace == true {
+            plateText += words
+        } else {
+            plateText += " " + words
+        }
     }
 
     // MARK: Who sees it
@@ -110,6 +122,7 @@ final class FirstRunModel {
     }
 
     private func reset() {
+        dictation.stop()
         state = FirstRunState(firstName: state.firstName, seasonEnd: Self.seasonEnd(from: .now))
         plateText = ""
         saved = false
@@ -127,6 +140,7 @@ final class FirstRunModel {
             sort: { [weak self] in Task { await self?.sort() } },
             setPerWeek: { [weak self] id, perWeek in self?.state.sorted?.setPerWeek(perWeek, for: id) },
             save: { [weak self] in Task { await self?.save() } },
+            dictate: { [weak self] in self?.dictation.toggle() },
             choose: { [weak self] choice in self?.choose(choice) },
             focus: FocusActions(
                 choose: { [weak self] id in self?.changeBoard { $0.choose(id) } },
@@ -160,7 +174,9 @@ final class FirstRunModel {
     private func back() {
         switch state.step {
         case .welcome: break
-        case .plate: go(.welcome)
+        case .plate:
+            dictation.stop()
+            go(.welcome)
         case .sorted: go(.plate)
         case .whatMatters: go(.sorted)
         case .focus:
@@ -181,6 +197,8 @@ final class FirstRunModel {
 
     /// Sends the plate to be sorted; on to Sorted with what came back.
     private func sort() async {
+        // Whatever's still being said settles first.
+        await dictation.finishIfNeeded()
         let text = plateText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !state.isBusy else { return }
         state.isBusy = true

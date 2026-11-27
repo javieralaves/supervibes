@@ -149,6 +149,9 @@ enum Icon: String {
     case search = "Search01-1_5"
     case delete = "Delete02-1_5"
     case calendarSmall = "Calendar03-1_5"
+    /// Say it instead, on the plate.
+    case mic = "Mic01-1_5"
+    case micBold = "Mic01-1_8"
     case arrowLeft = "ArrowLeft01-1_5"
     case edit = "PencilEdit02-1_5"
     case note = "Note01-1_5"

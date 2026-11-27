@@ -7,6 +7,8 @@ struct FirstRunActions {
     var sort: () -> Void = {}
     var setPerWeek: (String, Int) -> Void = { _, _ in }
     var save: () -> Void = {}
+    /// Say it instead: start listening on the plate, or stop.
+    var dictate: () -> Void = {}
     var choose: (FirstRunChoice) -> Void = { _ in }
     /// Route 2's board.
     var focus = FocusActions()
@@ -22,6 +24,8 @@ struct FirstRunActions {
 struct FirstRunView: View {
     let state: FirstRunState
     @Binding var plateText: String
+    /// Say it instead, on the plate.
+    var dictation = DictationState()
     var actions = FirstRunActions()
 
     var body: some View {
@@ -30,7 +34,10 @@ struct FirstRunView: View {
             case .welcome:
                 FirstRunWelcome(firstName: state.firstName, onStart: actions.start)
             case .plate:
-                FirstRunPlate(text: $plateText, isSorting: state.isBusy, error: state.error, onBack: actions.back, onSort: actions.sort)
+                FirstRunPlate(
+                    text: $plateText, isSorting: state.isBusy, error: state.error, dictation: dictation, onDictate: actions.dictate,
+                    onBack: actions.back, onSort: actions.sort
+                )
             case .sorted:
                 if let plate = state.sorted {
                     FirstRunSorted(

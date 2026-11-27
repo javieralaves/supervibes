@@ -64,7 +64,8 @@ struct MainView: View {
                                 FirstRunWeek(plan: week.plan, selection: week.selection, practiceTip: week.practiceTip, actions: firstRun.weekActions)
                             }
                         default:
-                            FirstRunView(state: firstRun.state, plateText: $firstRun.plateText, actions: firstRun.actions)
+                            FirstRunView(state: firstRun.state, plateText: $firstRun.plateText, dictation: firstRun.dictation.state,
+                                         actions: firstRun.actions)
                         }
                     }
                     .padding(.top, 20)
