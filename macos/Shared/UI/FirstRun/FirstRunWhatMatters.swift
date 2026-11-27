@@ -294,14 +294,20 @@ private struct StepBackArt: View {
                 .background(Theme.card, in: .circle)
                 .overlay(Circle().strokeBorder(Theme.cardBorder))
             ForEach(Array(icons.enumerated()), id: \.offset) { index, icon in
-                let angle = Double(index) / Double(icons.count) * 2 * .pi - .pi / 2
                 GoalIconImage(name: icon, size: 13)
                     .foregroundStyle(Theme.muted)
                     .frame(width: 26, height: 26)
                     .background(Theme.card, in: .circle)
                     .overlay(Circle().strokeBorder(Theme.cardBorder))
-                    .offset(x: cos(angle) * 52, y: sin(angle) * 52)
+                    .offset(offset(for: index))
             }
         }
+    }
+
+    /// Where icon `index` sits on the ring, starting at the top. Spelled out with types so the
+    /// Release build's type checker doesn't time out on the body.
+    private func offset(for index: Int) -> CGSize {
+        let angle: Double = Double(index) / Double(icons.count) * 2 * Double.pi - Double.pi / 2
+        return CGSize(width: cos(angle) * 52, height: sin(angle) * 52)
     }
 }
