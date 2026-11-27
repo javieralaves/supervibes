@@ -12,6 +12,7 @@ struct UsageCall: Identifiable, Hashable, Sendable {
         case questSuggest = "quest_suggest"
         case seasonRead = "season_read"
         case questRead = "quest_read"
+        case plateSort = "plate_sort"
 
         var label: String {
             switch self {
@@ -24,6 +25,7 @@ struct UsageCall: Identifiable, Hashable, Sendable {
             case .questSuggest: "Quest suggestions"
             case .seasonRead: "Season reads"
             case .questRead: "Quest reads"
+            case .plateSort: "Plates sorted"
             }
         }
     }

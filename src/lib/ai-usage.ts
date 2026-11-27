@@ -22,7 +22,8 @@ export type AiFeature =
   | "stand_read"
   | "quest_suggest"
   | "season_read"
-  | "quest_read";
+  | "quest_read"
+  | "plate_sort";
 export type AiTrigger = "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto";
 
 /** Who and what a call is for; passed down to whatever makes the call. */

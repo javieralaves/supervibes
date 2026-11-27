@@ -11,7 +11,7 @@ const DAYS = 30;
 const UsageCallSchema = z
   .object({
     id: z.string(),
-    feature: z.enum(["progress_read", "area_read", "recap", "agenda", "gap_read", "stand_read", "quest_suggest", "season_read", "quest_read"]),
+    feature: z.enum(["progress_read", "area_read", "recap", "agenda", "gap_read", "stand_read", "quest_suggest", "season_read", "quest_read", "plate_sort"]),
     trigger: z.enum(["manual", "note", "recap", "cron", "draft", "redraft", "auto"]),
     goalTitle: z.string().nullable(),
     model: z.string(),

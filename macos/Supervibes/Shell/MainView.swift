@@ -27,6 +27,7 @@ enum Route: Hashable {
 struct MainView: View {
     let auth: AuthModel
     @Bindable var shell: ShellModel
+    @Bindable var firstRun: FirstRunModel
     let notifier: SessionNotifier
     let routineRunner: SessionRoutineRunner
     let eventFeed: EventFeed
@@ -41,12 +42,23 @@ struct MainView: View {
             case .signingIn:
                 SignInView(isSigningIn: true)
             case .signedIn:
-                signedIn
+                switch firstRun.phase {
+                case .unknown:
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .active:
+                    // Full window, no rail: the app proper opens once first run is done.
+                    FirstRunView(state: firstRun.state, plateText: $firstRun.plateText, actions: firstRun.actions)
+                        .padding(.top, 20)
+                        .background(Theme.background)
+                case .inactive:
+                    signedIn
+                }
             }
         }
         .background(Theme.shell)
         .ignoresSafeArea()
         .task(id: auth.isSignedIn) { await shell.signedInChanged() }
+        .task(id: auth.isSignedIn) { await firstRun.check() }
     }
 
     private var signedIn: some View {

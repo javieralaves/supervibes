@@ -5,23 +5,33 @@ struct SupervibesApp: App {
     @State private var auth: AuthModel
     @State private var model: AppModel
     @State private var shell: ShellModel
+    @State private var firstRun: FirstRunModel
 
     init() {
         Log.app.info("Launched, talking to \(AppConfig.baseURL.absoluteString, privacy: .public)")
         let auth = AuthModel(baseURL: AppConfig.baseURL)
         let model = AppModel(auth: auth)
         let shell = ShellModel(auth: auth)
+        let firstRun = FirstRunModel(auth: auth)
+        // Until each route's own steps are built, a way ahead opens the nearest screen the app has.
+        firstRun.onFinish = { choice in
+            switch choice {
+            case .week: shell.route = .calendar
+            case .season, .stepBack: shell.route = .startSeason
+            }
+        }
         // Clicking a session notice opens the calendar on its block.
         model.notifier.onOpenBlock = { shell.openBlock($0) }
         _auth = State(initialValue: auth)
         _model = State(initialValue: model)
         _shell = State(initialValue: shell)
+        _firstRun = State(initialValue: firstRun)
     }
 
     var body: some Scene {
         // The main window: the rail beside the app's window, which shows the screen for the route.
         Window(appName, id: "main") {
-            MainView(auth: auth, shell: shell, notifier: model.notifier, routineRunner: model.routineRunner, eventFeed: model.eventFeed)
+            MainView(auth: auth, shell: shell, firstRun: firstRun, notifier: model.notifier, routineRunner: model.routineRunner, eventFeed: model.eventFeed)
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await auth.restore() }
                 .onChange(of: auth.isSignedIn) { model.refreshSoon() }
@@ -35,7 +45,7 @@ struct SupervibesApp: App {
             }
             CalendarMenuCommands()
             #if DEBUG
-            DevelopCommands(auth: auth)
+            DevelopCommands(auth: auth, firstRun: firstRun)
             #endif
             CommandGroup(after: .appInfo) {
                 if auth.isSignedIn {
