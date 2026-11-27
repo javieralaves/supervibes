@@ -85,8 +85,8 @@ extension Fixtures {
 
     /// Route 2's quests, as the season started them.
     static let weekQuests = [
-        WeekQuest(number: 1, title: "Ship the new pricing page", goalId: "pricing"),
-        WeekQuest(number: 2, title: "Move flats by January", goalId: "move"),
-        WeekQuest(number: 3, title: "Run", goalId: "run"),
+        WeekQuest(number: 1, title: "Ship the new pricing page", goalIds: ["pricing"]),
+        WeekQuest(number: 2, title: "Move flats by January", goalIds: ["move"]),
+        WeekQuest(number: 3, title: "Run", goalIds: ["run"]),
     ]
 }

@@ -14,14 +14,8 @@ struct SupervibesApp: App {
         let shell = ShellModel(auth: auth)
         let firstRun = FirstRunModel(auth: auth)
         firstRun.eventFeed = model.eventFeed
-        // Routes 1 and 2 end on their week, so the calendar opens; Step back first isn't built yet, so it opens the
-        // nearest screen the app has.
-        firstRun.onFinish = { choice in
-            switch choice {
-            case .week, .season: shell.route = .calendar
-            case .stepBack: shell.route = .startSeason
-            }
-        }
+        // Every route ends on its week, so the calendar opens.
+        firstRun.onFinish = { _ in shell.route = .calendar }
         // Clicking a session notice opens the calendar on its block.
         model.notifier.onOpenBlock = { shell.openBlock($0) }
         _auth = State(initialValue: auth)

@@ -21,8 +21,12 @@ final class FirstRunModel {
     @ObservationIgnored var onFinish: (FirstRunChoice) -> Void = { _ in }
     /// The person's Google calendars, for Route 1's week. Set by the app.
     @ObservationIgnored var eventFeed: EventFeed?
-    /// Route 1's week, once it's opened.
+    /// The week, once it's opened.
     private(set) var week: FirstRunWeekModel?
+    /// Route 3's season being set up, as Start a season does it.
+    private(set) var setup: SeasonSetupModel?
+    /// Route 3's quests renamed on the season's cards, saved on Start your season.
+    private(set) var questNames: [String: String] = [:]
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -51,7 +55,7 @@ final class FirstRunModel {
         case "done":
             phase = .inactive
             return
-        case "whatMatters", "focus", "week":
+        case "whatMatters", "focus", "week", "stepBack":
             if let plate = keptPlate {
                 state.sorted = plate
                 saved = true
@@ -66,10 +70,10 @@ final class FirstRunModel {
                     }
                 case "week":
                     state.step = .weekIntro
-                    if state.route == .season {
-                        state.seasonStarted = true
-                        state.board = keptBoard
-                    }
+                    if state.route != .week { state.seasonStarted = true }
+                    if state.route == .season { state.board = keptBoard }
+                case "stepBack":
+                    state.step = .stepBack
                 default:
                     state.step = .whatMatters
                 }
@@ -88,6 +92,10 @@ final class FirstRunModel {
             let areaCount = if case .ok(let ok) = try await areas { try ok.body.json.areas.count } else { 1 }
             // Someone who already has things, and isn't partway through first run here, goes straight to the app.
             phase = (goalCount == 0 && areaCount == 0) || state.step.rawValue >= FirstRunStep.whatMatters.rawValue ? .active : .inactive
+            // Route 3 picks up its draft where it was.
+            if phase == .active, state.step == .stepBack, setup == nil {
+                if await !loadSetup() { state.step = .whatMatters }
+            }
         } catch {
             Log.app.error("First run check: \(error.localizedDescription, privacy: .public)")
             phase = .inactive
@@ -106,6 +114,8 @@ final class FirstRunModel {
         plateText = ""
         saved = false
         week = nil
+        setup = nil
+        questNames = [:]
     }
 
     // MARK: Steps
@@ -165,6 +175,7 @@ final class FirstRunModel {
                 go(.whatMatters)
             }
         case .week: go(.weekIntro)
+        case .stepBack: stepBackBack()
         }
     }
 
@@ -231,8 +242,97 @@ final class FirstRunModel {
         case .season:
             Task { await openBoard() }
         case .stepBack:
-            finish(choice)
+            Task { await openStepBack() }
         }
+    }
+
+    // MARK: Route 3, step back first
+
+    /// Opens the season's draft (made if there's none) and Start a season's steps, in first run's frame.
+    private func openStepBack() async {
+        guard !state.isBusy else { return }
+        state.isBusy = true
+        state.error = nil
+        defer { state.isBusy = false }
+        guard await loadSetup() else { return }
+        state.route = .stepBack
+        keptRoute = .stepBack
+        progress = "stepBack"
+        go(.stepBack)
+    }
+
+    /// The draft and what's needed to set it up; false, with why, when it can't be.
+    private func loadSetup() async -> Bool {
+        let model = setup ?? SeasonSetupModel(auth: auth)
+        await model.start()
+        if case .failed(let message) = model.load {
+            state.error = message
+            return false
+        }
+        setup = model
+        return true
+    }
+
+    var stepBackActions: StepBackActions {
+        StepBackActions(
+            back: { [weak self] in self?.stepBackBack() },
+            toggleArea: { [weak self] in self?.setup?.togglePick($0) },
+            continueAreas: { [weak self] in Task { await self?.setup?.continueAreas() } },
+            read: { [weak self] id, now, want in Task { await self?.setup?.read(areaId: id, now: now, want: want) } },
+            next: { [weak self] in Task { await self?.stepBackNext() } },
+            choose: { [weak self] id, chosen in Task { await self?.setup?.choose(id, chosen) } },
+            toggleLink: { [weak self] quest, goal in self?.setup?.toggleLink(quest: quest, goal: goal) },
+            addNew: { [weak self] quest, suggestion in self?.setup?.addSuggestion(quest: quest, suggestion) },
+            removeNew: { [weak self] quest, suggestion in self?.setup?.removeSuggestion(quest: quest, suggestion) },
+            continueMoves: { [weak self] in Task { _ = await self?.setup?.saveAllMoves() } },
+            rename: { [weak self] id, name in
+                guard self?.state.seasonStarted == false else { return }
+                self?.questNames[id] = name
+            },
+            start: { [weak self] in Task { await self?.startStepBack() } }
+        )
+    }
+
+    /// On from an area that's read, or from the quests chosen to what moves each, linking what's on the plate first.
+    private func stepBackNext() async {
+        guard let setup, let current = setup.state else { return }
+        if current.step == .focus {
+            // All the quests on one screen; suggestions are only asked for where the plate has nothing to link.
+            guard !current.chosen.isEmpty else { return }
+            setup.showMoves()
+            setup.prefillMoves()
+        } else {
+            await setup.next()
+        }
+    }
+
+    private func stepBackBack() {
+        guard let setup, let step = setup.state?.step else { return go(.whatMatters) }
+        switch step {
+        case .areas:
+            progress = "whatMatters"
+            go(.whatMatters)
+        case .review:
+            if !state.seasonStarted { setup.showMoves() }
+        default:
+            setup.back()
+        }
+    }
+
+    /// Saves any quests renamed on their cards, starts the season, and on to the week; once.
+    private func startStepBack() async {
+        if state.seasonStarted { return go(.weekIntro) }
+        guard let setup, let current = setup.state, !current.isBusy else { return }
+        for quest in current.chosen {
+            guard let name = questNames[quest.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name != quest.title else { continue }
+            guard await setup.editQuest(quest.id, title: name, fromText: quest.fromText) else { return }
+        }
+        guard await setup.startSeason(), let season = setup.started else { return }
+        keptQuests = season.chosen.map { WeekQuest(number: $0.position, title: $0.title, goalIds: $0.goalIds) }
+        state.seasonStarted = true
+        progress = "week"
+        Log.app.info("First run: season started from stepping back, with \(season.chosen.count) quests")
+        go(.weekIntro)
     }
 
     // MARK: Route 2, the next few months
@@ -302,7 +402,7 @@ final class FirstRunModel {
             switch try await client.startFirstSeason(body: .json(body)) {
             case .created(let created):
                 let season = try created.body.json
-                keptQuests = season.quests.map { WeekQuest(number: $0.position, title: $0.title, goalId: $0.goalId) }
+                keptQuests = season.quests.map { WeekQuest(number: $0.position, title: $0.title, goalIds: [$0.goalId]) }
                 state.seasonStarted = true
                 progress = "week"
                 Log.app.info("First run: season started with \(season.quests.count) quests")
@@ -324,7 +424,7 @@ final class FirstRunModel {
             let season = state.route == .season
             let model = FirstRunWeekModel(
                 auth: auth, feed: eventFeed,
-                quests: season ? keptQuests : [],
+                quests: state.route == .week ? [] : keptQuests,
                 waiting: season ? state.board?.waiting ?? [] : [],
                 steps: state.route.steps
             )
@@ -346,6 +446,7 @@ final class FirstRunModel {
         keptPlate = nil
         keptBoard = nil
         keptQuests = []
+        setup = nil
         week = nil
         phase = .inactive
         Log.app.info("First run done: \(choice.rawValue, privacy: .public)")

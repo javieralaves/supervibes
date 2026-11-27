@@ -125,6 +125,18 @@ struct SeasonSpan: Hashable, Codable, Sendable {
         startsOn = Calendar.current.date(byAdding: .day, value: -(13 * 7 - 1), to: endsOn) ?? endsOn
     }
 
+    /// A season's own days, "YYYY-MM-DD", as local midnights.
+    init(startsOn: String, endsOn: String) {
+        let parse = { (day: String) -> Date? in
+            let parts = day.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return nil }
+            return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        }
+        let end = parse(endsOn) ?? .now
+        self.endsOn = end
+        self.startsOn = parse(startsOn) ?? end
+    }
+
     var weeks: Int { ((Calendar.current.dateComponents([.day], from: startsOn, to: endsOn).day ?? 90) + 1) / 7 }
 
     /// "Nov 30".
@@ -135,10 +147,87 @@ struct SeasonSpan: Hashable, Codable, Sendable {
     var label: String { "\(Self.day(startsOn)) – \(Self.day(endsOn)), \(weeks) weeks" }
 }
 
-/// A quest in Route 2's week: its number, its name, and the one project or practice that moves it.
+/// A quest in the week of Route 2 or 3: its number, its name, and the projects and practices that move it.
 struct WeekQuest: Identifiable, Hashable, Codable, Sendable {
-    var id: String { goalId }
+    var id: Int { number }
     let number: Int
     let title: String
-    let goalId: String
+    /// What moves it, the first first: dragging the quest gives that one time.
+    let goalIds: [String]
+
+    init(number: Int, title: String, goalIds: [String]) {
+        self.number = number
+        self.title = title
+        self.goalIds = goalIds
+    }
+
+    private enum CodingKeys: String, CodingKey { case number, title, goalIds, goalId }
+
+    // Route 2's first build kept one goalId; read either.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        number = try c.decode(Int.self, forKey: .number)
+        title = try c.decode(String.self, forKey: .title)
+        goalIds = try c.decodeIfPresent([String].self, forKey: .goalIds) ?? [c.decode(String.self, forKey: .goalId)]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(number, forKey: .number)
+        try c.encode(title, forKey: .title)
+        try c.encode(goalIds, forKey: .goalIds)
+    }
+}
+
+/// A badge on the plate: a project's or practice's icon and colour.
+struct PlateBadge: Hashable, Sendable {
+    let icon: String
+    let color: String
+    let isPractice: Bool
+}
+
+/// One quest card in the season's stack, for Route 2 or 3: its area and colour, what moves it, and, for a gap's
+/// quest, how much of the gap the season would close.
+struct SeasonCard: Identifiable, Hashable, Sendable {
+    /// What renaming it is keyed by: the focus's goal in Route 2, the quest in Route 3.
+    let id: String
+    let number: Int
+    let areaName: String
+    let areaIcon: String
+    let color: String
+    /// What moves it first, set off along its track.
+    let mover: PlateBadge
+    /// "Run, 3 times a week".
+    let movedBy: String
+    /// Made while starting the season.
+    var isNew = false
+    /// For a gap's quest, 0–100 of the gap the season would close; nil draws Route 2's track, all the way.
+    var reach: Int?
+}
+
+/// What else is on the plate, under the season's stack.
+enum SeasonRest: Hashable, Sendable {
+    /// Route 2: what still gets time, and what waits for next season.
+    case split(keep: [PlateBadge], waits: [PlateBadge])
+    /// Route 3: all of it keeps going.
+    case keepsGoing([PlateBadge])
+}
+
+extension FocusItem {
+    var badge: PlateBadge { PlateBadge(icon: icon, color: color, isPractice: isPractice) }
+}
+
+extension FocusBoard {
+    /// The focuses as the season's cards.
+    var seasonCards: [SeasonCard] {
+        focused.enumerated().map { index, item in
+            SeasonCard(
+                id: item.id, number: index + 1, areaName: item.areaName, areaIcon: item.areaIcon, color: item.color,
+                mover: item.badge,
+                movedBy: item.isPractice ? "\(item.title), \((item.rhythm ?? "").lowercased())" : item.title
+            )
+        }
+    }
+
+    var seasonRest: SeasonRest { .split(keep: keepGoing.map(\.badge), waits: waits.map(\.badge)) }
 }

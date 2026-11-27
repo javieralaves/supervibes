@@ -73,7 +73,15 @@ struct WeekPlan: Hashable, Sendable {
     var practices: [CalendarGoal] { activeGoals.filter(\.isPractice) }
 
     /// The quest a project or practice moves.
-    func quest(for goalId: String) -> WeekQuest? { quests.first { $0.goalId == goalId } }
+    func quest(for goalId: String) -> WeekQuest? { quests.first { $0.goalIds.contains(goalId) } }
+
+    /// A quest's time this week: what moves it, as one project's hours or one practice's count, or all of it added
+    /// up in hours.
+    func meta(_ quest: WeekQuest) -> String {
+        let moving = quest.goalIds.compactMap(goal)
+        if moving.count == 1 { return meta(moving[0]) }
+        return Self.hours(moving.reduce(0) { $0 + minutes(for: $1.id) })
+    }
 
     /// A project's hours or a practice's count this week: "3h 30m", "2 of 3 this week".
     func meta(_ goal: CalendarGoal) -> String {

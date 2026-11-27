@@ -342,6 +342,45 @@ final class SeasonSetupModel {
         self.state = state
     }
 
+    // MARK: First run's Route 3: every quest's moves on one screen
+
+    /// Starts each chosen quest with what's already on the plate in its area, where nothing is linked yet; where its
+    /// area has nothing, finds suggestions and adds the first, to be made on Continue.
+    func prefillMoves() {
+        guard var state else { return }
+        let taken = Set(state.chosen.flatMap { state.linked[$0.id] ?? $0.goalIds })
+        var empty: [String] = []
+        for quest in state.chosen where state.linked[quest.id] == nil && quest.goalIds.isEmpty && (state.added[quest.id] ?? []).isEmpty {
+            let inArea = state.area(quest.areaId).map { state.goals(in: $0).map(\.id).filter { !taken.contains($0) } } ?? []
+            if inArea.isEmpty { empty.append(quest.id) } else { state.linked[quest.id] = inArea }
+        }
+        self.state = state
+        for id in empty {
+            Task {
+                if self.state?.suggestions[id] == nil { await findSuggestions(id) }
+                guard let first = self.state?.suggestions[id]?.first, (self.state?.added[id] ?? []).isEmpty,
+                      self.state?.linked[id]?.isEmpty ?? true else { return }
+                addSuggestion(quest: id, first)
+            }
+        }
+    }
+
+    /// Saves what moves every chosen quest, making what was added; on to the review once all are saved.
+    func saveAllMoves() async -> Bool {
+        guard let chosen = state?.chosen else { return false }
+        for quest in chosen {
+            guard let current = state?.season.quests.first(where: { $0.id == quest.id }), await saveHow(current) else { return false }
+        }
+        state?.step = .review
+        return true
+    }
+
+    /// Back to every quest's moves, from the review.
+    func showMoves() {
+        state?.error = nil
+        state?.step = .how(0)
+    }
+
     // MARK: 5. Review and start
 
     func updateSeason(_ input: SeasonInput) async -> Bool {

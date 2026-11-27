@@ -75,9 +75,7 @@ private struct PlateColumn: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Your quests").font(.app(12, .semibold)).foregroundStyle(Theme.muted).padding(.horizontal, 8).padding(.bottom, 2)
                     ForEach(plan.quests) { quest in
-                        if let goal = plan.goal(quest.goalId) {
-                            QuestRow(quest: quest, meta: plan.meta(goal))
-                        }
+                        QuestRow(quest: quest, meta: plan.meta(quest))
                     }
                 }
             }
@@ -172,7 +170,7 @@ private struct QuestRow: View {
         .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 12))
         .contentShape(.rect(cornerRadius: 12))
         .onHover { isHovered = $0 }
-        .draggable(quest.goalId) {
+        .draggable(quest.goalIds.first ?? "") {
             HStack(spacing: 8) {
                 QuestMark(number: quest.number, size: 22)
                 Text(quest.title).font(.app(12, .medium)).foregroundStyle(Theme.foreground)

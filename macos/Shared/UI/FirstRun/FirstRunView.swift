@@ -49,12 +49,14 @@ struct FirstRunView: View {
             case .season:
                 if let board = state.board {
                     FirstRunSeasonReview(
-                        board: board, season: state.season, isStarting: state.isBusy, isStarted: state.seasonStarted, error: state.error,
-                        onRename: actions.rename, onBack: actions.back, onStart: actions.startSeason
+                        cards: board.seasonCards, season: state.season,
+                        subtitle: FirstRunSeasonReview.focusSubtitle(count: board.focus.count, season: state.season),
+                        rest: board.seasonRest, name: { board.name($0) }, isStarting: state.isBusy, isStarted: state.seasonStarted,
+                        error: state.error, onRename: actions.rename, onBack: actions.back, onStart: actions.startSeason
                     )
                 }
-            case .weekIntro, .week:
-                // Route 1's week is drawn by the app, from its own model (see MainView).
+            case .weekIntro, .week, .stepBack:
+                // The week, and Route 3's steps, are drawn by the app from their own models (see MainView).
                 EmptyView()
             }
         }

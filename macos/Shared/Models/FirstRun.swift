@@ -11,12 +11,13 @@ enum FirstRunStep: Int, CaseIterable, Hashable, Sendable {
     case welcome, plate, sorted, whatMatters
     /// Route 2: choosing up to three focuses, then the season they make.
     case focus, season
+    /// Route 3: areas, where each stands, quests, what moves them and the season, as Start a season steps through them.
+    case stepBack
     /// Every route: the way into the week, then the week itself.
     case weekIntro, week
 }
 
-/// The three ways ahead from What matters. Step back first isn't built yet; for now it opens the nearest thing the app
-/// already has.
+/// The three ways ahead from What matters.
 enum FirstRunChoice: String, CaseIterable, Hashable, Sendable {
     /// Just this week: straight to planning the week.
     case week

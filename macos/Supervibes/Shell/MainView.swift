@@ -52,6 +52,13 @@ struct MainView: View {
                         case .weekIntro:
                             FirstRunWeekIntro(weekLabel: WeekPlan(monday: WeekPlan.weekToPlan(from: .now), events: [], blocks: [], goals: []).label,
                                               steps: firstRun.state.route.steps, onStart: firstRun.openWeek)
+                        case .stepBack:
+                            if let state = firstRun.setup?.state {
+                                FirstRunStepBack(state: state, names: firstRun.questNames, isStarted: firstRun.state.seasonStarted,
+                                                 actions: firstRun.stepBackActions)
+                            } else {
+                                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         case .week:
                             if let week = firstRun.week {
                                 FirstRunWeek(plan: week.plan, selection: week.selection, practiceTip: week.practiceTip, actions: firstRun.weekActions)

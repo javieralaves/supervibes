@@ -131,7 +131,7 @@ private struct FocusSlot: View {
                     .frame(width: 24, height: 24)
                     .background(Theme.foreground, in: .circle)
                     .padding(12)
-                SeasonTrack(item: item, badge: .sm)
+                SeasonTrack(badge: item.badge, size: .sm)
                     .padding(.horizontal, 20)
                     .frame(maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 38)
@@ -390,23 +390,23 @@ private struct FocusDragChip: View {
 
 // MARK: - Shared with the season
 
-/// The season's track in a focus's colour: its badge on a white mat setting off along a dashed line to a dot.
+/// The season's track in a thing's colour: its badge on a white mat setting off along a dashed line to a dot.
 struct SeasonTrack: View {
-    let item: FocusItem
-    var badge: GoalBadge.Size = .sm
+    let badge: PlateBadge
+    var size: GoalBadge.Size = .sm
 
     var body: some View {
         HStack(spacing: 8) {
-            GoalBadge(icon: item.icon, color: item.color, size: badge, round: item.isPractice)
+            GoalBadge(icon: badge.icon, color: badge.color, size: size, round: badge.isPractice)
                 .padding(4)
                 .background {
-                    RoundedRectangle(cornerRadius: badge == .sm ? 13 : 12).fill(Theme.card)
+                    RoundedRectangle(cornerRadius: size == .sm ? 13 : 12).fill(Theme.card)
                         .shadow(color: .black.opacity(0.12), radius: 5, y: 3)
                 }
             DashedLine().opacity(0.45)
             Circle().frame(width: 10, height: 10)
         }
-        .foregroundStyle(GoalPalette.color(item.color))
+        .foregroundStyle(GoalPalette.color(badge.color))
     }
 }
 
