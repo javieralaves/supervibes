@@ -18,6 +18,10 @@ final class FirstRunModel {
     var plateText = ""
     /// Called with the way ahead once first run is done, to open the nearest screen the app has.
     @ObservationIgnored var onFinish: (FirstRunChoice) -> Void = { _ in }
+    /// The person's Google calendars, for Route 1's week. Set by the app.
+    @ObservationIgnored var eventFeed: EventFeed?
+    /// Route 1's week, once it's opened.
+    private(set) var week: FirstRunWeekModel?
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -46,10 +50,10 @@ final class FirstRunModel {
         case "done":
             phase = .inactive
             return
-        case "whatMatters":
+        case "whatMatters", "week":
             if let plate = keptPlate {
                 state.sorted = plate
-                state.step = .whatMatters
+                state.step = progress == "week" ? .weekIntro : .whatMatters
                 saved = true
             }
         default: break
@@ -65,7 +69,7 @@ final class FirstRunModel {
             let goalCount = if case .ok(let ok) = try await goals { try ok.body.json.goals.count } else { 1 }
             let areaCount = if case .ok(let ok) = try await areas { try ok.body.json.areas.count } else { 1 }
             // Someone who already has things, and isn't partway through first run here, goes straight to the app.
-            phase = (goalCount == 0 && areaCount == 0) || state.step == .whatMatters ? .active : .inactive
+            phase = (goalCount == 0 && areaCount == 0) || state.step.rawValue >= FirstRunStep.whatMatters.rawValue ? .active : .inactive
         } catch {
             Log.app.error("First run check: \(error.localizedDescription, privacy: .public)")
             phase = .inactive
@@ -83,6 +87,7 @@ final class FirstRunModel {
         state = FirstRunState(firstName: state.firstName, seasonEnd: Self.seasonEnd(from: .now))
         plateText = ""
         saved = false
+        week = nil
     }
 
     // MARK: Steps
@@ -94,7 +99,7 @@ final class FirstRunModel {
             sort: { [weak self] in Task { await self?.sort() } },
             setPerWeek: { [weak self] id, perWeek in self?.state.sorted?.setPerWeek(perWeek, for: id) },
             save: { [weak self] in Task { await self?.save() } },
-            choose: { [weak self] choice in self?.finish(choice) }
+            choose: { [weak self] choice in self?.choose(choice) }
         )
     }
 
@@ -109,6 +114,8 @@ final class FirstRunModel {
         case .plate: go(.welcome)
         case .sorted: go(.plate)
         case .whatMatters: go(.sorted)
+        case .weekIntro: go(.whatMatters)
+        case .week: go(.weekIntro)
         }
     }
 
@@ -163,9 +170,36 @@ final class FirstRunModel {
         }
     }
 
+    /// A way ahead from What matters. Just this week goes on to the week; the other two routes aren't built yet, so
+    /// they finish first run and open the nearest screen the app has.
+    private func choose(_ choice: FirstRunChoice) {
+        guard choice == .week else { return finish(choice) }
+        progress = "week"
+        go(.weekIntro)
+    }
+
+    /// From the way in to the week itself.
+    func openWeek() {
+        guard let eventFeed else { return }
+        if week == nil {
+            let model = FirstRunWeekModel(auth: auth, feed: eventFeed)
+            week = model
+            Task { await model.start() }
+        }
+        go(.week)
+    }
+
+    var weekActions: WeekActions {
+        var actions = week?.actions ?? WeekActions()
+        actions.back = { [weak self] in self?.back() }
+        actions.start = { [weak self] in self?.finish(.week) }
+        return actions
+    }
+
     private func finish(_ choice: FirstRunChoice) {
         progress = "done"
         keptPlate = nil
+        week = nil
         phase = .inactive
         Log.app.info("First run done: \(choice.rawValue, privacy: .public)")
         onFinish(choice)

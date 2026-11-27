@@ -47,9 +47,21 @@ struct MainView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .active:
                     // Full window, no rail: the app proper opens once first run is done.
-                    FirstRunView(state: firstRun.state, plateText: $firstRun.plateText, actions: firstRun.actions)
-                        .padding(.top, 20)
-                        .background(Theme.background)
+                    Group {
+                        switch firstRun.state.step {
+                        case .weekIntro:
+                            FirstRunWeekIntro(weekLabel: WeekPlan(monday: WeekPlan.weekToPlan(from: .now), events: [], blocks: [], goals: []).label,
+                                              onStart: firstRun.openWeek)
+                        case .week:
+                            if let week = firstRun.week {
+                                FirstRunWeek(plan: week.plan, selection: week.selection, practiceTip: week.practiceTip, actions: firstRun.weekActions)
+                            }
+                        default:
+                            FirstRunView(state: firstRun.state, plateText: $firstRun.plateText, actions: firstRun.actions)
+                        }
+                    }
+                    .padding(.top, 20)
+                    .background(Theme.background)
                 case .inactive:
                     signedIn
                 }

@@ -35,6 +35,14 @@ final class FirstRunTests: XCTestCase {
         assertAppearances(window(Fixtures.firstRun(.whatMatters)), width: 1280, height: 820)
     }
 
+    /// The way into Your week: why it matters, the next screen in miniature, the three things it asks, Plan my week.
+    func testWeekIntro() {
+        assertAppearances(
+            FirstRunWeekIntro(weekLabel: "Nov 30 – Dec 6", onStart: {}).padding(.top, 28).background(Theme.background),
+            width: 1280, height: 820
+        )
+    }
+
     /// What matters with three things: what to do with the room, Step back first suggested.
     func testWhatMattersLight() {
         assertAppearances(window(Fixtures.firstRun(.whatMatters, plate: Fixtures.lightPlate)), width: 1280, height: 820)

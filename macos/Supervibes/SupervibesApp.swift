@@ -13,6 +13,7 @@ struct SupervibesApp: App {
         let model = AppModel(auth: auth)
         let shell = ShellModel(auth: auth)
         let firstRun = FirstRunModel(auth: auth)
+        firstRun.eventFeed = model.eventFeed
         // Until each route's own steps are built, a way ahead opens the nearest screen the app has.
         firstRun.onFinish = { choice in
             switch choice {

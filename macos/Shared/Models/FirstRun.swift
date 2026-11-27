@@ -9,6 +9,8 @@ import Foundation
 /// Where someone is in the shared start.
 enum FirstRunStep: Int, CaseIterable, Hashable, Sendable {
     case welcome, plate, sorted, whatMatters
+    /// Route 1: the way into the week, then the week itself.
+    case weekIntro, week
 }
 
 /// The three ways ahead from What matters. Each route's own steps aren't built yet; for now each opens the nearest

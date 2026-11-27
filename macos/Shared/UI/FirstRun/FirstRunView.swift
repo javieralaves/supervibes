@@ -34,6 +34,9 @@ struct FirstRunView: View {
                 if let plate = state.sorted {
                     FirstRunWhatMatters(plate: plate, seasonEnd: state.seasonEnd, onBack: actions.back, onChoose: actions.choose)
                 }
+            case .weekIntro, .week:
+                // Route 1's week is drawn by the app, from its own model (see MainView).
+                EmptyView()
             }
         }
         .padding(.top, 8)
