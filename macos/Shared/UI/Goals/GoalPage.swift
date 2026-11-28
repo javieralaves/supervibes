@@ -435,7 +435,7 @@ private struct ProgressCard: View {
                 BasedOn(basedOn: read.basedOn)
                 Text(read.createdAt.shortAgo(now: now)).appText(.xs)
             }
-            if reading { SpinningIcon(size: 13) }
+            if reading { Spinner(size: 13) }
             note
         }
         .foregroundStyle(Theme.muted)
@@ -452,7 +452,7 @@ private struct UpdateButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if reading { SpinningIcon(size: 15) } else { Icon.refresh.image(size: 15) }
+                if reading { Spinner(size: 15) } else { Icon.refresh.image(size: 15) }
                 Text(reading ? "Reading…" : "Update status").appText(.sm, .medium)
             }
             .foregroundStyle(Theme.foreground)
@@ -466,20 +466,6 @@ private struct UpdateButton: View {
         .buttonStyle(.plain)
         .inactive(reading)
         .onHover { isHovered = $0 }
-    }
-}
-
-/// The refresh icon, turning.
-struct SpinningIcon: View {
-    let size: CGFloat
-    @State private var turning = false
-    @Environment(\.staticRendering) private var staticRendering
-
-    var body: some View {
-        Icon.refresh.image(size: size)
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: turning)
-            .onAppear { if !staticRendering { turning = true } }
     }
 }
 

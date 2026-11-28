@@ -72,9 +72,11 @@ struct FlowButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                if isBusy { SpinningIcon(size: 14) }
-                Text(title).appText(.sm, .medium)
+            // While busy the spinner takes the label's place; the label stays in the layout,
+            // hidden, so the button keeps its width.
+            ZStack {
+                Text(title).appText(.sm, .medium).opacity(isBusy ? 0 : 1)
+                if isBusy { Spinner(size: 14) }
             }
             .foregroundStyle(primary ? Theme.background : Theme.foreground)
             .padding(.horizontal, 16)
@@ -86,7 +88,7 @@ struct FlowButton: View {
                 }
             }
             .compositingGroup()
-            .opacity(!isEnabled ? 0.35 : isBusy ? 0.7 : (primary && isHovered ? 0.9 : 1))
+            .opacity(!isEnabled ? 0.35 : (primary && isHovered && !isBusy ? 0.9 : 1))
             .contentShape(.rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
@@ -128,7 +130,7 @@ struct FlowSmallButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if isBusy { SpinningIcon(size: 12) } else if let icon { icon.image(size: 12) }
+                if isBusy { Spinner(size: 12) } else if let icon { icon.image(size: 12) }
                 Text(title).font(.app(12, .medium))
             }
             .foregroundStyle(Theme.foreground)

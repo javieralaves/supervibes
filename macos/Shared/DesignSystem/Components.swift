@@ -299,3 +299,30 @@ struct Avatar: View {
             .background(Theme.wash)
     }
 }
+
+// MARK: - Spinner
+
+/// The loading mark: a faint ring with a short arc sweeping round it, in the current foreground
+/// colour. `size` is the ring's diameter. Still when rendering statically, so snapshots match.
+struct Spinner: View {
+    let size: CGFloat
+    @State private var turning = false
+    @Environment(\.staticRendering) private var staticRendering
+
+    private var lineWidth: CGFloat { max(1.5, size / 8) }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(lineWidth: lineWidth).opacity(0.2)
+            Circle()
+                .trim(from: 0, to: 0.28)
+                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(turning ? 270 : -90))
+                .animation(.linear(duration: 0.75).repeatForever(autoreverses: false), value: turning)
+        }
+        .padding(lineWidth / 2)
+        .frame(width: size, height: size)
+        .onAppear { if !staticRendering { turning = true } }
+        .accessibilityLabel("Loading")
+    }
+}

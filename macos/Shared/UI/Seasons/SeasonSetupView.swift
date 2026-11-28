@@ -326,7 +326,7 @@ struct AreaStandStep: View {
                 if !bothSaid {
                     Text("Say both to read it").font(.app(13)).foregroundStyle(Theme.muted).padding(.trailing, 8)
                 }
-                FlowButton(title: reading ? "Reading…" : (quest == nil ? "Read \(area.name)" : "Read again"), primary: true,
+                FlowButton(title: quest == nil ? "Read \(area.name)" : "Read again", primary: true,
                            isBusy: reading, isEnabled: bothSaid) { actions.read(area.id, now, want) }
             }
         }
@@ -371,7 +371,7 @@ struct AreaStandStep: View {
             } else if reading {
                 Rectangle().fill(Theme.cardBorder).frame(height: 1)
                 HStack(spacing: 8) {
-                    SpinningIcon(size: 13)
+                    Spinner(size: 13)
                     Text("Reading your words and \(area.name)’s projects and practices. This takes a few seconds.")
                 }
                 .appText(.xs)
@@ -742,7 +742,7 @@ struct QuestHowStep: View {
             VStack(spacing: 8) {
                 if state.findingSuggestions.contains(quest.id) {
                     HStack(spacing: 8) {
-                        SpinningIcon(size: 13)
+                        Spinner(size: 13)
                         Text("Finding a few that fit…")
                     }
                     .font(.app(13)).foregroundStyle(Theme.muted)

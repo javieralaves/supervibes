@@ -1353,7 +1353,7 @@ private struct QuietButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if spinning { SpinningIcon(size: 13) } else { icon.image(size: 13) }
+                if spinning { Spinner(size: 13) } else { icon.image(size: 13) }
                 Text(title).appText(.xs, .medium)
             }
             .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)

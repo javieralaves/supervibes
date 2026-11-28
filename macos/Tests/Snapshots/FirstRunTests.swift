@@ -73,4 +73,24 @@ final class FirstRunTests: XCTestCase {
     func testWhatMattersLight() {
         assertAppearances(window(Fixtures.firstRun(.whatMatters, plate: Fixtures.lightPlate)), width: 1280, height: 820)
     }
+
+    /// Buttons while they load: the spinner takes the label's place and the button keeps its width.
+    func testLoadingButtons() {
+        assertAppearances(
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    FlowButton(title: "Sort it", primary: true, action: {})
+                    FlowButton(title: "Sort it", primary: true, isBusy: true, action: {})
+                    FlowButton(title: "Read again", action: {})
+                    FlowButton(title: "Read again", isBusy: true, action: {})
+                }
+                HStack(spacing: 12) {
+                    PrimaryButton(title: "Add area", action: {})
+                    PrimaryButton(title: "Add area", isBusy: true, action: {})
+                }
+            }
+            .padding(32).frame(maxWidth: .infinity, alignment: .leading).background(Theme.background),
+            width: 640, height: 180
+        )
+    }
 }

@@ -286,7 +286,7 @@ struct NewAreaDialog: View {
             HStack(spacing: 8) {
                 Spacer()
                 GhostButton(title: "Cancel", action: onCancel)
-                PrimaryButton(title: isSaving ? "Adding…" : "Add area", isBusy: isSaving, action: save)
+                PrimaryButton(title: "Add area", isBusy: isSaving, action: save)
             }
             .padding(.top, 24)
         }

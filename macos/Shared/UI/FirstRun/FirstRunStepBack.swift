@@ -601,7 +601,7 @@ private struct MoverCard: View {
                 }
                 if linked.isEmpty && added.isEmpty && state.findingSuggestions.contains(quest.id) {
                     HStack(spacing: 8) {
-                        SpinningIcon(size: 13)
+                        Spinner(size: 13)
                         Text("Finding something to move it").font(.app(12.5))
                     }
                     .foregroundStyle(Theme.muted)

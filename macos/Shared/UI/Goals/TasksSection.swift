@@ -573,7 +573,7 @@ private struct RefreshSuggestionsButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if reading { SpinningIcon(size: 14) } else { Icon.refresh.image(size: 14) }
+                if reading { Spinner(size: 14) } else { Icon.refresh.image(size: 14) }
                 Text(reading ? "Reading…" : "Get new suggestions").appText(.sm, .medium)
             }
             .foregroundStyle(Theme.foreground)

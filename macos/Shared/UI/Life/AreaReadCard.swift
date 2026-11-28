@@ -55,7 +55,7 @@ struct AreaReadCard: View {
                 Text(read.createdAt.shortAgo(now: now)).appText(.xs)
             }
             // The Update button turns while it reads; without one, the footer does.
-            if reading, !canRead { SpinningIcon(size: 13) }
+            if reading, !canRead { Spinner(size: 13) }
             note
             Spacer(minLength: 0)
             if canRead, let onRead {
@@ -172,7 +172,7 @@ private struct ReadButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if reading { SpinningIcon(size: compact ? 13 : 15) } else { Icon.refresh.image(size: compact ? 13 : 15) }
+                if reading { Spinner(size: compact ? 13 : 15) } else { Icon.refresh.image(size: compact ? 13 : 15) }
                 Text(reading ? "Reading…" : title).appText(compact ? .xs : .sm, .medium)
             }
             .foregroundStyle(Theme.foreground)

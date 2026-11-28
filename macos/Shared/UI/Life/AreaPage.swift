@@ -62,7 +62,7 @@ struct AreaPage: View {
                     Spacer()
                     if actions != nil {
                         if isEditing {
-                            PrimaryButton(title: isSaving ? "Saving…" : "Done", isBusy: isSaving, action: finish)
+                            PrimaryButton(title: "Done", isBusy: isSaving, action: finish)
                         } else {
                             EditButton { startEditing() }
                         }

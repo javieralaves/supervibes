@@ -18,13 +18,15 @@ struct PrimaryButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                if isBusy {
-                    ProgressView().controlSize(.mini).tint(Theme.background)
-                } else if let icon {
-                    icon.image(size: 16)
+            // While busy the spinner takes the label's place; the label stays in the layout,
+            // hidden, so the button keeps its width.
+            ZStack {
+                HStack(spacing: 8) {
+                    if let icon { icon.image(size: 16) }
+                    Text(title).appText(.sm, .semibold)
                 }
-                Text(title).appText(.sm, .semibold)
+                .opacity(isBusy ? 0 : 1)
+                if isBusy { Spinner(size: 14) }
             }
             .foregroundStyle(Theme.background)
             .padding(.horizontal, 16)

@@ -99,9 +99,9 @@ private struct StartButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                if isBusy { ProgressView().controlSize(.mini).tint(Theme.background) }
-                Text(title).appText(.sm, .medium)
+            ZStack {
+                Text(title).appText(.sm, .medium).opacity(isBusy ? 0 : 1)
+                if isBusy { Spinner(size: 14) }
             }
             .foregroundStyle(Theme.background)
             .padding(.horizontal, 16)

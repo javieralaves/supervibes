@@ -53,7 +53,7 @@ struct SeasonDialog: View {
             HStack(spacing: 8) {
                 Spacer()
                 GhostButton(title: "Cancel", action: onCancel).inactive(isSaving)
-                PrimaryButton(title: isSaving ? "Saving…" : "Save", isBusy: isSaving, action: save)
+                PrimaryButton(title: "Save", isBusy: isSaving, action: save)
                     .inactive(problem != nil)
                     .opacity(problem != nil ? 0.4 : 1)
             }

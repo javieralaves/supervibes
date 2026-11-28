@@ -35,7 +35,7 @@ struct FirstRunPlate: View {
             if let error {
                 Text(error).appText(.xs).foregroundStyle(Theme.danger).lineLimit(2).padding(.trailing, 8)
             }
-            FlowButton(title: isSorting ? "Sorting…" : "Sort it", primary: true, isBusy: isSorting, isEnabled: !isEmpty, action: onSort)
+            FlowButton(title: "Sort it", primary: true, isBusy: isSorting, isEnabled: !isEmpty, action: onSort)
         }
     }
 
@@ -126,7 +126,7 @@ private struct DictationBar: View {
             case .preparing:
                 MicButton(isLit: true, onToggle: onToggle)
                 HStack(spacing: 8) {
-                    SpinningIcon(size: 12)
+                    Spinner(size: 12)
                     Text("Getting ready to listen").font(.app(12.5))
                 }
                 .foregroundStyle(Theme.muted)

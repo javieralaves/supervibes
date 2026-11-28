@@ -292,7 +292,7 @@ private struct GapButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if busy {
-                    SpinningIcon(size: style == .primary ? 14 : 13)
+                    Spinner(size: style == .primary ? 14 : 13)
                 } else if let icon {
                     icon.image(size: style == .primary ? 14 : 13)
                 }

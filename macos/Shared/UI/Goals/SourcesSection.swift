@@ -302,7 +302,7 @@ struct SourceDialog: View {
             HStack(spacing: 8) {
                 Spacer()
                 GhostButton(title: "Cancel", action: onCancel)
-                PrimaryButton(title: isSaving ? "Saving…" : isEditing ? "Save" : "Add source", isBusy: isSaving, action: submit)
+                PrimaryButton(title: isEditing ? "Save" : "Add source", isBusy: isSaving, action: submit)
                     .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(.horizontal, 24)

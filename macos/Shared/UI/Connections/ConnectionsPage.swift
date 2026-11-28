@@ -101,7 +101,7 @@ private struct ConnectionRow: View {
                     .accessibilityLabel("\(item.label) options")
             }
         } else if item.configured {
-            PrimaryButton(title: isBusy ? "Connecting…" : "Connect", isBusy: isBusy, action: onConnect)
+            PrimaryButton(title: "Connect", isBusy: isBusy, action: onConnect)
         } else {
             Text("Needs one-time setup").appText(.sm).foregroundStyle(Theme.muted)
         }
