@@ -69,8 +69,6 @@ struct FirstRunWhatMatters: View {
             Spacer()
             if let error {
                 Text(error).appText(.sm).foregroundStyle(StatusTone.text(.offTrack))
-            } else {
-                Text("Whichever you choose, you’ll plan your week next").appText(.sm).foregroundStyle(Theme.muted)
             }
         } backdrop: {
             FloatingPlate(items: plate.items)
