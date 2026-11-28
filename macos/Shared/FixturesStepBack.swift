@@ -94,6 +94,16 @@ extension Fixtures {
         return stepBack(.stand(5), season: season)
     }
 
+    /// Relationships, nothing said yet, with a guess at each side from what's in it.
+    static var stepBackStandSuggested: SeasonSetupState {
+        var state = stepBackStandEmpty
+        state.standDrafts["relationships"] = StandDraft(
+            now: "I see my parents most weekends, but friends slip when work gets busy.",
+            want: "Regular time with the people I love, without having to plan it every time."
+        )
+        return state
+    }
+
     /// The gaps as quests, Health, Home and Relationships chosen.
     static var stepBackQuests: SeasonSetupState { stepBack(.focus) }
 

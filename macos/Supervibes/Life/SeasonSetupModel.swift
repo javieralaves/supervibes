@@ -212,11 +212,55 @@ final class SeasonSetupModel {
                 let saved = try await areaAPI.update(areaId, input)
                 replaceArea(saved, keepingGap: area.gap)
             }
-            let (gap, quest) = try await seasonAPI.readStand(season: state.season.id, area: areaId)
+            // Asked again once there's a gap, so it's named afresh from their words rather than kept.
+            let (gap, quest) = try await seasonAPI.readStand(season: state.season.id, area: areaId, rename: area.gap != nil)
             if let index = self.state?.areas.firstIndex(where: { $0.id == areaId }) { self.state?.areas[index].gap = gap }
             replaceQuest(quest)
         } catch {
             self.state?.error = (error as? AreaAPIError)?.message ?? "Couldn’t read \(area.name)."
+        }
+    }
+
+    /// Guesses, for the picked areas not asked about yet, at how they'd say where each stands, to offer as they write.
+    /// Quietly none if it fails: the fields keep their own prompts.
+    func loadStandDrafts(plate: String?) async {
+        guard let state else { return }
+        let ids = state.pickedAreas.map(\.id).filter { !state.draftsAsked.contains($0) }
+        guard !ids.isEmpty else { return }
+        self.state?.draftsAsked.formUnion(ids)
+        do {
+            let drafts = try await seasonAPI.draftStands(season: state.season.id, areaIds: ids, plate: plate)
+            self.state?.standDrafts.merge(drafts) { _, new in new }
+        } catch {
+            Log.app.error("Stand drafts: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Saves the gap and what the season could reach as the person wrote them; true once saved.
+    func editGap(areaId: String, gap input: GapInput, reach title: String) async -> Bool {
+        guard let state, let area = state.area(areaId) else { return false }
+        if let problem = input.problem {
+            self.state?.error = problem
+            return false
+        }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty {
+            self.state?.error = "Say what this season could reach."
+            return false
+        }
+        self.state?.error = nil
+        do {
+            if GapInput(editing: area.gap) != input {
+                let gap = try await seasonAPI.writeGap(area: areaId, input)
+                if let index = self.state?.areas.firstIndex(where: { $0.id == areaId }) { self.state?.areas[index].gap = gap }
+            }
+            if let quest = state.candidate(for: areaId), title != quest.title {
+                replaceQuest(try await seasonAPI.updateQuest(quest.id, title: title))
+            }
+            return true
+        } catch {
+            self.state?.error = (error as? AreaAPIError)?.message ?? "Couldn’t save the gap."
+            return false
         }
     }
 

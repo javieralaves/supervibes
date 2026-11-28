@@ -17,6 +17,12 @@ enum AreaPick: Hashable, Sendable {
     case custom(String)
 }
 
+/// A guess at how someone would say where an area stands today and where they want it.
+struct StandDraft: Hashable, Sendable {
+    let now: String
+    let want: String
+}
+
 /// Everything starting a season shows, as the app's SeasonSetupModel keeps it, so each step draws from plain data.
 struct SeasonSetupState: Hashable, Sendable {
     var season: Season
@@ -37,6 +43,11 @@ struct SeasonSetupState: Hashable, Sendable {
     var error: String?
     /// The area whose stand is being read.
     var reading: String?
+    /// Guesses at how they'd say where each area stands and where they want it, by area id, offered as they write
+    /// (first run). Only areas with something to go on have one.
+    var standDrafts: [String: StandDraft] = [:]
+    /// Areas already asked about, guessed or not, so they aren't asked again.
+    var draftsAsked: Set<String> = []
     /// Suggestions for each quest, once asked for.
     var suggestions: [String: [QuestSuggestion]] = [:]
     /// Quests whose suggestions are being found.

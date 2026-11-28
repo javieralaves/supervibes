@@ -29,6 +29,11 @@ final class FirstRunModel {
     private(set) var setup: SeasonSetupModel?
     /// Route 3's quests renamed on the season's cards, saved on Start your season.
     private(set) var questNames: [String: String] = [:]
+    /// Where Say it instead is writing on an area's stand, and the last words that settled there.
+    private(set) var standTarget: StandTarget?
+    private(set) var standSpoken: StandSpoken?
+    /// Say it instead on an area's stand, as the step draws it.
+    var standVoice: StandVoice { StandVoice(dictation: dictation.state, target: standTarget, spoken: standSpoken) }
 
     @ObservationIgnored private let auth: AuthModel
     @ObservationIgnored private let client: Client
@@ -45,6 +50,9 @@ final class FirstRunModel {
             guard let self else { return }
             if state.step == .clarify, let quote = state.clarify.question?.quote {
                 state.clarify.more[quote] = Self.joined(state.clarify.more[quote] ?? "", words)
+            } else if state.step == .stepBack {
+                guard let target = standTarget else { return }
+                standSpoken = StandSpoken(target: target, words: words, serial: (standSpoken?.serial ?? 0) + 1)
             } else {
                 addSpoken(words)
             }
@@ -378,6 +386,27 @@ final class FirstRunModel {
         keptRoute = .stepBack
         progress = "stepBack"
         go(.stepBack)
+        // Picked up on an area's stand: guess where the areas stand, as moving on from the areas does.
+        if case .stand = setup?.state?.step { Task { await loadStandDrafts() } }
+    }
+
+    /// Guesses, from the plate and what's in each picked area, at how they'd say where it stands.
+    private func loadStandDrafts() async {
+        guard case .stand = setup?.state?.step else { return }
+        let plate = plateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        await setup?.loadStandDrafts(plate: plate.isEmpty ? nil : plate)
+    }
+
+    /// Say it instead into one side of an area's stand: starts it there, stops it if it's already there, or moves it
+    /// once the words said elsewhere have settled where they were said.
+    private func dictateStand(_ target: StandTarget) async {
+        if dictation.state.isActive {
+            let same = standTarget == target
+            await dictation.finishIfNeeded()
+            if same { return }
+        }
+        standTarget = target
+        dictation.start()
     }
 
     /// The draft and what's needed to set it up; false, with why, when it can't be.
@@ -396,8 +425,15 @@ final class FirstRunModel {
         StepBackActions(
             back: { [weak self] in self?.stepBackBack() },
             toggleArea: { [weak self] in self?.setup?.togglePick($0) },
-            continueAreas: { [weak self] in Task { await self?.setup?.continueAreas() } },
+            continueAreas: { [weak self] in
+                Task {
+                    await self?.setup?.continueAreas()
+                    await self?.loadStandDrafts()
+                }
+            },
             read: { [weak self] id, now, want in Task { await self?.setup?.read(areaId: id, now: now, want: want) } },
+            dictate: { [weak self] target in Task { await self?.dictateStand(target) } },
+            editGap: { [weak self] id, gap, reach in await self?.setup?.editGap(areaId: id, gap: gap, reach: reach) ?? false },
             next: { [weak self] in Task { await self?.stepBackNext() } },
             choose: { [weak self] id, chosen in Task { await self?.setup?.choose(id, chosen) } },
             toggleLink: { [weak self] quest, goal in self?.setup?.toggleLink(quest: quest, goal: goal) },
@@ -414,6 +450,7 @@ final class FirstRunModel {
 
     /// On from an area that's read, or from the quests chosen to what moves each, linking what's on the plate first.
     private func stepBackNext() async {
+        await dictation.finishIfNeeded()
         guard let setup, let current = setup.state else { return }
         if current.step == .focus {
             // All the quests on one screen; suggestions are only asked for where the plate has nothing to link.
@@ -426,6 +463,7 @@ final class FirstRunModel {
     }
 
     private func stepBackBack() {
+        dictation.stop()
         guard let setup, let step = setup.state?.step else { return go(.whatMatters) }
         switch step {
         case .areas:

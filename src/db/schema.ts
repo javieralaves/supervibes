@@ -541,7 +541,7 @@ export const aiCalls = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** The goal it was about, while that goal exists. */
     goalId: uuid().references(() => goals.id, { onDelete: "set null" }),
-    /** "progress_read" | "area_read" | "recap" | "agenda" | "gap_read" | "stand_read" | "quest_suggest" | "season_read" | "quest_read". */
+    /** "progress_read" | "area_read" | "recap" | "agenda" | "gap_read" | "stand_read" | "quest_suggest" | "season_read" | "quest_read" | "plate_sort" | "stand_draft". */
     feature: text().notNull(),
     /** What started it: "manual" | "note" | "recap" | "cron" | "draft" | "redraft" | "auto". */
     trigger: text().notNull(),

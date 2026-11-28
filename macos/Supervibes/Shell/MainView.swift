@@ -55,7 +55,7 @@ struct MainView: View {
                         case .stepBack:
                             if let state = firstRun.setup?.state {
                                 FirstRunStepBack(state: state, names: firstRun.questNames, isStarted: firstRun.state.seasonStarted,
-                                                 actions: firstRun.stepBackActions)
+                                                 voice: firstRun.standVoice, actions: firstRun.stepBackActions)
                             } else {
                                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                             }

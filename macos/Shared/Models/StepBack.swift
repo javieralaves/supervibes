@@ -74,3 +74,34 @@ extension SeasonSetupState {
         return perWeek == 1 ? "once a week" : "\(perWeek) times a week"
     }
 }
+
+// MARK: - Saying where an area stands
+
+/// Which side of an area's stand is being written: where it is today, or where they want it.
+enum StandField: Hashable, Sendable {
+    case now, want
+}
+
+/// Where Say it instead is writing on an area's stand.
+struct StandTarget: Hashable, Sendable {
+    let areaId: String
+    let field: StandField
+}
+
+/// Words said into one side of an area's stand, settled. `serial` tells one handful from the next.
+struct StandSpoken: Hashable, Sendable {
+    let target: StandTarget
+    let words: String
+    let serial: Int
+}
+
+/// Say it instead on an area's stand, as the step draws it: the microphone's state, which side it's writing to, and
+/// the last words that settled.
+struct StandVoice: Hashable, Sendable {
+    var dictation = DictationState()
+    var target: StandTarget?
+    var spoken: StandSpoken?
+
+    /// Listening (or settling) into this side of this area.
+    func isActive(_ target: StandTarget) -> Bool { dictation.isActive && self.target == target }
+}

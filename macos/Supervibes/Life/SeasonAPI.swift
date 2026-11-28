@@ -50,9 +50,10 @@ struct SeasonAPI {
     }
 
     /// Reads where an area stands for the draft: names its gap if it has none, and writes its candidate quest.
-    func readStand(season: String, area: String) async throws -> (gap: AreaGap?, quest: Quest) {
+    /// Names the area's gap if it has none (or afresh, with `rename`) and writes its candidate quest.
+    func readStand(season: String, area: String, rename: Bool = false) async throws -> (gap: AreaGap?, quest: Quest) {
         try await call("Couldn’t read this area") {
-            switch try await client.readAreaStand(path: .init(id: season, areaId: area)) {
+            switch try await client.readAreaStand(path: .init(id: season, areaId: area), query: .init(rename: rename ? ._true : nil)) {
             case .ok(let ok):
                 let stand = try ok.body.json
                 return (stand.gap.map(AreaGap.init(api:)), Quest(api: stand.quest))
@@ -64,7 +65,39 @@ struct SeasonAPI {
         }
     }
 
-    /// Changes a quest's words, or chooses it or lets it go (in a draft).
+    /// Guesses at how they'd say where each area stands and where they want it, for the areas with something to go
+    /// on, by area id. `plate` is what they typed in first run, for context.
+    func draftStands(season: String, areaIds: [String], plate: String?) async throws -> [String: StandDraft] {
+        try await call("Couldn’t guess where your areas stand") {
+            let body = Components.Schemas.StandDraftsRequest(areaIds: areaIds, plate: plate.map { String($0.prefix(6000)) })
+            switch try await client.draftAreaStands(path: .init(id: season), body: .json(body)) {
+            case .ok(let ok):
+                return Dictionary(try ok.body.json.drafts.map { ($0.areaId, StandDraft(now: $0.now, want: $0.want)) }) { first, _ in first }
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That season doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t guess where your areas stand.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t guess where your areas stand (the server answered \(status)).")
+            }
+        }
+    }
+
+    /// Saves an area's gap as the person wrote it, replacing any.
+    func writeGap(area: String, _ input: GapInput) async throws -> AreaGap {
+        try await call("Couldn’t save the gap") {
+            let body = Components.Schemas.AreaGapInput(
+                title: input.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                body: input.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            switch try await client.writeAreaGap(path: .init(id: area), body: .json(body)) {
+            case .ok(let ok): return AreaGap(api: try ok.body.json)
+            case .unauthorized: throw await signedOut()
+            case .notFound: throw AreaAPIError("That area doesn’t exist anymore.")
+            case .badRequest(let bad): throw AreaAPIError((try? bad.body.json.error.message) ?? "Couldn’t save the gap.")
+            case .undocumented(let status, _): throw AreaAPIError("Couldn’t save the gap (the server answered \(status)).")
+            }
+        }
+    }
+
     func updateQuest(_ id: String, title: String? = nil, fromText: String? = nil, chosen: Bool? = nil) async throws -> Quest {
         try await call("Couldn’t save the quest") {
             let body = Components.Schemas.QuestChange(title: title, fromText: fromText, chosen: chosen)

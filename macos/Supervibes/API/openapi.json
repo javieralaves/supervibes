@@ -2769,7 +2769,8 @@
               "quest_suggest",
               "season_read",
               "quest_read",
-              "plate_sort"
+              "plate_sort",
+              "stand_draft"
             ]
           },
           "trigger": {
@@ -3533,6 +3534,65 @@
         "required": [
           "gap",
           "quest"
+        ]
+      },
+      "StandDrafts": {
+        "type": "object",
+        "properties": {
+          "drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StandDraft"
+            }
+          }
+        },
+        "required": [
+          "drafts"
+        ]
+      },
+      "StandDraft": {
+        "type": "object",
+        "properties": {
+          "areaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "now": {
+            "type": "string",
+            "description": "A guess at how they'd say where the area stands today."
+          },
+          "want": {
+            "type": "string",
+            "description": "A guess at how they'd say where they want it to be."
+          }
+        },
+        "required": [
+          "areaId",
+          "now",
+          "want"
+        ]
+      },
+      "StandDraftsRequest": {
+        "type": "object",
+        "properties": {
+          "areaIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 12,
+            "description": "The areas to guess for: the ones picked."
+          },
+          "plate": {
+            "type": "string",
+            "maxLength": 6000,
+            "description": "What they typed on their plate in first run, for context."
+          }
+        },
+        "required": [
+          "areaIds"
         ]
       },
       "QuestDetail": {
@@ -8610,7 +8670,7 @@
     "/api/v1/seasons/{id}/areas/{areaId}/stand": {
       "post": {
         "operationId": "readAreaStand",
-        "summary": "For a draft: name the area's gap if it has none, and write its candidate quest; takes a few seconds",
+        "summary": "For a draft: name the area's gap if it has none (or again, with rename), and write its candidate quest; takes a few seconds",
         "security": [
           {
             "bearerAuth": []
@@ -8634,6 +8694,20 @@
             "required": true,
             "name": "areaId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "Name the gap afresh from their words, replacing the one there. Otherwise a named gap is kept."
+            },
+            "required": false,
+            "description": "Name the gap afresh from their words, replacing the one there. Otherwise a named gap is kept.",
+            "name": "rename",
+            "in": "query"
           }
         ],
         "responses": {
@@ -8643,6 +8717,80 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AreaStand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request didn't make sense.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in, or the session ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/seasons/{id}/stand-drafts": {
+      "post": {
+        "operationId": "draftAreaStands",
+        "summary": "For a draft: guess how they'd say where each area stands and where they want it, to offer as they write; nothing is saved",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandDraftsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guesses, for the areas with something to go on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandDrafts"
                 }
               }
             }

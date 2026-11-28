@@ -4,8 +4,10 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { ApiEnv } from "@/lib/api/auth";
 import { apiError, ErrorSchema, errorResponses } from "@/lib/api/errors";
+import { MAX_PLATE_TEXT } from "@/lib/first-run";
 import { listTrajectories } from "@/lib/goal-statuses";
 import {
+  draftStands,
   getQuestRead,
   getSeasonRead,
   readQuest,
@@ -143,6 +145,21 @@ const QuestDetailSchema = z
 
 const StandSchema = z.object({ gap: GapSchema, quest: QuestSchema }).openapi("AreaStand");
 
+const StandDraftsRequestSchema = z
+  .object({
+    areaIds: z.array(z.uuid()).min(1).max(12).openapi({ description: "The areas to guess for: the ones picked." }),
+    plate: z.string().max(MAX_PLATE_TEXT).optional().openapi({ description: "What they typed on their plate in first run, for context." }),
+  })
+  .openapi("StandDraftsRequest");
+const StandDraftSchema = z
+  .object({
+    areaId: z.uuid(),
+    now: z.string().openapi({ description: "A guess at how they'd say where the area stands today." }),
+    want: z.string().openapi({ description: "A guess at how they'd say where they want it to be." }),
+  })
+  .openapi("StandDraft");
+const StandDraftsSchema = z.object({ drafts: z.array(StandDraftSchema) }).openapi("StandDrafts");
+
 const SuggestionsSchema = z
   .object({
     suggestions: z.array(
@@ -183,6 +200,12 @@ const idParam = z.object({ id: z.uuid().openapi({ param: { name: "id", in: "path
 const standParams = z.object({
   id: z.uuid().openapi({ param: { name: "id", in: "path" } }),
   areaId: z.uuid().openapi({ param: { name: "areaId", in: "path" } }),
+});
+const standQuery = z.object({
+  rename: z
+    .enum(["true", "false"])
+    .optional()
+    .openapi({ description: "Name the gap afresh from their words, replacing the one there. Otherwise a named gap is kept." }),
 });
 const tzQuery = z.object({
   timeZone: timeZoneSchema.optional().openapi({ description: "The device's time zone; defaults to the stored one." }),
@@ -265,10 +288,20 @@ const standRoute = createRoute({
   method: "post",
   path: "/seasons/{id}/areas/{areaId}/stand",
   operationId: "readAreaStand",
-  summary: "For a draft: name the area's gap if it has none, and write its candidate quest; takes a few seconds",
+  summary: "For a draft: name the area's gap if it has none (or again, with rename), and write its candidate quest; takes a few seconds",
   security: secured,
-  request: { params: standParams },
+  request: { params: standParams, query: standQuery },
   responses: { 200: json(StandSchema, "Read"), ...errorResponses, 404: notFound },
+});
+
+const standDraftsRoute = createRoute({
+  method: "post",
+  path: "/seasons/{id}/stand-drafts",
+  operationId: "draftAreaStands",
+  summary: "For a draft: guess how they'd say where each area stands and where they want it, to offer as they write; nothing is saved",
+  security: secured,
+  request: { params: idParam, body: { content: { "application/json": { schema: StandDraftsRequestSchema } }, required: true } },
+  responses: { 200: json(StandDraftsSchema, "Guesses, for the areas with something to go on"), ...errorResponses, 404: notFound },
 });
 
 const getQuestRoute = createRoute({
@@ -467,9 +500,21 @@ export const seasonRoutes = new OpenAPIHono<ApiEnv>()
     const { id, areaId } = c.req.valid("param");
     if (!(await getSeason(userId, id))) return c.json(apiError("not_found", SEASON_GONE), 404);
     try {
-      const { gap, quest } = await readStand(userId, id, areaId);
+      const { gap, quest } = await readStand(userId, id, areaId, { rename: c.req.valid("query").rename === "true" });
       const statuses = await listTrajectories(userId, quest.goalIds, await getTimeZone(userId));
       return c.json({ gap: asGapView(gap), quest: asQuestView(quest, quest.goalIds.map((g) => statuses.get(g)?.days.at(-1)?.status ?? null)) }, 200);
+    } catch (error) {
+      const failure = seasonFailure(error);
+      return c.json(failure.body, failure.status);
+    }
+  })
+  .openapi(standDraftsRoute, async (c) => {
+    const userId = c.var.user.id;
+    const { id } = c.req.valid("param");
+    const { areaIds, plate } = c.req.valid("json");
+    if (!(await getSeason(userId, id))) return c.json(apiError("not_found", SEASON_GONE), 404);
+    try {
+      return c.json({ drafts: await draftStands(userId, id, areaIds, plate) }, 200);
     } catch (error) {
       const failure = seasonFailure(error);
       return c.json(failure.body, failure.status);

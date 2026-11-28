@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// What Route 3's screens can do, wired to FirstRunModel (and through it SeasonSetupModel) in the app, and to nothing
@@ -9,6 +10,10 @@ struct StepBackActions {
     var continueAreas: () -> Void = {}
     /// An area's words saved and its gap named: area id, where it is, where they want it.
     var read: (String, String, String) -> Void = { _, _, _ in }
+    /// Say it instead into one side of an area's stand, or stop.
+    var dictate: (StandTarget) -> Void = { _ in }
+    /// The gap and what the season could reach, as the person wrote them: area id, gap, reach. True once saved.
+    var editGap: (String, GapInput, String) async -> Bool = { _, _, _ in true }
     /// On from an area that's read, or from the quests chosen.
     var next: () -> Void = {}
     /// A quest chosen or taken out.
@@ -31,7 +36,11 @@ struct FirstRunStepBack: View {
     /// Quests renamed on the season's cards, not saved yet.
     var names: [String: String] = [:]
     var isStarted = false
+    /// Say it instead, on an area's stand.
+    var voice = StandVoice()
     var actions = StepBackActions()
+    /// The area's gap opens being edited (snapshots).
+    var editingGap = false
 
     var body: some View {
         switch state.step {
@@ -39,7 +48,7 @@ struct FirstRunStepBack: View {
             StepBackAreas(state: state, actions: actions)
         case .stand(let index):
             if let area = state.pickedAreas[safe: index] {
-                StepBackStand(state: state, index: index, area: area, actions: actions).id(area.id)
+                StepBackStand(state: state, index: index, area: area, voice: voice, actions: actions, editingGap: editingGap).id(area.id)
             }
         case .focus:
             StepBackQuests(state: state, actions: actions)
@@ -209,19 +218,28 @@ private struct Tick: View {
 
 /// One area at a time (the design's "Areas · Where it stands"): where it is today and where they want it, then the
 /// gap Supervibes names between them, with what this season could do and its track.
+///
+/// Each side offers a guess at what they'd write, from the plate and what's in the area, in place of its prompt; Tab
+/// takes it. Each can be said instead of typed. The gap card is where it's named: clicked once both sides are said,
+/// then edited in place or named again.
 private struct StepBackStand: View {
     let state: SeasonSetupState
     let index: Int
     let area: Area
+    var voice = StandVoice()
     let actions: StepBackActions
+    var editingGap = false
     @State private var now: String
     @State private var want: String
+    @FocusState private var focus: StandField?
 
-    init(state: SeasonSetupState, index: Int, area: Area, actions: StepBackActions) {
+    init(state: SeasonSetupState, index: Int, area: Area, voice: StandVoice = StandVoice(), actions: StepBackActions, editingGap: Bool = false) {
         self.state = state
         self.index = index
         self.area = area
+        self.voice = voice
         self.actions = actions
+        self.editingGap = editingGap
         _now = State(initialValue: area.now ?? "")
         _want = State(initialValue: area.want ?? "")
     }
@@ -234,6 +252,11 @@ private struct StepBackStand: View {
         quest != nil && area.gap != nil && trimmed(now) == (area.now ?? "") && trimmed(want) == (area.want ?? "")
     }
     private var isLast: Bool { index == state.pickedAreas.count - 1 }
+    private var draft: StandDraft? { state.standDrafts[area.id] }
+    /// Listening on either side of this area.
+    private var isListening: Bool { voice.dictation.isActive && voice.target?.areaId == area.id }
+    /// Both sides said, and nothing still being said: there's something to name the gap from.
+    private var canName: Bool { !trimmed(now).isEmpty && !trimmed(want).isEmpty && !isListening && !isReading }
 
     var body: some View {
         FirstRunFlow(
@@ -246,11 +269,26 @@ private struct StepBackStand: View {
             VStack(alignment: .leading, spacing: 0) {
                 AreaSteps(state: state, current: index)
                 HStack(alignment: .top, spacing: 16) {
-                    field("Where it is today", text: $now, solid: false, prompt: "What it’s like now, honestly")
-                    field("Where you want it to be", text: $want, solid: true, prompt: "Where you’d like it to get, however far off")
+                    StandSide(
+                        label: "Where it is today", text: $now, solid: false, color: color,
+                        prompt: "What it’s like now, honestly", suggestion: draft?.now,
+                        voice: voice, target: StandTarget(areaId: area.id, field: .now), focus: $focus, onDictate: actions.dictate
+                    )
+                    StandSide(
+                        label: "Where you want it to be", text: $want, solid: true, color: color,
+                        prompt: "Where you’d like it to get, however far off", suggestion: draft?.want,
+                        voice: voice, target: StandTarget(areaId: area.id, field: .want), focus: $focus, onDictate: actions.dictate
+                    )
                 }
                 .padding(.top, 20)
-                gap.padding(.top, 16)
+                StandGap(
+                    area: area, quest: quest, color: color, season: state.season, from: state.goals(in: area).first?.badge,
+                    isRead: isRead, isReading: isReading, canName: canName, isListening: isListening,
+                    startsEditing: editingGap,
+                    onName: { actions.read(area.id, trimmed(now), trimmed(want)) },
+                    onEdit: { gap, reach in await actions.editGap(area.id, gap, reach) }
+                )
+                .padding(.top, 16)
             }
         } footer: {
             FlowButton(title: "Back", action: actions.back)
@@ -258,20 +296,44 @@ private struct StepBackStand: View {
             if let error = state.error {
                 Text(error).font(.app(12.5)).foregroundStyle(StatusTone.text(.offTrack)).padding(.trailing, 8)
             }
-            if isRead {
-                FlowButton(title: isLast ? "Continue" : "Next area", primary: true, action: actions.next)
-            } else {
-                FlowButton(
-                    title: isReading ? "Naming the gap" : quest == nil ? "Name the gap" : "Name it again", primary: true,
-                    isBusy: isReading, isEnabled: !trimmed(now).isEmpty && !trimmed(want).isEmpty
-                ) { actions.read(area.id, trimmed(now), trimmed(want)) }
+            FlowButton(title: isLast ? "Continue" : "Next area", primary: true, isEnabled: isRead, action: actions.next)
+        }
+        .onChange(of: voice.spoken) {
+            // Words said here settle into the side they were said into.
+            guard let spoken = voice.spoken, spoken.target.areaId == area.id else { return }
+            switch spoken.target.field {
+            case .now: now = Self.joined(now, spoken.words)
+            case .want: want = Self.joined(want, spoken.words)
             }
         }
     }
 
     private func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private func field(_ label: String, text: Binding<String>, solid: Bool, prompt: String) -> some View {
+    private static func joined(_ text: String, _ words: String) -> String {
+        text.isEmpty || text.last?.isWhitespace == true ? text + words : text + " " + words
+    }
+}
+
+/// One side of an area's stand: its label and a microphone, then what they write. Empty, it shows a guess at what
+/// they'd write (Tab takes it) or else its prompt. Listening, the words as they come, the unsettled ones muted.
+private struct StandSide: View {
+    let label: String
+    @Binding var text: String
+    let solid: Bool
+    let color: String
+    let prompt: String
+    var suggestion: String?
+    let voice: StandVoice
+    let target: StandTarget
+    var focus: FocusState<StandField?>.Binding
+    let onDictate: (StandTarget) -> Void
+
+    private var isListening: Bool { voice.isActive(target) }
+    /// The guess, shown while there's nothing written.
+    private var offered: String? { text.isEmpty && !isListening ? suggestion : nil }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle()
@@ -279,58 +341,343 @@ private struct StepBackStand: View {
                     .background(Circle().fill(solid ? GoalPalette.color(color) : .clear))
                     .frame(width: 10, height: 10)
                 Text(label).font(.app(12.5, .semibold)).foregroundStyle(Theme.muted)
+                Spacer(minLength: 8)
+                MicButton(isListening: isListening, isPreparing: isListening && voice.dictation.phase == .preparing) { onDictate(target) }
             }
-            TextField("", text: text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.app(16, .medium)).tracking(-0.16).lineSpacing(5)
-                .foregroundStyle(Theme.foreground)
-                .lineLimit(3...5)
-                .placeholder(prompt, when: text.wrappedValue.isEmpty, font: .app(16, .medium))
-                .frame(minHeight: 72, alignment: .topLeading)
+            .frame(height: 20)
+
+            Group {
+                if isListening {
+                    Text("\(text)\(Text((text.isEmpty || voice.dictation.volatile.isEmpty ? "" : " ") + voice.dictation.volatile).foregroundStyle(Theme.muted))")
+                        .font(.app(16, .medium)).tracking(-0.16).lineSpacing(5)
+                        .foregroundStyle(Theme.foreground)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .overlay(alignment: .topLeading) {
+                            if text.isEmpty && voice.dictation.volatile.isEmpty {
+                                Text(voice.dictation.phase == .preparing ? "Getting ready to listen…" : "Listening…")
+                                    .font(.app(16, .medium)).foregroundStyle(Theme.muted.opacity(0.7))
+                            }
+                        }
+                } else {
+                    TextField("", text: $text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.app(16, .medium)).tracking(-0.16).lineSpacing(5)
+                        .foregroundStyle(Theme.foreground)
+                        .lineLimit(3...5)
+                        .focused(focus, equals: target.field)
+                        .placeholder(offered ?? prompt, when: text.isEmpty, font: .app(16, .medium))
+                        // Tab takes the guess while there's nothing written; otherwise it moves on as usual.
+                        .modifier(TabTakes(isOn: focus.wrappedValue == target.field && offered != nil) {
+                            if let offered { text = offered }
+                        })
+                }
+            }
+            .frame(minHeight: 72, alignment: .topLeading)
+
+            if offered != nil {
+                HStack(spacing: 6) {
+                    Text("tab").font(.app(10.5, .medium))
+                        .padding(.horizontal, 5).frame(height: 18)
+                        .background(Theme.foreground(0.05), in: .rect(cornerRadius: 5))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.cardBorder))
+                    Text("to use this guess").font(.app(11.5))
+                }
+                .foregroundStyle(Theme.muted)
+                .transition(.opacity)
+            }
         }
         .padding(16).padding(.bottom, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.card, in: .rect(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(isListening ? GoalPalette.color("sky").opacity(0.6) : Theme.cardBorder, lineWidth: isListening ? 1.5 : 1)
+        }
+        .animation(.easeOut(duration: 0.15), value: offered == nil)
+    }
+}
+
+/// Catches Tab while it's on, before the text field's own handling moves focus on, and calls `action` instead. A
+/// window-level key monitor, since a text field's editor sees Tab before SwiftUI's key handlers do.
+private struct TabTakes: ViewModifier {
+    let isOn: Bool
+    let action: () -> Void
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { update() }
+            .onChange(of: isOn) { update() }
+            .onDisappear { remove() }
     }
 
-    /// The gap, once named: its title, what this season could do, and its track. Before, what it will be.
-    @ViewBuilder private var gap: some View {
-        if let gap = area.gap, let quest {
-            HStack(alignment: .center, spacing: 40) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("The gap").font(.app(12.5, .semibold)).foregroundStyle(GoalPalette.color(color))
-                    Text(gap.title).font(.app(19, .semibold)).tracking(-0.3).foregroundStyle(Theme.foreground)
-                        .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
-                    Text(gap.body.isEmpty ? "By \(state.season.endLabel) this season could get as far as: \(quest.title)." : gap.body)
-                        .font(.app(13)).lineSpacing(3).foregroundStyle(Theme.foreground(0.65))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 500, alignment: .leading).padding(.top, 6)
+    private func update() {
+        remove()
+        guard isOn else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+            guard event.keyCode == 48, modifiers.isEmpty else { return event }
+            action()
+            return nil
+        }
+    }
+
+    private func remove() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
+/// Say it instead: a microphone, lit while it listens.
+private struct MicButton: View {
+    let isListening: Bool
+    var isPreparing = false
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if isPreparing { Spinner(size: 13) } else { (isListening ? Icon.micBold : Icon.mic).image(size: 15) }
+            }
+            .foregroundStyle(isListening ? GoalPalette.color("sky") : isHovered ? Theme.foreground : Theme.muted)
+            .frame(width: 28, height: 28)
+            .background(isListening ? GoalPalette.tintBackground("sky") : isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(isListening ? "Stop listening" : "Say it instead")
+        .padding(.trailing, -6)
+    }
+}
+
+/// The gap between the two sides, where it's named. Before: a dashed card that names it when clicked, once both sides
+/// are said. Named: its headline and line, what this season could reach and its track, with Edit and Name it again.
+/// Changed since: faded, with Name it again. Editing: the headline, the line and the reach as fields, in place.
+private struct StandGap: View {
+    let area: Area
+    let quest: Quest?
+    let color: String
+    let season: Season
+    let from: PlateBadge?
+    let isRead: Bool
+    let isReading: Bool
+    let canName: Bool
+    let isListening: Bool
+    let onName: () -> Void
+    let onEdit: (GapInput, String) async -> Bool
+    @State private var editing: Bool
+    @State private var draft: GapInput
+    @State private var reach: String
+    @State private var isSaving = false
+    @State private var isHovered = false
+
+    init(
+        area: Area, quest: Quest?, color: String, season: Season, from: PlateBadge?, isRead: Bool, isReading: Bool, canName: Bool,
+        isListening: Bool, startsEditing: Bool = false, onName: @escaping () -> Void, onEdit: @escaping (GapInput, String) async -> Bool
+    ) {
+        self.area = area
+        self.quest = quest
+        self.color = color
+        self.season = season
+        self.from = from
+        self.isRead = isRead
+        self.isReading = isReading
+        self.canName = canName
+        self.isListening = isListening
+        self.onName = onName
+        self.onEdit = onEdit
+        _editing = State(initialValue: startsEditing && area.gap != nil && quest != nil)
+        _draft = State(initialValue: GapInput(editing: area.gap))
+        _reach = State(initialValue: quest?.title ?? "")
+    }
+
+    var body: some View {
+        Group {
+            if let gap = area.gap, let quest {
+                if editing {
+                    editor
+                } else {
+                    named(gap, quest)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                GapTrack(
-                    reach: quest.reach, color: color, end: state.season.endLabel,
-                    from: state.goals(in: area).first?.badge, labels: true
+            } else {
+                unnamed
+            }
+        }
+        .animation(.smooth(duration: 0.2), value: editing)
+    }
+
+    // MARK: Not named yet
+
+    private var unnamed: some View {
+        Button(action: onName) {
+            HStack(spacing: 14) {
+                Group {
+                    if isReading { Spinner(size: 15) } else { Icon.route.image(size: 16) }
+                }
+                .foregroundStyle(canName || isReading ? GoalPalette.color(color) : Theme.muted)
+                .frame(width: 36, height: 36)
+                .background(canName || isReading ? GoalPalette.tintBackground(color) : Theme.foreground(0.04), in: .circle)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isReading ? "Naming the gap…" : "Name the gap")
+                        .font(.app(14, .semibold))
+                        .foregroundStyle(canName || isReading ? Theme.foreground : Theme.muted)
+                    Text(line).font(.app(13)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                if canName {
+                    Icon.arrowRight.image(size: 15)
+                        .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+                        .offset(x: isHovered ? 2 : 0)
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 18)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .background(canName && isHovered ? GoalPalette.tintBackground(color).opacity(0.6) : .clear, in: .rect(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16).strokeBorder(
+                    canName ? GoalPalette.color(color).opacity(isHovered ? 0.7 : 0.45) : Theme.foreground(0.12),
+                    style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
                 )
+            }
+            .contentShape(.rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canName)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .animation(.easeOut(duration: 0.2), value: canName)
+    }
+
+    private var line: String {
+        if isReading { return "Between where it is and where you want it, and how far this season could take it." }
+        if isListening { return "Once you’ve finished saying it, name the gap between the two." }
+        if canName { return "Supervibes names the gap between where it is and where you want it, and how far this season could take it." }
+        return "Say where it is today and where you want it first; then Supervibes names the gap between them."
+    }
+
+    // MARK: Named
+
+    private func named(_ gap: AreaGap, _ quest: Quest) -> some View {
+        HStack(alignment: .center, spacing: 40) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Text("The gap").font(.app(12.5, .semibold)).foregroundStyle(GoalPalette.color(color))
+                    Spacer(minLength: 8)
+                    if isRead {
+                        GapAction(icon: .edit, title: "Edit") { startEditing(gap, quest) }
+                    }
+                    GapAction(icon: isReading ? nil : .refresh, title: isReading ? "Naming again…" : "Name it again",
+                              prominent: !isRead && !isReading, isBusy: isReading, action: onName)
+                        .disabled(!canName)
+                }
+                Text(gap.title).font(.app(19, .semibold)).tracking(-0.3).foregroundStyle(Theme.foreground)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                Text(gap.body.isEmpty ? "By \(season.endLabel) this season could get as far as: \(quest.title)." : gap.body)
+                    .font(.app(13)).lineSpacing(3).foregroundStyle(Theme.foreground(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 500, alignment: .leading).padding(.top, 6)
+                if !isRead && !isReading {
+                    Text("You’ve changed what you said since. Name it again to catch up.")
+                        .font(.app(12)).foregroundStyle(Theme.muted).padding(.top, 8)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            GapTrack(reach: quest.reach, color: color, end: season.endLabel, from: from, labels: true)
                 .padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 14)
                 .background(Theme.card.opacity(0.7), in: .rect(cornerRadius: 12))
                 .frame(width: 340)
-            }
-            .padding(.horizontal, 24).padding(.vertical, 20)
-            .background(GoalPalette.tintBackground(color), in: .rect(cornerRadius: 16))
-            .opacity(isRead ? 1 : 0.5)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("The gap").font(.app(12.5, .semibold)).foregroundStyle(Theme.muted)
-                Text(isReading
-                     ? "Naming the gap between them, and what this season could do…"
-                     : "Once you’ve said both, Supervibes names the gap between them, and how far this season could take it.")
-                    .font(.app(13)).foregroundStyle(Theme.muted)
-            }
-            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
-            .padding(.horizontal, 24)
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.foreground(0.12), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+                .opacity(isRead ? 1 : 0.5)
         }
+        .padding(.horizontal, 24).padding(.vertical, 20)
+        .background(GoalPalette.tintBackground(color).opacity(isRead ? 1 : 0.55), in: .rect(cornerRadius: 16))
+    }
+
+    private func startEditing(_ gap: AreaGap, _ quest: Quest) {
+        draft = GapInput(editing: gap)
+        reach = quest.title
+        editing = true
+    }
+
+    // MARK: Editing
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("The gap").font(.app(12.5, .semibold)).foregroundStyle(GoalPalette.color(color))
+            EditLine(label: "In a few words", text: $draft.title, font: .app(17, .semibold), prompt: "From where it is to where you want it")
+            EditLine(label: "A line or two", text: $draft.body, font: .app(13.5), prompt: "What the gap is, in your words", lines: 2...4)
+            EditLine(label: "By \(season.endLabel), this season could reach", text: $reach, font: .app(14, .medium),
+                     prompt: "One thing you could see by then")
+            HStack(spacing: 8) {
+                Spacer()
+                FlowButton(title: "Cancel") { editing = false }
+                FlowButton(title: "Save", primary: true, isBusy: isSaving,
+                           isEnabled: !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                               && !reach.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                    Task {
+                        isSaving = true
+                        let saved = await onEdit(draft, reach)
+                        isSaving = false
+                        if saved { editing = false }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 20)
+        .background(GoalPalette.tintBackground(color), in: .rect(cornerRadius: 16))
+    }
+}
+
+/// One of the gap's fields while it's edited: a small label over a field on the card.
+private struct EditLine: View {
+    let label: String
+    @Binding var text: String
+    let font: Font
+    let prompt: String
+    var lines: ClosedRange<Int> = 1...2
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.app(11.5, .medium)).foregroundStyle(Theme.muted)
+            TextField("", text: $text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(font)
+                .foregroundStyle(Theme.foreground)
+                .lineLimit(lines)
+                .placeholder(prompt, when: text.isEmpty, font: font)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Theme.card, in: .rect(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cardBorder))
+        }
+    }
+}
+
+/// The named gap's small actions: an icon and a word, muted until hovered; Name it again stands out once the words
+/// have changed.
+private struct GapAction: View {
+    let icon: Icon?
+    let title: String
+    var prominent = false
+    var isBusy = false
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if isBusy { Spinner(size: 11) } else if let icon { icon.image(size: 12) }
+                Text(title).font(.app(12, .medium))
+            }
+            .foregroundStyle(prominent ? Theme.background : isHovered ? Theme.foreground : Theme.foreground(0.6))
+            .padding(.horizontal, 9).frame(height: 26)
+            .background(prominent ? Theme.foreground : isHovered ? Theme.card.opacity(0.8) : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+            .opacity(isEnabled || isBusy ? 1 : 0.5)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
