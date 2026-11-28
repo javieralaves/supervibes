@@ -164,7 +164,10 @@ final class SeasonSetupModel {
         state.error = nil
         self.state = state
         defer { self.state?.isBusy = false }
+        // The new areas are made first and shown together, so the cards don't shift while they're made: a new area
+        // shown on its own while its pick still pointed at the popular card read as unpicked, then jumped.
         var picked: [AreaPick] = []
+        var made: [Area] = []
         for pick in state.picked {
             switch pick {
             case .area:
@@ -173,23 +176,29 @@ final class SeasonSetupModel {
                 let icon = state.popular.first { $0.name == name }?.icon ?? AreaInput.defaultIcon
                 do {
                     let area = try await areaAPI.create(AreaInput(name: name, icon: icon))
-                    self.state?.areas.append(area)
+                    made.append(area)
                     picked.append(.area(area.id))
                 } catch {
-                    self.state?.picked = picked + Array(state.picked.drop(while: { $0 != pick }))
-                    self.state?.error = (error as? AreaAPIError)?.message ?? "Couldn’t add \(name)."
+                    // Keep what was made, picked, so trying again doesn't make it twice.
+                    var after = self.state
+                    after?.areas += made
+                    after?.picked = picked + Array(state.picked.drop(while: { $0 != pick }))
+                    after?.popular.removeAll { popular in made.contains { $0.name == popular.name } }
+                    after?.error = (error as? AreaAPIError)?.message ?? "Couldn’t add \(name)."
+                    self.state = after
                     return
                 }
             }
         }
-        // Keep the areas' own order for those of yours, then the new ones as they were added.
-        guard let areas = self.state?.areas else { return }
+        // Keep the areas' own order for those of yours, then the new ones as they were added; all in one change.
+        guard var after = self.state else { return }
+        after.areas += made
         let ids = picked.compactMap { if case .area(let id) = $0 { id } else { nil } }
-        self.state?.picked = areas.filter { ids.contains($0.id) }.map { .area($0.id) }
-        self.state?.popular.removeAll { popular in areas.contains { $0.name == popular.name } }
+        after.picked = after.areas.filter { ids.contains($0.id) }.map { .area($0.id) }
+        after.popular.removeAll { popular in after.areas.contains { $0.name == popular.name } }
+        after.step = .stand(after.pickedAreas.firstIndex { after.candidate(for: $0.id) == nil } ?? 0)
+        self.state = after
         savePicked()
-        guard let after = self.state else { return }
-        self.state?.step = .stand(after.pickedAreas.firstIndex { after.candidate(for: $0.id) == nil } ?? 0)
     }
 
     // MARK: 2. Where each stands
