@@ -811,8 +811,8 @@ private struct PlanGrid: View {
                 }
                 .offset(x: 10, y: pointing(at: plan.quests.isEmpty ? marks.projects : marks.quests))
             case .practices:
-                WeekTip(kicker: "Your practices", nib: .left, onNext: actions.next) {
-                    Text("Drag a practice in too. Each time on your week counts toward how often you want it.")
+                WeekTip(kicker: "Keep going", nib: .left, onNext: actions.next) {
+                    Text("Drag in practices, or more time for a project. Each practice counts toward how often you want it.")
                 }
                 .offset(x: 10, y: pointing(at: marks.practices))
             case .done:
