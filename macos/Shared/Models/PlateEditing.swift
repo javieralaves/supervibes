@@ -87,6 +87,9 @@ struct SortedEdit: Hashable, Sendable {
     var perWeek: Int?
     /// For a task: the project it goes under, or its area's bucket (`SortedPlate.bucketTarget`).
     var under: String?
+    /// A project's or practice's look: its icon and colour. Nil for a task, which gets one if it becomes either.
+    var icon: String?
+    var color: String?
 }
 
 /// The usual parts of life, to add one that isn't on the plate (src/lib/season-schema.ts' POPULAR_AREAS).
@@ -144,7 +147,8 @@ extension SortedPlate {
         switch selection {
         case .item(let id):
             guard let item = item(id), let area = area(of: id) else { return nil }
-            return SortedEdit(kind: item.isPractice ? .practice : .project, title: item.title, areaId: area.id, perWeek: item.perWeek)
+            return SortedEdit(kind: item.isPractice ? .practice : .project, title: item.title, areaId: area.id, perWeek: item.perWeek,
+                              icon: item.icon, color: item.color)
         case .task(let itemId, let index):
             guard let item = item(itemId), item.tasks.indices.contains(index), let area = area(of: itemId) else { return nil }
             return SortedEdit(kind: .task, title: item.tasks[index], areaId: area.id, under: itemId)
@@ -162,6 +166,8 @@ extension SortedPlate {
         case .item(let id):
             guard var item = take(id) else { return }
             item.title = title
+            if let icon = edit.icon { item.icon = icon }
+            if let color = edit.color { item.color = color }
             switch edit.kind {
             case .project:
                 item.kind = .project

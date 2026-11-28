@@ -11,6 +11,8 @@ struct FirstRunSorted: View {
     var isSaving = false
     var error: String?
     var actions = FirstRunActions()
+    /// An area's add row to start open, with what's typed in it: for snapshots and previews.
+    var adding: AddDraft?
     @Environment(\.overlays) private var overlays
     @State private var areaButton: CGRect = .zero
 
@@ -26,7 +28,7 @@ struct FirstRunSorted: View {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         GridRow {
                             ForEach(row) { area in
-                                AreaCard(plate: plate, area: area, actions: actions)
+                                AreaCard(plate: plate, area: area, actions: actions, adding: adding?.areaId == area.id ? adding : nil)
                                     .frame(maxHeight: .infinity, alignment: .top)
                             }
                             ForEach(0..<(3 - row.count), id: \.self) { _ in Color.clear.gridCellUnsizedAxes([.vertical]) }
@@ -73,6 +75,8 @@ private struct AreaCard: View {
     let plate: SortedPlate
     let area: PlateArea
     let actions: FirstRunActions
+    var adding: AddDraft?
+    @Environment(\.staticRendering) private var staticRendering
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -95,9 +99,13 @@ private struct AreaCard: View {
                 }
             }
             .padding(.top, 4)
+            .animation(staticRendering ? nil : .smooth(duration: 0.3), value: area.items)
 
             Spacer(minLength: 8)
-            AddRow(area: area.name) { title, kind in actions.add(title, kind, area.id) }
+            AddRow(area: area.name, bucket: area.items.first(where: \.isBucket)?.title ?? SortedPlate.bucketName(for: area.name),
+                   draft: adding) { title, kind in
+                actions.add(title, kind, area.id)
+            }
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -210,68 +218,124 @@ private struct TaskRow: View {
     }
 }
 
-/// Add to an area, pinned to its foot: opened in place, a name and what kind it is; Return adds it.
+/// An add row open in an area, with what's typed: for snapshots and previews.
+struct AddDraft: Hashable {
+    let areaId: String
+    var kind = PlateKind.project
+    var title = ""
+}
+
+/// Add to an area, pinned to its foot. Opened, it's the row-to-be: a badge that guesses the icon from the words as
+/// they're typed (round for a practice, a box for a task), the name, and a line saying what it'll be and, for a
+/// one-off, where it goes. Under it, what kind it is, and a Return keycap once something's typed: Return adds it and
+/// stays open for the next; Escape, or clicking away with nothing typed, closes it.
 private struct AddRow: View {
     let area: String
+    /// Where a one-off goes: the area's bucket.
+    let bucket: String
     let onAdd: (String, PlateKind) -> Void
-    @State private var isAdding = false
-    @State private var title = ""
-    @State private var kind = PlateKind.project
+    @State private var isAdding: Bool
+    @State private var title: String
+    @State private var kind: PlateKind
     @FocusState private var focused: Bool
+    @Environment(\.staticRendering) private var staticRendering
+
+    init(area: String, bucket: String, draft: AddDraft? = nil, onAdd: @escaping (String, PlateKind) -> Void) {
+        self.area = area
+        self.bucket = bucket
+        self.onAdd = onAdd
+        _isAdding = State(initialValue: draft != nil)
+        _title = State(initialValue: draft?.title ?? "")
+        _kind = State(initialValue: draft?.kind ?? .project)
+    }
+
+    private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Theme.cardBorder).frame(height: 1)
             if isAdding {
-                TextField("", text: $title)
-                    .textFieldStyle(.plain)
-                    .font(.app(13))
-                    .placeholder(kind == .task ? "A one-off to do" : "Name it", when: title.isEmpty, font: .app(13))
-                    .focused($focused)
-                    .onSubmit(add)
-                    .onExitCommand { close() }
-                    .padding(.horizontal, 10).frame(height: 34)
-                    .background(Theme.card, in: .rect(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.foreground, lineWidth: 1.5))
-                HStack(spacing: 4) {
-                    ForEach(PlateKind.allCases, id: \.self) { option in
-                        Button { kind = option } label: {
-                            Text(option.name).font(.app(12, .medium))
-                                .foregroundStyle(kind == option ? Theme.background : Theme.muted)
-                                .padding(.horizontal, 10).frame(height: 26)
-                                .background(kind == option ? Theme.foreground : .clear, in: .rect(cornerRadius: 8))
-                                .overlay { if kind != option { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder) } }
-                                .contentShape(.rect(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                    Text("Return to add").font(.app(11.5)).foregroundStyle(Theme.muted)
-                }
+                composer
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .bottom)))
             } else {
-                Button {
+                AddToButton(area: area) {
                     isAdding = true
                     focused = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Icon.add.image(size: 13)
-                        Text("Add to \(area)").font(.app(12.5, .medium))
-                    }
-                    .foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 8).frame(height: 28)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, 2).padding(.bottom, 2)
+        .animation(staticRendering ? nil : .smooth(duration: 0.22), value: isAdding)
+        .onChange(of: focused) {
+            // Clicking away with nothing typed puts it away; a beat's grace for clicks inside it that hand focus back.
+            guard !focused else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                if !focused && trimmed.isEmpty { close() }
+            }
+        }
+    }
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                AddPreviewBadge(kind: kind, title: trimmed)
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("", text: $title)
+                        .textFieldStyle(.plain)
+                        .font(.app(13.5, .medium))
+                        .foregroundStyle(Theme.foreground)
+                        .placeholder(placeholder, when: title.isEmpty, font: .app(13.5, .medium), color: Theme.muted.opacity(0.8))
+                        .focused($focused)
+                        .onSubmit(add)
+                        .onExitCommand { close() }
+                    HStack(spacing: 5) {
+                        Text(kind.name)
+                        Text("·").foregroundStyle(Theme.muted.opacity(0.6))
+                        Text(line).lineLimit(1)
+                    }
+                    .font(.app(11.5))
+                    .foregroundStyle(Theme.muted)
+                }
+                .padding(.top, 1)
+            }
+            .padding(.horizontal, 8).padding(.top, 9).padding(.bottom, 10)
+
+            HStack(spacing: 8) {
+                KindSwitch(kind: $kind) { focused = true }
+                Spacer(minLength: 4)
+                if !trimmed.isEmpty { KeyHint(key: "↩").help("Return adds it") }
+            }
+            .padding(.horizontal, 6).padding(.bottom, 6)
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 12).fill(Theme.card)
+                .shadow(color: .black.opacity(0.08), radius: 10, y: 6)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.lineStrong))
+        .animation(staticRendering ? nil : .smooth(duration: 0.2), value: kind)
+    }
+
+    private var placeholder: String {
+        switch kind {
+        case .project: "Name a project"
+        case .practice: "Name a practice"
+        case .task: "Name a one-off"
+        }
+    }
+
+    private var line: String {
+        switch kind {
+        case .project: "Has a finish line"
+        case .practice: "You’ll say how often"
+        case .task: "Goes in \(bucket)"
+        }
     }
 
     private func add() {
-        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return close() }
-        onAdd(name, kind)
+        guard !trimmed.isEmpty else { return close() }
+        onAdd(trimmed, kind)
         title = ""
         focused = true
     }
@@ -283,22 +347,150 @@ private struct AddRow: View {
     }
 }
 
+/// The add row's badge: for a project or practice, the icon its words suggest (or the kind's while there are none), in
+/// ink on a wash, square or round as the kind is; for a task, the empty box a task wears.
+private struct AddPreviewBadge: View {
+    let kind: PlateKind
+    let title: String
+
+    private var icon: String? {
+        guard kind != .task, !title.isEmpty else { return nil }
+        let guess = QuestSuggestion(kind: kind == .practice ? .practice : .project, title: title, line: "", perWeek: nil).icon
+        return guess == GoalPalette.defaultIcon ? nil : guess
+    }
+
+    var body: some View {
+        ZStack {
+            if kind == .task {
+                RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.lineStrong, lineWidth: 1.5).frame(width: 13, height: 13)
+            } else if let icon {
+                GoalIconImage(name: icon, size: 15).id(icon).transition(.opacity.combined(with: .scale(scale: 0.8)))
+            } else {
+                (kind == .practice ? Icon.repeats : Icon.flag).image(size: 14).transition(.opacity)
+            }
+        }
+        .foregroundStyle(Theme.foreground(0.6))
+        .frame(width: 28, height: 28)
+        .background(Theme.foreground(kind == .task ? 0 : 0.06), in: kind == .practice ? AnyShape(.circle) : AnyShape(.rect(cornerRadius: 8)))
+        .animation(.smooth(duration: 0.2), value: icon)
+    }
+}
+
+/// Project, practice or task, as a small segmented switch: each its icon and name, the chosen one raised.
+private struct KindSwitch: View {
+    @Binding var kind: PlateKind
+    let onPick: () -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(PlateKind.allCases, id: \.self) { option in
+                Item(kind: option, isOn: kind == option) {
+                    kind = option
+                    onPick()
+                }
+            }
+        }
+        .padding(2)
+        .background(Theme.wash, in: .rect(cornerRadius: 9))
+        .fixedSize()
+    }
+
+    private struct Item: View {
+        let kind: PlateKind
+        let isOn: Bool
+        let action: () -> Void
+        @State private var isHovered = false
+
+        private var icon: Icon {
+            switch kind {
+            case .project: .flag
+            case .practice: .repeats
+            case .task: .plan
+            }
+        }
+
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: 5) {
+                    icon.image(size: 12)
+                    Text(kind.name).font(.app(11.5, .medium))
+                }
+                .foregroundStyle(isOn || isHovered ? Theme.foreground : Theme.muted)
+                .padding(.horizontal, 8).frame(height: 24)
+                .background {
+                    if isOn {
+                        RoundedRectangle(cornerRadius: 7).fill(Theme.card)
+                            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.cardBorder))
+                    }
+                }
+                .contentShape(.rect(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// A key to press, as a small keycap.
+private struct KeyHint: View {
+    let key: String
+
+    var body: some View {
+        Text(key).font(.app(11, .medium))
+            .foregroundStyle(Theme.muted)
+            .frame(width: 22, height: 22)
+            .background(Theme.foreground(0.05), in: .rect(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.cardBorder))
+            .fixedSize()
+            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+    }
+}
+
+/// The way in: a plus and "Add to Work", darkening on hover.
+private struct AddToButton: View {
+    let area: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Icon.add.image(size: 13)
+                Text("Add to \(area)").font(.app(12.5, .medium))
+            }
+            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+            .padding(.horizontal, 8).frame(height: 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
 // MARK: - Editing
 
 /// Changing one thing that was sorted: what kind it is, as three tiles (switching changes what the rest asks for),
-/// its name and area, how often for a practice, which project for a task. Remove takes it off the plate.
+/// its look and name, its area, how often for a practice, which project for a task. Remove takes it off the plate.
 struct SortedEditCard: View {
     let plate: SortedPlate
     /// The project or practice being changed, which a task can't go under.
     var selected: String?
     @State var edit: SortedEdit
+    /// The icon and colour choices, open under the name.
+    @State private var pickingLook: Bool
+    @Environment(\.staticRendering) private var staticRendering
     let onDone: (SortedEdit) -> Void
     let onRemove: () -> Void
 
-    init(plate: SortedPlate, selected: String? = nil, edit: SortedEdit, onDone: @escaping (SortedEdit) -> Void, onRemove: @escaping () -> Void) {
+    init(plate: SortedPlate, selected: String? = nil, edit: SortedEdit, pickingLook: Bool = false,
+         onDone: @escaping (SortedEdit) -> Void, onRemove: @escaping () -> Void) {
         self.plate = plate
         self.selected = selected
         _edit = State(initialValue: edit)
+        _pickingLook = State(initialValue: pickingLook)
         self.onDone = onDone
         self.onRemove = onRemove
     }
@@ -322,12 +514,24 @@ struct SortedEditCard: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 field("Name") {
-                    TextField("", text: $edit.title)
-                        .textFieldStyle(.plain)
-                        .font(.app(13.5, .medium))
-                        .onSubmit { onDone(edit) }
-                        .padding(.horizontal, 12).frame(height: 36)
-                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.foreground, lineWidth: 1.5))
+                    HStack(spacing: 8) {
+                        if let look {
+                            LookButton(icon: look.icon, color: look.color, round: edit.kind == .practice, isOpen: pickingLook) {
+                                pickingLook.toggle()
+                            }
+                        }
+                        TextField("", text: $edit.title)
+                            .textFieldStyle(.plain)
+                            .font(.app(13.5, .medium))
+                            .onSubmit { onDone(edit) }
+                            .padding(.horizontal, 12).frame(height: 36)
+                            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.foreground, lineWidth: 1.5))
+                    }
+                    if pickingLook, look != nil {
+                        LookPicker(icon: $edit.icon, color: $edit.color)
+                            .padding(.top, 8)
+                            .transition(.opacity.combined(with: .offset(y: -6)))
+                    }
                 }
                 HStack(alignment: .top, spacing: 12) {
                     field("Area") {
@@ -366,10 +570,7 @@ struct SortedEditCard: View {
 
             Rectangle().fill(Theme.cardBorder).frame(height: 1).padding(.top, 16)
             HStack {
-                Button(action: onRemove) {
-                    Text("Remove").font(.app(12.5, .medium)).foregroundStyle(Theme.danger)
-                }
-                .buttonStyle(.plain)
+                RemoveButton(action: onRemove)
                 Spacer()
                 FlowButton(title: "Done", primary: true, isEnabled: !edit.title.trimmingCharacters(in: .whitespaces).isEmpty) { onDone(edit) }
             }
@@ -381,6 +582,14 @@ struct SortedEditCard: View {
             RoundedRectangle(cornerRadius: 16).fill(Theme.card).shadow(color: .black.opacity(0.2), radius: 24, y: 18)
         }
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.cardBorder))
+        .animation(staticRendering ? nil : .smooth(duration: 0.25), value: pickingLook)
+        .onChange(of: edit.kind) { if edit.kind == .task { pickingLook = false } }
+    }
+
+    /// The look to show and change: a project's or practice's, not a task's.
+    private var look: (icon: String, color: String)? {
+        guard edit.kind != .task, let icon = edit.icon, let color = edit.color else { return nil }
+        return (icon, color)
     }
 
     private func field(_ label: String, @ViewBuilder content: () -> some View) -> some View {
@@ -389,6 +598,158 @@ struct SortedEditCard: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The badge beside the name, as a button: opens the icon and colour choices, a small chevron on its corner saying so.
+private struct LookButton: View {
+    let icon: String
+    let color: String
+    let round: Bool
+    let isOpen: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            GoalBadge(icon: icon, color: color, size: .field, round: round)
+                .overlay(alignment: .bottomTrailing) {
+                    Icon.chevronDown.image(size: 8)
+                        .foregroundStyle(Theme.muted)
+                        .frame(width: 14, height: 14)
+                        .background(Theme.card, in: .circle)
+                        .overlay(Circle().strokeBorder(Theme.cardBorder))
+                        .rotationEffect(.degrees(isOpen ? 180 : 0))
+                        .offset(x: 4, y: 4)
+                }
+                .scaleEffect(isHovered && !isOpen ? 1.04 : 1)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .accessibilityLabel("Change icon and colour")
+    }
+}
+
+/// The colours, then the icons, searchable, in the chosen colour.
+private struct LookPicker: View {
+    @Binding var icon: String?
+    @Binding var color: String?
+    @State private var query = ""
+
+    private var groups: [GoalIconGroup] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return GoalPalette.iconGroups }
+        return GoalPalette.iconGroups.compactMap { group in
+            let icons = group.icons.filter {
+                $0.label.lowercased().contains(q) || $0.keywords.contains(q) || group.label.lowercased().contains(q)
+            }
+            return icons.isEmpty ? nil : GoalIconGroup(label: group.label, icons: icons)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                ForEach(GoalPalette.colors, id: \.key) { info in
+                    Button { color = info.key } label: {
+                        Circle().fill(GoalPalette.color(info.key))
+                            .frame(width: 18, height: 18)
+                            .padding(3)
+                            .overlay { if color == info.key { Circle().strokeBorder(Theme.foreground(0.7), lineWidth: 1.5) } }
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(info.label)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            HStack(spacing: 6) {
+                Icon.search.image(size: 12).foregroundStyle(Theme.muted)
+                TextField("", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.app(12.5))
+                    .foregroundStyle(Theme.foreground)
+                    .placeholder("Search icons", when: query.isEmpty, font: .app(12.5), color: Theme.muted)
+                    .accessibilityLabel("Search icons")
+            }
+            .padding(.horizontal, 9).frame(height: 28)
+            .background(Theme.foreground(0.03), in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(groups, id: \.label) { group in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.label).font(.app(11, .medium)).foregroundStyle(Theme.muted)
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 8), spacing: 2) {
+                                ForEach(group.icons, id: \.name) { info in
+                                    IconChoice(name: info.name, label: info.label, color: color ?? "slate", isOn: info.name == icon) {
+                                        icon = info.name
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if groups.isEmpty {
+                        Text("No icons match “\(query)”.").font(.app(12)).foregroundStyle(Theme.muted)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    }
+                }
+            }
+            .scrollIndicators(.never)
+            .frame(height: 150)
+        }
+        .padding(10)
+        .background(Theme.foreground(0.025), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.cardBorder))
+    }
+
+    private struct IconChoice: View {
+        let name: String
+        let label: String
+        let color: String
+        let isOn: Bool
+        let action: () -> Void
+        @State private var isHovered = false
+
+        var body: some View {
+            Button(action: action) {
+                GoalIconImage(name: name, size: 16)
+                    .foregroundStyle(isOn ? GoalPalette.color(color) : isHovered ? Theme.foreground : Theme.foreground(0.65))
+                    .frame(maxWidth: .infinity).frame(height: 32)
+                    .background(isOn ? GoalPalette.color(color).opacity(0.14) : isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 8))
+                    .contentShape(.rect(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+            .help(label)
+            .accessibilityLabel(label)
+        }
+    }
+}
+
+/// Takes it off the plate: muted until hovered, then red.
+private struct RemoveButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Icon.delete.image(size: 13)
+                Text("Remove").font(.app(12.5, .medium))
+            }
+            .foregroundStyle(isHovered ? Theme.danger : Theme.muted)
+            .padding(.horizontal, 8).frame(height: 30)
+            .background(isHovered ? Theme.danger.opacity(0.08) : .clear, in: .rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, -8)
+        .onHover { isHovered = $0 }
     }
 }
 

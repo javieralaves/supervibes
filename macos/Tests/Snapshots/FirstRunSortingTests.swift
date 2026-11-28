@@ -62,4 +62,29 @@ final class FirstRunSortingTests: XCTestCase {
         }
         assertAppearances(sorted(Fixtures.sortedPlateAnswered, center: center), width: 1280, height: 820)
     }
+
+    private func sorted(_ plate: SortedPlate, adding: AddDraft) -> some View {
+        FirstRunSorted(plate: plate, adding: adding).padding(.top, 20).background(Theme.background).overlayHost(OverlayCenter())
+    }
+
+    /// Adding to Work, a project half named: its badge guesses the icon from the words, the kinds under it, Return to add.
+    func testSortedAddingProject() {
+        assertAppearances(sorted(Fixtures.sortedPlateAnswered, adding: AddDraft(areaId: "work", kind: .project, title: "Plan the team offsite")),
+                          width: 1280, height: 820)
+    }
+
+    /// Adding to Home, a task, nothing typed yet: a task's box, where it'll go, Escape to close.
+    func testSortedAddingTask() {
+        assertAppearances(sorted(Fixtures.sortedPlateAnswered, adding: AddDraft(areaId: "home", kind: .task)), width: 1280, height: 820)
+    }
+
+    /// Spanish clicked, its look open: the colours and the icons under its name.
+    func testSortedEditingLook() {
+        let plate = Fixtures.sortedPlateAnswered
+        let center = OverlayCenter()
+        center.showMenu(anchor: CGRect(x: 396, y: 200, width: 300, height: 46), owner: "spanish", alignLeading: true) {
+            SortedEditCard(plate: plate, edit: plate.edit(for: .item("spanish"))!, pickingLook: true, onDone: { _ in }, onRemove: {})
+        }
+        assertAppearances(sorted(plate, center: center), width: 1280, height: 820)
+    }
 }

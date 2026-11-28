@@ -70,6 +70,8 @@ struct MainView: View {
                     }
                     .padding(.top, 20)
                     .background(Theme.background)
+                    // First run's menus and editing cards (Sorted's, Add an area) draw in the same overlay layer.
+                    .overlayHost(shell.overlays)
                 case .inactive:
                     signedIn
                 }
