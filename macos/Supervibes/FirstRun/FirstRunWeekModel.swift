@@ -74,6 +74,13 @@ final class FirstRunWeekModel {
             markOpen: { [weak self] in self?.answer($0, open: true) },
             markPlain: { [weak self] in self?.answer($0, open: false) },
             drop: { [weak self] goalId, day, start in self?.drop(goalId, day: day, start: start) },
+            create: { [weak self] day, start, end, goalId, title, kind in
+                self?.create(day: day, start: start, end: end, goalId: goalId, title: title, kind: kind)
+            },
+            move: { [weak self] id, edge, minutes, days in
+                self?.calendar.move(id, edge: edge, delta: minutes, days: days)
+                self?.selection = nil
+            },
             setReserved: { [weak self] id, reserved in self?.calendar.setReserved(id, reserved) },
             remove: { [weak self] id in
                 self?.calendar.remove(id)
@@ -140,13 +147,13 @@ final class FirstRunWeekModel {
 
     // MARK: Projects and practices
 
-    /// A project or practice dropped on a day: a session there, two hours for a project and one for a practice, until
-    /// 21:00 at the latest. The first project's asks whether it's a session or reserved; the first practice's says how
-    /// it counts.
+    /// A project or practice dropped on a day: a session there, two hours for a project and a practice's own length,
+    /// until midnight at the latest. The first project's asks whether it's a session or reserved; the first practice's
+    /// says how it counts.
     private func drop(_ goalId: String, day: Int, start: Int) {
         guard let goal = calendar.data.goals.first(where: { $0.id == goalId }) else { return }
         let length = goal.isPractice ? max(goal.minMinutes ?? 60, 30) : 120
-        let end = min(start + length, 21 * 60)
+        let end = min(start + length, CalendarDayMath.dayMinutes)
         let date = Calendar.current.date(byAdding: .day, value: day, to: self.start) ?? self.start
         let offset = CalendarDayMath.dayOffset(date, from: calendar.now)
         calendar.create(day: offset, start: start, end: max(end, start + 15), goalId: goalId, title: nil, kind: .session)
@@ -161,6 +168,26 @@ final class FirstRunWeekModel {
         } else if !placedProject {
             placedProject = true
             selection = .placed(goalId: goalId, startsAt: startsAt)
+            stage = max(stage, .practices)
+        }
+    }
+
+    /// Time drawn on a day and given to a project or practice in the new block's card, which already said session or
+    /// reserved; the first practice's still says how it counts.
+    private func create(day: Int, start: Int, end: Int, goalId: String, title: String?, kind: NewBlockKind) {
+        guard let goal = calendar.data.goals.first(where: { $0.id == goalId }) else { return }
+        let date = Calendar.current.date(byAdding: .day, value: day, to: self.start) ?? self.start
+        let offset = CalendarDayMath.dayOffset(date, from: calendar.now)
+        calendar.create(day: offset, start: start, end: max(end, start + 15), goalId: goalId, title: title, kind: kind)
+        selection = nil
+        if goal.isPractice {
+            if !placedPractice {
+                placedPractice = true
+                practiceTip = .placed(goalId: goalId, startsAt: date.addingTimeInterval(Double(start) * 60))
+                stage = max(stage, .practices)
+            }
+        } else if !placedProject {
+            placedProject = true
             stage = max(stage, .practices)
         }
     }
