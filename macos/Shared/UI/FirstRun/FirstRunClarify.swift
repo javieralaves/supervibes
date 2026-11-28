@@ -25,21 +25,35 @@ struct FirstRunClarify: View {
             ZStack(alignment: .top) {
                 SetAside(answered: clarify.answered)
                     .offset(x: -420, y: 40)
-                if let question = clarify.question {
-                    Stack(ahead: min(clarify.questions.count - clarify.current - 1, 2)) {
+                // The question before and after the one on top are kept too, out of sight, so moving between
+                // questions is one continuous motion either way: the one answered drifts toward the pile as it
+                // fades, the next rises out of the stack a beat later. Back plays it in reverse.
+                CardPile {
+                    ForEach(window, id: \.self) { index in
+                        let question = clarify.questions[index]
+                        let place = index - clarify.current
                         QuestionCard(
-                            question: question, number: clarify.current + 1, of: clarify.questions.count,
+                            question: question, number: index + 1, of: clarify.questions.count,
                             picked: clarify.picked[question.quote], more: clarify.more[question.quote] ?? "",
-                            isLast: clarify.isLast, isSorting: isSorting, dictation: dictation, actions: actions
+                            isLast: index == clarify.questions.count - 1, isSorting: place == 0 && isSorting,
+                            dictation: place == 0 ? dictation : DictationState(), actions: actions
                         )
-                        .id(question.quote)
-                        .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .leading).combined(with: .opacity)))
+                        .modifier(CardPlace(place: place))
+                        .zIndex(place == 0 ? 1 : 0)
+                        .allowsHitTesting(place == 0)
+                        .disabled(place != 0)
+                        .accessibilityHidden(place != 0)
+                        .layoutValue(key: IsFrontCard.self, value: place == 0)
+                        // The card coming to the front waits a beat, so it doesn't blur into the one leaving.
+                        .animation(staticRendering ? nil : place == 0 ? .smooth(duration: 0.5).delay(0.08) : .smooth(duration: 0.4),
+                                   value: clarify.current)
                     }
                 }
+                .background(alignment: .bottom) { Peeking(ahead: min(clarify.questions.count - clarify.current - 1, 2)) }
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 8)
-            .animation(staticRendering ? nil : .snappy(duration: 0.3), value: clarify.current)
+            .animation(staticRendering ? nil : .smooth(duration: 0.45), value: clarify.current)
         } footer: {
             FlowButton(title: "Back", action: actions.back)
             Spacer()
@@ -53,26 +67,64 @@ struct FirstRunClarify: View {
     }
 }
 
-/// The card on top, with the ones to come peeking out under it, each a little smaller and fainter, scaled from its foot.
-private struct Stack<Card: View>: View {
+extension FirstRunClarify {
+    /// The questions drawn: the one on top and its neighbours either side.
+    private var window: [Int] {
+        guard !clarify.questions.isEmpty else { return [] }
+        let last = clarify.questions.count - 1
+        return Array(max(0, clarify.current - 1)...min(last, max(0, clarify.current + 1)))
+    }
+}
+
+/// Where a question card sits relative to the one on top: answered ones drift left toward the pile, a little smaller,
+/// tilted and gone; ones to come sit tucked into the stack below, gone too.
+private struct CardPlace: ViewModifier {
+    let place: Int
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(place == 0 ? 1 : place < 0 ? 0.94 : 0.95, anchor: place < 0 ? .center : .bottom)
+            .rotationEffect(.degrees(place < 0 ? -4 : 0))
+            .offset(x: place < 0 ? -140 : 0, y: place < 0 ? 12 : place > 0 ? 14 : 0)
+            .opacity(place == 0 ? 1 : 0)
+    }
+}
+
+/// Marks the card on top, so the pile takes its size.
+private struct IsFrontCard: LayoutValueKey {
+    static let defaultValue = false
+}
+
+/// The question cards, one on another from the top, the pile as big as the one on top whatever the others measure.
+private struct CardPile: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let front = subviews.first(where: { $0[IsFrontCard.self] }) ?? subviews.first else { return .zero }
+        return front.sizeThatFits(proposal)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: CGPoint(x: bounds.midX, y: bounds.minY), anchor: .top, proposal: proposal)
+        }
+    }
+}
+
+/// The cards to come peeking out under the top one, each a little smaller and fainter, scaled from its foot.
+private struct Peeking: View {
     let ahead: Int
-    @ViewBuilder var card: Card
 
     var body: some View {
-        card
-            .background(alignment: .bottom) {
-                ZStack(alignment: .bottom) {
-                    ForEach((1...max(ahead, 1)).reversed(), id: \.self) { depth in
-                        if depth <= ahead {
-                            RoundedRectangle(cornerRadius: 20).fill(Theme.card)
-                                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
-                                .scaleEffect(1 - CGFloat(depth) * 0.05, anchor: .bottom)
-                                .offset(y: CGFloat(depth) * 12)
-                                .opacity(1 - Double(depth) * 0.25)
-                        }
-                    }
+        ZStack(alignment: .bottom) {
+            ForEach((1...max(ahead, 1)).reversed(), id: \.self) { depth in
+                if depth <= ahead {
+                    RoundedRectangle(cornerRadius: 20).fill(Theme.card)
+                        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.cardBorder))
+                        .scaleEffect(1 - CGFloat(depth) * 0.05, anchor: .bottom)
+                        .offset(y: CGFloat(depth) * 12)
+                        .opacity(1 - Double(depth) * 0.25)
                 }
             }
+        }
     }
 }
 
@@ -82,7 +134,7 @@ private struct SetAside: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(Array(answered.suffix(3).enumerated()), id: \.offset) { index, item in
+            ForEach(Array(answered.suffix(3).enumerated()), id: \.element.quote) { index, item in
                 VStack(alignment: .leading, spacing: 6) {
                     Text("“\(item.quote)”").font(.app(12)).foregroundStyle(Theme.muted).lineLimit(1)
                     HStack(spacing: 8) {
@@ -100,6 +152,11 @@ private struct SetAside: View {
                 .rotationEffect(.degrees(index % 2 == 0 ? -6 : -3))
                 .opacity(index == min(answered.count, 3) - 1 ? 0.85 : 0.55)
                 .offset(y: CGFloat(index) * 76)
+                // Arrives from where the answered card went, a moment after it.
+                .transition(.asymmetric(
+                    insertion: .offset(x: 72).combined(with: .opacity).animation(.smooth(duration: 0.5).delay(0.18)),
+                    removal: .opacity
+                ))
             }
         }
         .frame(width: 260, alignment: .topLeading)
@@ -270,4 +327,21 @@ private struct MoreField: View {
         .frame(height: 40)
         .background(Theme.foreground(0.035), in: .rect(cornerRadius: 12))
     }
+}
+
+#Preview("Questions, clickable") {
+    @Previewable @State var clarify = PlateClarify(questions: Fixtures.plateQuestions)
+    FirstRunClarify(
+        clarify: clarify,
+        actions: FirstRunActions(
+            back: { if clarify.current > 0 { clarify.current -= 1 } },
+            pick: { index in
+                guard let quote = clarify.question?.quote else { return }
+                clarify.picked[quote] = clarify.picked[quote] == index ? nil : index
+            },
+            nextQuestion: { if !clarify.isLast { clarify.current += 1 } },
+            skipQuestion: { if !clarify.isLast { clarify.current += 1 } }
+        )
+    )
+    .frame(width: 1280, height: 820)
 }
