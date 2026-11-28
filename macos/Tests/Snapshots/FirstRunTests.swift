@@ -69,6 +69,19 @@ final class FirstRunTests: XCTestCase {
         )
     }
 
+    /// The week intro mid-show: Thursday's event claimed for Home, then a project carried from the plate to Tuesday,
+    /// then the runs landing as the practice's rhythm fills; each with its point lit.
+    func testWeekIntroClaiming() { weekIntro(at: 1.8) }
+    func testWeekIntroCarrying() { weekIntro(at: 3.6) }
+    func testWeekIntroRhythm() { weekIntro(at: 7.0) }
+
+    private func weekIntro(at t: Double, testName: String = #function) {
+        assertAppearances(
+            FirstRunWeekIntro(weekLabel: "Nov 30 – Dec 6", onStart: {}, frozenAt: t).padding(.top, 28).background(Theme.background),
+            width: 1280, height: 820, testName: testName
+        )
+    }
+
     /// What matters with three things: what to do with the room, Step back first suggested.
     func testWhatMattersLight() {
         assertAppearances(window(Fixtures.firstRun(.whatMatters, plate: Fixtures.lightPlate)), width: 1280, height: 820)

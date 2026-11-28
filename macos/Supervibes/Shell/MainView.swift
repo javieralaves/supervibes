@@ -51,6 +51,7 @@ struct MainView: View {
                         switch firstRun.state.step {
                         case .weekIntro:
                             FirstRunWeekIntro(weekLabel: WeekPlan(start: WeekPlan.weekToPlan(from: .now), events: [], blocks: [], goals: []).label,
+                                              days: WeekIntroDay.week(from: WeekPlan.weekToPlan(from: .now)),
                                               steps: firstRun.state.route.steps, onStart: firstRun.openWeek)
                         case .stepBack:
                             if let state = firstRun.setup?.state {
