@@ -25,8 +25,9 @@ extension SeasonSetupState {
         return GoalPalette.colors.contains { $0.key == color } ? color : "slate"
     }
 
-    /// The popular areas first run offers beside theirs: the first two they don't have.
-    var offered: [PopularArea] { Array(popular.prefix(2)) }
+    /// The popular areas first run offers beside theirs: every one they don't have, so the usual parts of life are all
+    /// a look away. None start picked.
+    var offered: [PopularArea] { popular }
 
     var span: SeasonSpan { SeasonSpan(startsOn: season.startsOn, endsOn: season.endsOn) }
 

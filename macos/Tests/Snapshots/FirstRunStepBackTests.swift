@@ -11,7 +11,7 @@ final class FirstRunStepBackTests: XCTestCase {
         FirstRunStepBack(state: state, isStarted: isStarted).padding(.top, 20).background(Theme.background)
     }
 
-    /// Their six areas and two worth a look: Play left out, Relationships picked.
+    /// Their six areas and every usual one they lack, worth a look: Play left out, Relationships picked.
     func testStepBackAreas() {
         assertAppearances(window(Fixtures.stepBackPick), width: 1280, height: 820)
     }
