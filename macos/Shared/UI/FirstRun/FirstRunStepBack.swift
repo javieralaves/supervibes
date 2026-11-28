@@ -808,10 +808,11 @@ private struct OpportunityTile: View {
                     .padding(.bottom, 10)
             }
             .frame(height: 104)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(quest.title).font(.app(15, .semibold)).tracking(-0.15).foregroundStyle(Theme.foreground)
-                    .lineLimit(2, reservesSpace: true)
-                Text("From \(quest.fromText.lowercasedFirst)").font(.app(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            // Where it starts sits right under the title, one line or two; the room for a second line goes below,
+            // so every tile is as tall as one with a two-line title.
+            ZStack(alignment: .topLeading) {
+                words(title: "A\nB", from: "A").hidden()
+                words(title: quest.title, from: "From \(quest.fromText.lowercasedFirst)")
             }
             .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 6)
             .opacity(quest.chosen ? 1 : 0.7)
@@ -828,6 +829,15 @@ private struct OpportunityTile: View {
         .contentShape(.rect(cornerRadius: 16))
         .onTapGesture { if canChoose { onToggle() } }
         .opacity(canChoose ? 1 : 0.6)
+        .animation(.easeOut(duration: 0.15), value: quest.chosen)
+    }
+
+    private func words(title: String, from: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.app(15, .semibold)).tracking(-0.15).foregroundStyle(Theme.foreground).lineLimit(2)
+            Text(from).font(.app(12)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

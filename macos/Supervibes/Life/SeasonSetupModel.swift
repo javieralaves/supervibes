@@ -21,6 +21,8 @@ final class SeasonSetupModel {
     private(set) var started: Season?
 
     @ObservationIgnored private let auth: AuthModel
+    /// Counts quests chosen or taken out, so only the last of several quick ones takes the server's season.
+    @ObservationIgnored private var chooseSerial = 0
     @ObservationIgnored private let client: Client
 
     init(auth: AuthModel) {
@@ -285,15 +287,36 @@ final class SeasonSetupModel {
 
     // MARK: 3. Focus
 
+    /// Chooses a quest or takes it out. Shown at once, numbered as the server numbers them (in the order chosen,
+    /// closing up when one is taken out); then saved, and the season taken as the server has it once the last of
+    /// several quick choices is in. If saving fails, the season is taken back from the server.
     func choose(_ id: String, _ chosen: Bool) async {
-        guard let state, !state.isBusy else { return }
-        self.state?.error = nil
+        guard var state, !state.isBusy, let index = state.season.quests.firstIndex(where: { $0.id == id }) else { return }
+        guard state.season.quests[index].chosen != chosen else { return }
+        if chosen && state.chosen.count >= FocusBoard.slots { return }
+        state.error = nil
+        if chosen {
+            let position = state.chosen.count + 1
+            state.season.quests[index].chosen = true
+            state.season.quests[index].position = position
+        } else {
+            let gone = state.season.quests[index].position
+            state.season.quests[index].chosen = false
+            for i in state.season.quests.indices where state.season.quests[i].chosen && state.season.quests[i].position > gone {
+                state.season.quests[i].position -= 1
+            }
+        }
+        self.state = state
+        chooseSerial += 1
+        let serial = chooseSerial
         do {
             _ = try await seasonAPI.updateQuest(id, chosen: chosen)
-            // Choosing renumbers the others, so take the season as the server has it.
-            if let season = try await seasonAPI.current().draft { self.state?.season = season }
+            // A later choice is on its way; it brings the season back.
+            guard serial == chooseSerial else { return }
+            if let season = try await seasonAPI.current().draft, serial == chooseSerial { self.state?.season = season }
         } catch {
             self.state?.error = (error as? AreaAPIError)?.message ?? "Couldn’t choose that quest."
+            if let season = try? await seasonAPI.current().draft { self.state?.season = season }
         }
     }
 
