@@ -250,7 +250,7 @@ private struct MoreField: View {
                         }
                     }
             } else {
-                TextField("", text: Binding(get: { text }, set: onChange))
+                TextField("", text: Binding(get: { text }, set: { onChange($0) }))
                     .textFieldStyle(.plain)
                     .font(.app(13))
                     .foregroundStyle(Theme.foreground)
