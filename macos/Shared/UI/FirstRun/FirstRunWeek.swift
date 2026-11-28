@@ -35,6 +35,8 @@ struct FirstRunWeek: View {
     /// The first practice dropped, while its tip shows.
     var practiceTip: WeekSelection?
     var actions = WeekActions()
+    /// Time drawn on a day (day, start and end minutes) with its card open: for snapshots.
+    var drawn: WeekDrawnTime?
     /// Where the plate's sections sit, from its top, for the tips that point at them.
     @State private var marks = PlateMarks()
     /// What's being dragged from the plate, while it is: the project or practice it gives time.
@@ -61,13 +63,20 @@ struct FirstRunWeek: View {
 
             HStack(alignment: .top, spacing: 12) {
                 PlateColumn(plan: plan, marks: $marks, carried: $carried)
-                PlanGrid(plan: plan, selection: selection, practiceTip: practiceTip, marks: marks, carried: carried, actions: actions)
+                PlanGrid(plan: plan, selection: selection, practiceTip: practiceTip, marks: marks, carried: carried, actions: actions, drawn: drawn)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
         .background(Theme.background)
     }
+}
+
+/// Time drawn on the week: its day (0 is the week's first) and its start and end, in minutes from midnight.
+struct WeekDrawnTime: Hashable {
+    let day: Int
+    let start: Int
+    let end: Int
 }
 
 /// Where the plate's sections start, from the plate's top (and so the week's, beside it): the middle of each one's
@@ -249,7 +258,7 @@ struct QuestMark: View {
 // MARK: - The week
 
 /// The week: the whole day for each of its seven, scrolling, with the days pinned over it. Events and blocks sit on it;
-/// time can be drawn on it to make a block, blocks made here can be moved and their edges dragged, and what's carried
+/// time can be drawn on it and given to a project or practice, blocks made here can be moved and their edges dragged, and what's carried
 /// from the plate shows where it would land before it's let go.
 private struct PlanGrid: View {
     let plan: WeekPlan
@@ -285,7 +294,10 @@ private struct PlanGrid: View {
     @State private var focused = false
     @Environment(\.staticRendering) private var staticRendering
 
-    init(plan: WeekPlan, selection: WeekSelection?, practiceTip: WeekSelection?, marks: PlateMarks, carried: String?, actions: WeekActions) {
+    init(
+        plan: WeekPlan, selection: WeekSelection?, practiceTip: WeekSelection?, marks: PlateMarks, carried: String?, actions: WeekActions,
+        drawn: WeekDrawnTime? = nil
+    ) {
         self.plan = plan
         self.selection = selection
         self.practiceTip = practiceTip
@@ -293,6 +305,7 @@ private struct PlanGrid: View {
         self.carried = carried
         self.actions = actions
         _position = State(initialValue: ScrollPosition(y: Self.focusY(plan)))
+        _creating = State(initialValue: drawn.map { Drawn(day: $0.day, start: $0.start, end: $0.end) })
     }
 
     /// Opens an hour above the time it is (today), not before 7:00; on another week, at 8:00.
@@ -692,19 +705,18 @@ private struct PlanGrid: View {
             let frame = layout.frame(day: creating.day, start: creating.start, end: creating.end)
             let right = frame.maxX + 10 + Self.popoverWidth < layout.width
             let x = right ? frame.maxX + 10 : frame.minX - 10 - Self.popoverWidth
-            NewBlockPopover(
-                goals: plan.activeGoals, tasks: [], goalId: plan.quests.first?.goalIds.first ?? plan.activeGoals.first?.id ?? "",
-                timeLabel: newLabel(creating),
-                onAdd: { goalId, title, kind in
+            TimeForQuestion(
+                when: newLabel(creating), plan: plan,
+                onPick: { goalId in
                     self.creating = nil
-                    actions.create(creating.day, creating.start, creating.end, goalId, title, kind)
+                    actions.create(creating.day, creating.start, creating.end, goalId, nil, .session)
                 },
-                onCancel: { self.creating = nil }
+                onClose: { self.creating = nil }
             )
             .id("\(creating.day)-\(creating.start)-\(creating.end)")
             .frame(width: Self.popoverWidth)
             .fixedSize(horizontal: false, vertical: true)
-            .offset(x: x, y: inView(frame.minY - 8, height: NewBlockPopover.estimatedHeight))
+            .offset(x: x, y: inView(frame.minY - 8, height: 380))
         } else if let (frame, popover, height) = popover(layout) {
             let right = frame.maxX + 10 + Self.popoverWidth < layout.width
             let x = right ? frame.maxX + 10 : frame.minX - 10 - Self.popoverWidth

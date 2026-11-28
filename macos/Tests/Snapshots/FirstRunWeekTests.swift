@@ -55,4 +55,13 @@ final class FirstRunWeekTests: XCTestCase {
     func testWeekPlanned() {
         assertAppearances(week(Fixtures.weekPlanned), width: 1280, height: 820)
     }
+
+    /// Time drawn on Tuesday afternoon: what it’s for, the projects then the practices, each with the time it has.
+    func testWeekTimeDrawn() {
+        assertAppearances(
+            FirstRunWeek(plan: Fixtures.weekAnswered(blocks: [Fixtures.weekPricingSession]), drawn: WeekDrawnTime(day: 1, start: 13 * 60, end: 14 * 60 + 30))
+                .padding(.top, 20).background(Theme.background),
+            width: 1280, height: 820
+        )
+    }
 }

@@ -172,22 +172,24 @@ final class FirstRunWeekModel {
         }
     }
 
-    /// Time drawn on a day and given to a project or practice in the new block's card, which already said session or
-    /// reserved; the first practice's still says how it counts.
+    /// Time drawn on a day and given to a project or practice: a session, as a drop makes. The first project's then
+    /// asks whether it's a session or reserved, and the first practice's says how it counts, as a drop's do.
     private func create(day: Int, start: Int, end: Int, goalId: String, title: String?, kind: NewBlockKind) {
         guard let goal = calendar.data.goals.first(where: { $0.id == goalId }) else { return }
         let date = Calendar.current.date(byAdding: .day, value: day, to: self.start) ?? self.start
         let offset = CalendarDayMath.dayOffset(date, from: calendar.now)
         calendar.create(day: offset, start: start, end: max(end, start + 15), goalId: goalId, title: title, kind: kind)
+        let startsAt = date.addingTimeInterval(Double(start) * 60)
         selection = nil
         if goal.isPractice {
             if !placedPractice {
                 placedPractice = true
-                practiceTip = .placed(goalId: goalId, startsAt: date.addingTimeInterval(Double(start) * 60))
+                practiceTip = .placed(goalId: goalId, startsAt: startsAt)
                 stage = max(stage, .practices)
             }
         } else if !placedProject {
             placedProject = true
+            selection = .placed(goalId: goalId, startsAt: startsAt)
             stage = max(stage, .practices)
         }
     }

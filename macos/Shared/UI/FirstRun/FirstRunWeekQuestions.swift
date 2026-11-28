@@ -63,6 +63,100 @@ struct EventQuestion: View {
     }
 }
 
+/// Time drawn on the week, and what it's for, asked first: the projects and practices, those moving a quest first and
+/// marked with its number, each with the time it has so far, so what has none stands out. One click gives it the
+/// time; a project's first then asks session or reserved, as a drop does.
+struct TimeForQuestion: View {
+    /// "Mon 30 · 18:30–20:00".
+    let when: String
+    let plan: WeekPlan
+    let onPick: (String) -> Void
+    let onClose: () -> Void
+
+    /// Those moving a quest first, by its number; the rest as the plate has them.
+    private func ordered(_ goals: [CalendarGoal]) -> [CalendarGoal] {
+        let numbered = goals.compactMap { goal in plan.quest(for: goal.id).map { (goal, $0.number) } }.sorted { $0.1 < $1.1 }.map(\.0)
+        return numbered + goals.filter { plan.quest(for: $0.id) == nil }
+    }
+
+    var body: some View {
+        QuestionPanel(onClose: onClose) {
+            HStack(spacing: 10) {
+                Icon.clock.image(size: 15).foregroundStyle(Theme.foreground)
+                    .frame(width: 28, height: 28)
+                    .background(Theme.wash, in: .rect(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("New time").font(.app(12.5, .semibold)).foregroundStyle(Theme.foreground)
+                    Text(when).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 8)
+            Divider().padding(.horizontal, 4).padding(.bottom, 4)
+            Text("What’s this time for?").font(.app(11, .medium)).foregroundStyle(Theme.muted).padding(.horizontal, 8).padding(.vertical, 4)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    section("Projects", ordered(plan.projects))
+                    section("Practices", ordered(plan.practices))
+                }
+                .padding(.bottom, 2)
+            }
+            .scrollIndicators(.never)
+            .frame(maxHeight: 320)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ goals: [CalendarGoal]) -> some View {
+        if !goals.isEmpty {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.uppercased()).font(.app(10, .semibold)).tracking(0.3).foregroundStyle(Theme.muted.opacity(0.8))
+                    .padding(.horizontal, 8).padding(.bottom, 2)
+                ForEach(goals) { goal in
+                    GoalChoice(goal: goal, meta: plan.meta(goal), quest: plan.quest(for: goal.id)?.number) { onPick(goal.id) }
+                }
+            }
+        }
+    }
+}
+
+/// One project or practice to give the time to: its badge (with its quest's number), its name, and the time it has.
+private struct GoalChoice: View {
+    let goal: CalendarGoal
+    let meta: String
+    var quest: Int?
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                GoalBadge(icon: goal.icon, color: goal.color, size: .xs, round: goal.isPractice)
+                    .scaleEffect(26.0 / 24.0)
+                    .frame(width: 26, height: 26)
+                    .overlay(alignment: .bottomTrailing) {
+                        if let quest {
+                            QuestMark(number: quest, size: 13)
+                                .padding(1.5).background(Theme.card, in: .circle)
+                                .offset(x: 5, y: 5)
+                        }
+                    }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(goal.title).font(.app(12.5, .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
+                    Text(meta).font(.app(11)).monospacedDigit().foregroundStyle(Theme.muted).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Icon.add.image(size: 12).foregroundStyle(Theme.muted).opacity(isHovered ? 1 : 0)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(isHovered ? Theme.wash : .clear, in: .rect(cornerRadius: 10))
+            .contentShape(.rect(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
 /// A block of time for a project or practice dropped on the week: for a project, whether it's a session or reserved;
 /// and a way to take it off.
 struct BlockQuestion: View {
