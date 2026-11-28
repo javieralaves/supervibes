@@ -54,13 +54,22 @@ final class FirstRunSortingTests: XCTestCase {
         assertAppearances(sorted(plate, center: center), width: 1280, height: 820)
     }
 
-    /// Add an area, open: the usual ones not here yet, and Name your own.
+    /// Five areas: the dashed Add an area takes the last place on the second row, naming a few usual areas not here.
+    func testSortedAddAreaCard() {
+        var plate = Fixtures.sortedPlateAnswered
+        plate.areas.removeLast()
+        assertAppearances(sorted(plate), width: 1280, height: 820)
+    }
+
+    /// Add an area, open from its card: the usual ones not here yet, and Name your own.
     func testSortedAddArea() {
+        var plate = Fixtures.sortedPlateAnswered
+        plate.areas.removeLast()
         let center = OverlayCenter()
-        center.showMenu(anchor: CGRect(x: 980, y: 760, width: 120, height: 36)) {
-            AddAreaMenu(usual: Array(UsualArea.all.filter { !["Work", "Home", "Money", "Health", "Growth", "Play"].contains($0.name) }.prefix(4))) { _, _ in }
+        center.showMenu(anchor: CGRect(x: 809, y: 506, width: 309, height: 203), alignLeading: true) {
+            AddAreaMenu(usual: Array(UsualArea.all.filter { !["Work", "Home", "Money", "Health", "Growth"].contains($0.name) }.prefix(4))) { _, _ in }
         }
-        assertAppearances(sorted(Fixtures.sortedPlateAnswered, center: center), width: 1280, height: 820)
+        assertAppearances(sorted(plate, center: center), width: 1280, height: 820)
     }
 
     private func sorted(_ plate: SortedPlate, adding: AddDraft) -> some View {

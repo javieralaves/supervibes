@@ -3,7 +3,7 @@ import SwiftUI
 /// Step 2: the plate, sorted (the design's "2 · Sorted"). One card per part of life, each with the projects and
 /// practices sorted into it, what helps place them, and the tasks under them; an area's bucket says it holds one-offs
 /// that belong to nothing bigger. Clicking anything opens a card to change it: its kind, name and area, and what its
-/// kind needs. Each area can take something missed, and Add an area brings in another part of life. A practice nobody
+/// kind needs. Each area can take something missed, and the dashed card after the areas brings in another part of life. A practice nobody
 /// said the rhythm of asks How often?, and the plate can't be made until each has one. Changed after it's made, Looks
 /// right replaces what was made.
 struct FirstRunSorted: View {
@@ -27,9 +27,17 @@ struct FirstRunSorted: View {
                 Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         GridRow {
-                            ForEach(row) { area in
-                                AreaCard(plate: plate, area: area, actions: actions, adding: adding?.areaId == area.id ? adding : nil)
-                                    .frame(maxHeight: .infinity, alignment: .top)
+                            ForEach(row, id: \.self) { cell in
+                                switch cell {
+                                case .area(let area):
+                                    AreaCard(plate: plate, area: area, actions: actions, adding: adding?.areaId == area.id ? adding : nil)
+                                        .frame(maxHeight: .infinity, alignment: .top)
+                                case .add:
+                                    // Alone on its row it keeps an empty area's height; beside areas it takes theirs.
+                                    AddAreaCard(examples: usual.prefix(3).map(\.name), anchor: $areaButton) { openAreas() }
+                                        .frame(minHeight: row.count == 1 ? 150 : nil)
+                                        .frame(maxHeight: .infinity)
+                                }
                             }
                             ForEach(0..<(3 - row.count), id: \.self) { _ in Color.clear.gridCellUnsizedAxes([.vertical]) }
                         }
@@ -46,21 +54,30 @@ struct FirstRunSorted: View {
             } else if let first = plate.needsRhythm.first {
                 Text("Say how often for \(first.title)").appText(.sm).foregroundStyle(Theme.muted).padding(.trailing, 8)
             }
-            AddAreaButton { openAreas() }
-                .modifier(AnchorReader(frame: $areaButton))
             FlowButton(title: "Looks right", primary: true, isBusy: isSaving, isEnabled: plate.needsRhythm.isEmpty, action: actions.save)
         }
     }
 
-    /// The areas in rows of three, so the cards in a row share its height and their adds line up.
-    private var rows: [[PlateArea]] {
-        stride(from: 0, to: plate.areas.count, by: 3).map { Array(plate.areas[$0..<min($0 + 3, plate.areas.count)]) }
+    private enum Cell: Hashable {
+        case area(PlateArea)
+        case add
+    }
+
+    /// The areas in rows of three, then the card to add one, so the cards in a row share its height and their adds
+    /// line up.
+    private var rows: [[Cell]] {
+        let cells = plate.areas.map(Cell.area) + [.add]
+        return stride(from: 0, to: cells.count, by: 3).map { Array(cells[$0..<min($0 + 3, cells.count)]) }
+    }
+
+    /// The usual parts of life not on the plate yet.
+    private var usual: [UsualArea] {
+        let have = Set(plate.areas.map { $0.name.lowercased() })
+        return UsualArea.all.filter { !have.contains($0.name.lowercased()) }
     }
 
     private func openAreas() {
-        let have = Set(plate.areas.map { $0.name.lowercased() })
-        let usual = UsualArea.all.filter { !have.contains($0.name.lowercased()) }
-        overlays?.showMenu(anchor: areaButton) {
+        overlays?.showMenu(anchor: areaButton, alignLeading: true) {
             AddAreaMenu(usual: Array(usual.prefix(4))) { name, icon in
                 actions.addArea(name, icon)
                 overlays?.dismiss()
@@ -806,23 +823,49 @@ private struct PickerChip<Items: View>: View {
 
 // MARK: - Adding an area
 
-private struct AddAreaButton: View {
+/// Another part of life, as a card-to-be in the grid: dashed, a plus, and a few usual areas not here yet. Clicking it
+/// opens the choices against the card's edge.
+private struct AddAreaCard: View {
+    let examples: [String]
+    @Binding var anchor: CGRect
     let onOpen: () -> Void
     @State private var isHovered = false
 
+    private var line: String {
+        switch examples.count {
+        case 0: "Another part of your life"
+        case 1: "Like \(examples[0])"
+        case 2: "Like \(examples[0]) or \(examples[1])"
+        default: "Like \(examples[0]), \(examples[1]) or \(examples[2])"
+        }
+    }
+
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: 6) {
-                Icon.add.image(size: 13)
-                Text("Add an area").appText(.sm, .medium)
+            VStack(spacing: 10) {
+                Icon.add.image(size: 15)
+                    .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
+                    .frame(width: 32, height: 32)
+                    .background(Theme.foreground(isHovered ? 0.08 : 0.05), in: .circle)
+                VStack(spacing: 3) {
+                    Text("Add an area").font(.app(14, .semibold))
+                        .foregroundStyle(isHovered ? Theme.foreground : Theme.foreground(0.75))
+                    Text(line).font(.app(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                }
             }
-            .foregroundStyle(isHovered ? Theme.foreground : Theme.muted)
-            .padding(.horizontal, 14).frame(height: 36)
-            .background(isHovered ? Theme.foreground(0.06) : .clear, in: .rect(cornerRadius: 12))
-            .contentShape(.rect(cornerRadius: 12))
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.foreground(isHovered ? 0.025 : 0), in: .rect(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(isHovered ? Theme.lineStrong : Theme.foreground(0.14), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+            }
+            .contentShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(.plain)
+        .modifier(AnchorReader(frame: $anchor))
         .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
     }
 }
 
